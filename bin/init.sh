@@ -18,8 +18,8 @@ pushd $(dirname "$0")/.. > /dev/null
 
 slug="$product_name-$component_name"
 
-declare -a files_with_port=(.env Dockerfile README.md src/main/resources/application.yaml charts/rpe-spring-boot-template/values.yaml)
-declare -a files_with_slug=(build.gradle docker-compose.yml Dockerfile README.md ./infrastructure/main.tf ./src/main/java/uk/gov/hmcts/reform/demo/controllers/RootController.java charts/rpe-spring-boot-template/Chart.yaml)
+declare -a files_with_port=(.env Dockerfile README.md src/main/resources/application.yaml charts/opal-maintenance-service/values.yaml)
+declare -a files_with_slug=(build.gradle docker-compose.yml Dockerfile README.md ./infrastructure/main.tf ./src/main/java/uk/gov/hmcts/reform/demo/controllers/RootController.java charts/opal-maintenance-service/Chart.yaml)
 
 # Replace in CNP file
 for i in "Jenkinsfile_template"
@@ -29,14 +29,14 @@ do
 done
 
 # Replace image repo
-for i in "charts/rpe-spring-boot-template/values.yaml"
+for i in "charts/opal-maintenance-service/values.yaml"
 do
   perl -i -pe "s/rpe/$product_name/g" ${i}
-  perl -i -pe "s/spring-boot-template/$component_name/g" ${i}
+  perl -i -pe "s/opal-maintenance-service/$component_name/g" ${i}
 done
 
 #update maintainer name
-for i in "charts/rpe-spring-boot-template/Chart.yaml"
+for i in "charts/opal-maintenance-service/Chart.yaml"
 do
   perl -i -pe "s/rpe/$product_name/g" ${i}
 done
@@ -54,10 +54,10 @@ do
   perl -i -pe "s/4550/$port/g" ${i}
 done
 
-# Replace spring-boot-template slug
+# Replace opal-maintenance-service slug
 for i in ${files_with_slug[@]}
 do
-  perl -i -pe "s/spring-boot-template/$slug/g" ${i}
+  perl -i -pe "s/opal-maintenance-service/$slug/g" ${i}
 done
 
 # Replace demo package in all files under ./src
@@ -66,7 +66,7 @@ find ./.github/workflows -type f -print0 | xargs -0 perl -i -pe "s/reform.demo/r
 perl -i -pe "s/reform.demo/reform.$package/g" build.gradle
 
 # Rename charts directory
-git mv charts/rpe-spring-boot-template charts/${slug}
+git mv charts/opal-maintenance-service charts/${slug}
 
 # Rename directory to provided package name
 git mv src/functionalTest/java/uk/gov/hmcts/reform/demo/ src/functionalTest/java/uk/gov/hmcts/reform/${package}

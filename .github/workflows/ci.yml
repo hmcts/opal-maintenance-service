@@ -1,4 +1,4 @@
-name: Template CI
+name: Opal Maintenance Service CI
 
 on:
   pull_request:

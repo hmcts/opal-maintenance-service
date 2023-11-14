@@ -1,29 +1,12 @@
-# Spring Boot application template
+# Opal Maintenance Service
 
-## Purpose
-
-The purpose of this template is to speed up the creation of new Spring applications within HMCTS
-and help keep the same standards across multiple teams. If you need to create a new app, you can
-simply use this one as a starting point and build on top of it.
-
-## What's inside
-
-The template is a working application with a minimal setup. It contains:
- * application skeleton
- * setup script to prepare project
- * common plugins and libraries
- * docker setup
- * automatically publishes API documentation to [hmcts/cnp-api-docs](https://github.com/hmcts/cnp-api-docs)
- * code quality tools already set up
- * MIT license and contribution information
- * Helm chart using chart-java.
 
 The application exposes health endpoint (http://localhost:4550/health) and metrics endpoint
 (http://localhost:4550/metrics).
 
 ## Plugins
 
-The template contains the following plugins:
+This project contains the following plugins:
 
   * checkstyle
 
@@ -115,7 +98,7 @@ Create docker image:
   docker-compose build
 ```
 
-Run the distribution (created in `build/install/spring-boot-template` directory)
+Run the distribution (created in `build/install/opal-maintenance-service` directory)
 by executing the following command:
 
 ```bash
@@ -123,7 +106,7 @@ by executing the following command:
 ```
 
 This will start the API container exposing the application's port
-(set to `4550` in this template app).
+(set to `4550` in this app).
 
 In order to test if the application is up, you can call its health endpoint:
 
