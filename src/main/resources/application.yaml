@@ -1,5 +1,6 @@
 server:
   port: 4551
+  shutdown: "graceful"
 
 management:
   endpoint:
@@ -15,34 +16,44 @@ springdoc:
   packagesToScan: uk.gov.hmcts.reform.opal.controllers
   writer-with-order-by-keys: true
 
-#If you use a database then uncomment below lines and update db properties accordingly
 spring:
   config:
-    import: "optional:configtree:/mnt/secrets/rpe/"
+    import: "optional:configtree:/mnt/secrets/opal/"
   application:
     name: Opal Maintenance Service
-#  datasource:
-#    driver-class-name: org.postgresql.Driver
-#    url: jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}${DB_OPTIONS:}
-#    username: ${DB_USER_NAME}
-#    password: ${DB_PASSWORD}
-#    properties:
-#      charSet: UTF-8
-#    hikari:
-#      minimumIdle: 2
-#      maximumPoolSize: 10
-#      idleTimeout: 10000
-#      poolName: {to-be-defined}HikariCP
-#      maxLifetime: 7200000
-#      connectionTimeout: 30000
-#  jpa:
-#    properties:
-#      hibernate:
-#        jdbc:
-#          lob:
-#            # silence the 'wall-of-text' - unnecessary exception throw about blob types
-#            non_contextual_creation: true
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    url: jdbc:postgresql://${OPAL_MAINTENANCE_DB_HOST:localhost}:${OPAL_MAINTENANCE_DB_PORT:5432}/${OPAL_MAINTENANCE_DB_NAME:opal-maintenance-db}${OPAL_MAINTENANCE_DB_OPTIONS:}
+    username: ${OPAL_MAINTENANCE_DB_USERNAME:opal-maintenance}
+    password: ${OPAL_MAINTENANCE_DB_PASSWORD:opal-maintenance}
+    properties:
+      charSet: UTF-8
+    hikari:
+      minimumIdle: 2
+      maximumPoolSize: 10
+      idleTimeout: 10000
+      poolName: OpalHikariCP
+      maxLifetime: 7200000
+      connectionTimeout: 30000
+  jpa:
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        jdbc:
+          lob:
+            # silence the 'wall-of-text' - unnecessary exception throw about blob types
+            non_contextual_creation: true
+  flyway:
+    baseline-on-migrate: true
+    enabled: true
+
+dbMigration:
+  # When true, the app will run DB migration on startup.
+  # Otherwise, it will just check if all migrations have been applied (and fail to start if not).
+  runOnStartup: ${RUN_DB_MIGRATION_ON_STARTUP:true}
 
 azure:
   application-insights:
-    instrumentation-key: ${rpe.AppInsightsInstrumentationKey:00000000-0000-0000-0000-000000000000}
+    instrumentation-key: ${opal.AppInsightsInstrumentationKey:00000000-0000-0000-0000-000000000000}

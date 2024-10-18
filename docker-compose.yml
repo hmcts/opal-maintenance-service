@@ -1,7 +1,20 @@
-version: '2.1'
-
 services:
+  opal-maintenance-db:
+    container_name: opal-maintenance-db
+    image: postgres:16
+    restart: always
+    environment:
+      - POSTGRES_DB=opal-maintenance-db
+      - POSTGRES_USER=opal-maintenance
+      - POSTGRES_PASSWORD=opal-maintenance
+      - PGPORT=5432
+    ports:
+      - "5435:5432"
+    volumes:
+      - opal_maintenance_db_data:/var/lib/postgresql/data  
+
   opal-maintenance-service:
+    container_name: opal-maintenance-service
     build:
       context: .
       args:
@@ -22,5 +35,9 @@ services:
       - LOGBACK_REQUIRE_THREAD
       - LOGBACK_REQUIRE_ALERT_LEVEL=false
       - LOGBACK_REQUIRE_ERROR_CODE=false
+      - OPAL_MAINTENANCE_DB_HOST=opal-maintenance-db
     ports:
       - $SERVER_PORT:$SERVER_PORT
+
+volumes:
+  opal_maintenance_db_data:
