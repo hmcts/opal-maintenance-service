@@ -1,13 +1,19 @@
+buildscript {
+  dependencies {
+    classpath("org.flywaydb:flyway-database-postgresql:10.18.2")
+  }
+}
+
 plugins {
   id 'application'
-  id 'checkstyle'
-  id 'pmd'
   id 'jacoco'
-  id 'io.spring.dependency-management' version '1.1.4'
-  id 'org.springframework.boot' version '3.2.0'
-  id 'org.owasp.dependencycheck' version '9.0.1'
-  id 'com.github.ben-manes.versions' version '0.50.0'
-  id 'org.sonarqube' version '4.4.1.3373'
+  id 'io.spring.dependency-management' version '1.1.6'
+  id 'org.springframework.boot' version '3.3.4'
+  id 'com.github.ben-manes.versions' version '0.51.0'
+  id 'org.sonarqube' version '5.1.0.4882'
+  id 'uk.gov.hmcts.java' version '0.12.63'
+  id 'org.flywaydb.flyway' version '10.18.2'
+  id 'net.serenity-bdd.serenity-gradle-plugin' version '4.2.1'
 }
 
 group = 'uk.gov.hmcts.reform'
@@ -15,7 +21,7 @@ version = '0.0.1'
 
 java {
   toolchain {
-    languageVersion = JavaLanguageVersion.of(17)
+    languageVersion = JavaLanguageVersion.of(21)
   }
 }
 
@@ -36,15 +42,6 @@ sourceSets {
       srcDir file('src/integrationTest/java')
     }
     resources.srcDir file('src/integrationTest/resources')
-  }
-
-  smokeTest {
-    java {
-      compileClasspath += main.output
-      runtimeClasspath += main.output
-      srcDir file('src/smokeTest/java')
-    }
-    resources.srcDir file('src/smokeTest/resources')
   }
 }
 
@@ -80,13 +77,6 @@ test {
   failFast = true
 }
 
-task functional(type: Test) {
-  description = "Runs functional tests"
-  group = "Verification"
-  testClassesDirs = sourceSets.functionalTest.output.classesDirs
-  classpath = sourceSets.functionalTest.runtimeClasspath
-}
-
 task integration(type: Test) {
   description = "Runs integration tests"
   group = "Verification"
@@ -95,26 +85,79 @@ task integration(type: Test) {
   failFast = true
 }
 
-task smoke(type: Test) {
+task functionalOpal(type: Test) {
+
+  description = "Runs functional tests against Opal mode"
+  group = "Verification"
+  testClassesDirs = sourceSets.functionalTest.output.classesDirs
+  classpath = sourceSets.functionalTest.runtimeClasspath
+  reports.junitXml.getOutputLocation().set(layout.buildDirectory.dir("test-results/functional"))
+  testLogging.showStandardStreams = true
+  gradle.startParameter.continueOnFailure = true
+  systemProperty "cucumber.filter.tags", "@Opal and not @Smoke and not @Ignore"
+  systemProperty "test.mode", "opal"
+}
+task functionalLegacy(type: Test) {
+  description = "Runs functional tests against Legacy mode"
+  group = "Verification"
+  testClassesDirs = sourceSets.functionalTest.output.classesDirs
+  classpath = sourceSets.functionalTest.runtimeClasspath
+  reports.junitXml.getOutputLocation().set(layout.buildDirectory.dir("test-results/functional"))
+  gradle.startParameter.continueOnFailure = true
+  testLogging.showStandardStreams = true
+  systemProperty "cucumber.filter.tags", "@Legacy and not @Smoke and not @Ignore"
+  systemProperty "test.mode", "legacy"
+}
+task copyFunctionalReport(type: Copy) {
+  from("${rootDir}/target/site/serenity")
+  into("${rootDir}/functional-test-report")
+  logger.quiet("Functional Test Report available at - file://${rootDir}/functional-test-report/index.html")
+}
+
+task functional() {
+  description = "Runs functional tests"
+  group = "Verification"
+  gradle.startParameter.continueOnFailure = true
+  dependsOn('clearReports', 'functionalOpal', 'functionalLegacy', 'aggregate', 'copyFunctionalReport')
+  tasks.functionalOpal.mustRunAfter clearReports
+  tasks.functionalLegacy.mustRunAfter functionalOpal
+  tasks.aggregate.mustRunAfter functionalLegacy
+  tasks.copyFunctionalReport.mustRunAfter aggregate
+
+}
+task smokeOpal(type: Test) {
   description = "Runs Smoke Tests"
-  testClassesDirs = sourceSets.smokeTest.output.classesDirs
-  classpath = sourceSets.smokeTest.runtimeClasspath
+  group = "Verification"
+  testClassesDirs = sourceSets.functionalTest.output.classesDirs
+  classpath = sourceSets.functionalTest.runtimeClasspath
+  reports.junitXml.getOutputLocation().set(layout.buildDirectory.dir("test-results/smoke"))
+  testLogging.showStandardStreams = true
+  gradle.startParameter.continueOnFailure = true
+  systemProperty "cucumber.filter.tags", "@Smoke and not @Ignore"
+}
+task copySmokeReport(type: Copy) {
+  from("${rootDir}/target/site/serenity")
+  into("${rootDir}/smoke-test-report")
+  logger.quiet("Smoke Test Report available at - file://${rootDir}/smoke-test-report/index.html")
 }
 
-checkstyle {
-  maxWarnings = 0
-  toolVersion = '10.12.5'
-  getConfigDirectory().set(new File(rootDir, 'config/checkstyle'))
+task smoke() {
+  description = "Runs Smoke Tests"
+  group = "Verification"
+  gradle.startParameter.continueOnFailure = true
+  dependsOn('clearReports', 'smokeOpal', 'aggregate', 'copySmokeReport')
+  tasks.smokeOpal.mustRunAfter clearReports
+  tasks.aggregate.mustRunAfter smokeOpal
+  tasks.copySmokeReport.mustRunAfter aggregate
+
 }
 
-pmd {
-  toolVersion = "6.55.0"
-  sourceSets = [sourceSets.main, sourceSets.test, sourceSets.functionalTest, sourceSets.integrationTest, sourceSets.smokeTest]
-  reportsDir = file("$project.buildDir/reports/pmd")
-  // https://github.com/pmd/pmd/issues/876
-  ruleSets = []
-  ruleSetFiles = files("config/pmd/ruleset.xml")
-}
+def coverageExclusions = [
+  '**/uk/gov/hmcts/reform/opal/model/**',
+  '**/uk/gov/hmcts/reform/opal/config/**',
+  '**/uk/gov/hmcts/reform/opal/exception/**',
+  '**/uk/gov/hmcts/reform/opal/repository/**'
+]
 
 jacocoTestReport {
   executionData(test, integration)
@@ -132,6 +175,8 @@ sonarqube {
   properties {
     property "sonar.projectName", "Reform :: opal-maintenance-service"
     property "sonar.projectKey", "uk.gov.hmcts.reform:opal-maintenance-service"
+    property "sonar.exclusions", coverageExclusions.join(', ')
+    property 'sonar.coverage.exclusions', "**/entity/*,**/model/*,**/exception/*,**/config/**,**/repository/jpa/*,**/opal/dto/*"
   }
 }
 
@@ -149,25 +194,7 @@ dependencyUpdates {
 
 // https://jeremylong.github.io/DependencyCheck/dependency-check-gradle/configuration.html
 dependencyCheck {
-  // Specifies if the build should be failed if a CVSS score above a specified level is identified.
-  // range of 0-10 fails the build, anything greater and it doesn't fail the build
-  failBuildOnCVSS = 0
   suppressionFile = 'config/owasp/suppressions.xml'
-
-  analyzers {
-    // Disable scanning of .NET related binaries
-    assemblyEnabled = false
-  }
-  skipConfigurations = [
-    "checkstyle",
-    "compileOnly",
-    "pmd",
-    "integrationTest",
-    "functionalTest",
-    "smokeTest",
-    "contractTestRuntimeClasspath",
-    "contractTestCompileClasspath"
-  ]
 }
 
 repositories {
@@ -177,7 +204,8 @@ repositories {
 }
 
 ext {
-  log4JVersion = "2.22.0"
+  log4JVersion = "2.24.1"
+  logbackVersion = "1.5.8"
 }
 
 ext['snakeyaml.version'] = '2.0'
@@ -187,21 +215,44 @@ dependencies {
   implementation group: 'org.springframework.boot', name: 'spring-boot-starter-actuator'
   implementation group: 'org.springframework.boot', name: 'spring-boot-starter-aop'
   implementation group: 'org.springframework.boot', name: 'spring-boot-starter-json'
-  implementation group: 'org.springdoc', name: 'springdoc-openapi-starter-webmvc-ui', version: '2.2.0'
+  implementation group: 'org.springframework.boot', name: 'spring-boot-starter-data-jpa'
+  implementation group: 'org.springdoc', name: 'springdoc-openapi-starter-webmvc-ui', version: '2.6.0'
 
-  implementation group: 'com.github.hmcts.java-logging', name: 'logging', version: '6.0.1'
+  implementation group: 'com.github.hmcts.java-logging', name: 'logging', version: '6.1.6'
 
   implementation group: 'org.apache.logging.log4j', name: 'log4j-api', version: log4JVersion
   implementation group: 'org.apache.logging.log4j', name: 'log4j-to-slf4j', version: log4JVersion
+  implementation group: 'ch.qos.logback', name: 'logback-classic', version: logbackVersion
+  implementation group: 'ch.qos.logback', name: 'logback-core', version: logbackVersion
 
   implementation group: 'io.rest-assured', name: 'rest-assured'
 
-  testImplementation(platform('org.junit:junit-bom:5.10.1'))
+  implementation 'org.flywaydb:flyway-core:10.18.2'
+  implementation 'org.postgresql:postgresql'
+  runtimeOnly 'org.flywaydb:flyway-database-postgresql:10.18.2'
+
+  implementation 'org.projectlombok:lombok:1.18.34'
+  annotationProcessor 'org.projectlombok:lombok:1.18.34'
+
+  testImplementation 'org.projectlombok:lombok:1.18.34'
+  testAnnotationProcessor 'org.projectlombok:lombok:1.18.34'
+
+  testImplementation 'com.github.fge:json-schema-validator:2.2.14'
+  testImplementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
+
+  testImplementation 'org.springframework.boot:spring-boot-devtools'
+  testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+  testImplementation 'org.testcontainers:junit-jupiter:1.20.1'
+  testImplementation 'org.testcontainers:postgresql'
+
+  testImplementation(platform('org.junit:junit-bom:5.11.1'))
   testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine'
   testImplementation group: 'org.springframework.boot', name: 'spring-boot-starter-test', {
     exclude group: 'junit', module: 'junit'
     exclude group: 'org.junit.vintage', module: 'junit-vintage-engine'
   }
+  testImplementation 'org.junit.platform:junit-platform-suite:1.11.1'
+  testImplementation 'io.cucumber:cucumber-junit-platform-engine:7.19.0'
 }
 
 mainClassName = 'uk.gov.hmcts.reform.opal.Application'
@@ -215,10 +266,27 @@ bootJar {
 }
 
 // Gradle 7.x issue, workaround from: https://github.com/gradle/gradle/issues/17236#issuecomment-894768083
-rootProject.tasks.named("processSmokeTestResources") {
-  duplicatesStrategy = 'include'
-}
+// rootProject.tasks.named("processSmokeTestResources") {
+//  duplicatesStrategy = 'include'
+// }
 
 wrapper {
     distributionType = Wrapper.DistributionType.ALL
 }
+
+flyway {
+  url = System.getenv('FLYWAY_URL')
+  user = System.getenv('FLYWAY_USER')
+  password = System.getenv('FLYWAY_PASSWORD')
+  baselineOnMigrate = true
+  baselineVersion = '000'
+}
+
+task migratePostgresDatabase(type: org.flywaydb.gradle.task.FlywayMigrateTask) {
+  baselineOnMigrate = true
+  if (project.hasProperty("dburl")) {
+    url = "jdbc:postgresql://${dburl}"
+  }
+  println "Flyway jbdc property 'url' (derived from System property 'FLYWAY_URL'?) is: ${url}"
+}
+
