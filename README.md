@@ -148,7 +148,7 @@ docker images
 docker image rm <image-id>
 ```
 
-There is no need to remove postgres and java or similar core images.
+There is no need to remove postgres and java or similar core images!
 
 ## License
 
