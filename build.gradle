@@ -210,6 +210,12 @@ ext {
 
 ext['snakeyaml.version'] = '2.0'
 
+dependencyManagement {
+  imports {
+    mavenBom 'org.testcontainers:testcontainers-bom:1.21.4'
+  }
+}
+
 dependencies {
   implementation group: 'org.springframework.boot', name: 'spring-boot-starter-web'
   implementation group: 'org.springframework.boot', name: 'spring-boot-starter-actuator'
@@ -240,9 +246,10 @@ dependencies {
   testImplementation 'com.github.fge:json-schema-validator:2.2.14'
   testImplementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
 
+  testImplementation platform('org.testcontainers:testcontainers-bom:1.21.4')
   testImplementation 'org.springframework.boot:spring-boot-devtools'
   testImplementation 'org.springframework.boot:spring-boot-testcontainers'
-  testImplementation 'org.testcontainers:junit-jupiter:1.20.4'
+  testImplementation 'org.testcontainers:junit-jupiter:1.21.4'
   testImplementation 'org.testcontainers:postgresql'
 
   testImplementation(platform('org.junit:junit-bom:5.11.3'))
@@ -255,7 +262,9 @@ dependencies {
   testImplementation 'io.cucumber:cucumber-junit-platform-engine:7.21.0'
 }
 
-mainClassName = 'uk.gov.hmcts.reform.opal.Application'
+application {
+  mainClass = 'uk.gov.hmcts.reform.opal.Application'
+}
 
 bootJar {
   archiveFileName = "opal-maintenance-service.jar"
@@ -289,4 +298,3 @@ task migratePostgresDatabase(type: org.flywaydb.gradle.task.FlywayMigrateTask) {
   }
   println "Flyway jbdc property 'url' (derived from System property 'FLYWAY_URL'?) is: ${url}"
 }
-
