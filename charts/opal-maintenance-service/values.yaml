@@ -1,6 +1,6 @@
 java:
   applicationPort: 4550
-  image: 'hmctspublic.azurecr.io/opal/maintenance-service:latest'
+  image: 'hmctsprod.azurecr.io/opal/maintenance-service:latest'
   ingressHost: opal-maintenance-service-{{ .Values.global.environment }}.service.core-compute-{{ .Values.global.environment }}.internal
   aadIdentityName: opal
   keyVaults:
