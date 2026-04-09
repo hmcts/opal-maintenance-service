@@ -12,4 +12,29 @@
   <suppress>
     <cve>CVE-2024-1597</cve>
   </suppress>
+  <suppress>
+    <notes><![CDATA[
+      False positive: opal-maintenance-service does not resolve nu.validator:validator on runtime, test, or functional classpaths.
+      Dependency-check appears to match this CVE against unrelated '*validator*' artifacts.
+    ]]></notes>
+    <packageUrl regex="true">^pkg:maven/org\.hibernate\.validator/hibernate-validator@.*$</packageUrl>
+    <cve>CVE-2025-15104</cve>
+  </suppress>
+  <suppress>
+    <notes><![CDATA[
+      False positive: opal-maintenance-service does not resolve nu.validator:validator on runtime, test, or functional classpaths.
+      Dependency-check appears to match this CVE against unrelated '*validator*' artifacts.
+    ]]></notes>
+    <packageUrl regex="true">^pkg:maven/com\.github\.java-json-tools/json-schema-validator@.*$</packageUrl>
+    <cve>CVE-2025-15104</cve>
+  </suppress>
+  <suppress>
+    <notes><![CDATA[
+      False positive: CVE-2025-7962 is an SMTP injection issue in Jakarta Mail.
+      opal-maintenance-service only resolves org.eclipse.angus:angus-activation transitively from JAXB/Hibernate,
+      and does not resolve Angus Mail / SMTP providers on runtime, test, or functional classpaths.
+    ]]></notes>
+    <packageUrl regex="true">^pkg:maven/org\.eclipse\.angus/angus-activation@.*$</packageUrl>
+    <cve>CVE-2025-7962</cve>
+  </suppress>
 </suppressions>
