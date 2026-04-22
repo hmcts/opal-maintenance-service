@@ -1,7 +1,7 @@
 services:
   opal-maintenance-db:
     container_name: opal-maintenance-db
-    image: postgres:16
+    image: postgres:17.5
     restart: always
     environment:
       - POSTGRES_DB=opal-maintenance-db
@@ -11,7 +11,7 @@ services:
     ports:
       - "5435:5432"
     volumes:
-      - opal_maintenance_db_data:/var/lib/postgresql/data  
+      - opal_maintenance_db_data:/var/lib/postgresql/data
 
   opal-maintenance-service:
     container_name: opal-maintenance-service

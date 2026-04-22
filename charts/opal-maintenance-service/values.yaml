@@ -21,3 +21,7 @@ java:
 
   environment:
     RUN_DB_MIGRATION_ON_STARTUP: true
+  postgresql:
+    enabled: false
+    image:
+      tag: '17.5.0'
