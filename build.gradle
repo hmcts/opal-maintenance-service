@@ -1,6 +1,6 @@
 buildscript {
   dependencies {
-    classpath("org.flywaydb:flyway-database-postgresql:10.22.0")
+    classpath("org.flywaydb:flyway-database-postgresql:12.4.0")
   }
 }
 
@@ -12,7 +12,7 @@ plugins {
   id 'com.github.ben-manes.versions' version '0.54.0'
   id 'org.sonarqube' version '7.2.3.7755'
   id 'uk.gov.hmcts.java' version '0.12.68'
-  id 'org.flywaydb.flyway' version '10.22.0'
+  id 'org.flywaydb.flyway' version '12.4.0'
   id 'net.serenity-bdd.serenity-gradle-plugin' version '4.3.2'
 }
 
@@ -244,9 +244,9 @@ dependencies {
   implementation "ch.qos.logback:logback-classic:${logbackVersion}"
   implementation "ch.qos.logback:logback-core:${logbackVersion}"
 
-  implementation 'org.flywaydb:flyway-core:10.22.0'
+  implementation 'org.flywaydb:flyway-core:12.4.0'
   implementation 'org.postgresql:postgresql:42.7.10'
-  runtimeOnly 'org.flywaydb:flyway-database-postgresql:10.22.0'
+  runtimeOnly 'org.flywaydb:flyway-database-postgresql:12.4.0'
 
   compileOnly 'org.projectlombok:lombok:1.18.46'
   annotationProcessor 'org.projectlombok:lombok:1.18.46'
