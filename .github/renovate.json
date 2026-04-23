@@ -19,12 +19,6 @@
       "matchUpdateTypes": ["minor", "patch"]
     },
     {
-      "description": "springdoc 3.x requires Spring Boot 4.x; keep on 2.x until Boot 4 migration",
-      "matchManagers": ["gradle"],
-      "matchPackageNames": ["org.springdoc:springdoc-openapi-starter-webmvc-ui"],
-      "allowedVersions": "<3.0.0"
-    },
-    {
       "description": "Group all Gradle plugins - Minor/Patch",
       "matchManagers": ["gradle"],
       "matchPackagePatterns": [
