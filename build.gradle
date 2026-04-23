@@ -8,7 +8,7 @@ plugins {
   id 'application'
   id 'jacoco'
   id 'io.spring.dependency-management' version '1.1.7'
-  id 'org.springframework.boot' version '3.5.12'
+  id 'org.springframework.boot' version '4.0.5'
   id 'com.github.ben-manes.versions' version '0.54.0'
   id 'org.sonarqube' version '7.2.3.7755'
   id 'uk.gov.hmcts.java' version '0.12.68'
@@ -42,6 +42,15 @@ sourceSets {
       srcDir file('src/integrationTest/java')
     }
     resources.srcDir file('src/integrationTest/resources')
+  }
+
+  smokeTest {
+    java {
+      compileClasspath += main.output
+      runtimeClasspath += main.output
+      srcDir file('src/smokeTest/java')
+    }
+    resources.srcDir file('src/smokeTest/resources')
   }
 }
 
@@ -128,8 +137,8 @@ task functional() {
 task smokeOpal(type: Test) {
   description = "Runs Smoke Tests"
   group = "Verification"
-  testClassesDirs = sourceSets.functionalTest.output.classesDirs
-  classpath = sourceSets.functionalTest.runtimeClasspath
+  testClassesDirs = sourceSets.smokeTest.output.classesDirs
+  classpath = sourceSets.smokeTest.runtimeClasspath
   reports.junitXml.getOutputLocation().set(layout.buildDirectory.dir("test-results/smoke"))
   testLogging.showStandardStreams = true
   gradle.startParameter.continueOnFailure = true
@@ -223,9 +232,10 @@ dependencyManagement {
 dependencies {
   implementation 'org.springframework.boot:spring-boot-starter-web'
   implementation 'org.springframework.boot:spring-boot-starter-actuator'
-  implementation 'org.springframework.boot:spring-boot-starter-aop'
+  implementation 'org.springframework.boot:spring-boot-starter-aspectj'
+  implementation 'org.springframework.boot:spring-boot-flyway'
   implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
-  implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.17'
+  implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3'
 
   implementation 'com.github.hmcts.java-logging:logging:8.0.0'
 
@@ -241,10 +251,9 @@ dependencies {
   compileOnly 'org.projectlombok:lombok:1.18.46'
   annotationProcessor 'org.projectlombok:lombok:1.18.46'
 
-  testImplementation 'io.rest-assured:rest-assured'
-
   testImplementation platform('org.testcontainers:testcontainers-bom:1.21.4')
   testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+  testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
   testImplementation 'org.testcontainers:junit-jupiter:1.21.4'
   testImplementation 'org.testcontainers:postgresql'
 
