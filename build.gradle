@@ -214,7 +214,7 @@ ext['snakeyaml.version'] = '2.0'
 ext['tomcat.version'] = '10.1.54'
 dependencyManagement {
   imports {
-    mavenBom 'org.testcontainers:testcontainers-bom:1.21.4'
+    mavenBom 'org.testcontainers:testcontainers-bom:2.0.5'
   }
 }
 
@@ -241,7 +241,7 @@ dependencies {
 
   testImplementation 'io.rest-assured:rest-assured'
 
-  testImplementation platform('org.testcontainers:testcontainers-bom:1.21.4')
+  testImplementation platform('org.testcontainers:testcontainers-bom:2.0.5')
   testImplementation 'org.springframework.boot:spring-boot-testcontainers'
   testImplementation 'org.testcontainers:junit-jupiter:1.21.4'
   testImplementation 'org.testcontainers:postgresql'
