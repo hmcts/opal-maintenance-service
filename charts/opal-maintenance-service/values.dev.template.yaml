@@ -19,5 +19,6 @@ java:
     OPAL_MAINTENANCE_DB_OPTIONS: "?stringtype=unspecified"
     OPAL_MAINTENANCE_DB_PORT: 5432
     RUN_DB_MIGRATION_ON_STARTUP: true
+    FLYWAY_LOCATIONS: classpath:db/migration/ddl, classpath:db/migration/data/allEnvs, classpath:db/migration/data/nle, classpath:db/migration/data/dev
   postgresql:
     enabled: true
