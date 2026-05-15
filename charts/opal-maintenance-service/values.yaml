@@ -21,6 +21,7 @@ java:
 
   environment:
     RUN_DB_MIGRATION_ON_STARTUP: true
+    FLYWAY_LOCATIONS: classpath:db/migration/ddl,classpath:db/migration/data/allEnvs
   postgresql:
     enabled: false
     image:
