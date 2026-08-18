@@ -1,23 +1,31 @@
-**Before creating a pull request make sure that:**
+### Jira link
 
-- [ ] commit messages are meaningful and follow good commit message guidelines
-- [ ] README and other documentation has been updated / added (if needed)
-- [ ] tests have been updated / new tests has been added (if needed)
+<!-- Provide the Jira key and link, or explain why this work has no Jira ticket. -->
 
-Please remove this line and everything above and fill the following sections:
+### Change description
 
+<!-- Describe the change and map it to the applicable Acceptance Criteria. -->
 
-### JIRA link (if applicable) ###
+### Testing done
 
+<!-- List exact commands and results, manual scenarios, the environment used, and checks not run with reasons. -->
 
+### Breaking change
 
-### Change description ###
+<!-- Describe breaking, migration, or configuration impact, including how it is deployed or mitigated. -->
 
+### Security Vulnerability Assessment
 
+<!-- Describe the security assessment. List any CVE suppressions, their rationale, and mitigating controls. -->
 
-**Does this PR introduce a breaking change?** (check one with "x")
+### Checklist
 
-```
-[ ] Yes
-[ ] No
-```
+- [ ] Acceptance Criteria are addressed.
+- [ ] Commits follow the contribution convention.
+- [ ] Documentation is updated where needed.
+- [ ] Tests cover the affected behaviour where needed.
+- [ ] Testing evidence is included.
+- [ ] A security assessment is included.
+- [ ] Breaking changes are described.
+- [ ] Flyway or operational impact is described.
+- [ ] Sensitive-data handling has been reviewed.

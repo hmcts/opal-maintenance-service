@@ -5,6 +5,9 @@
 *.class
 bin/main/application.yaml
 
+### Local environment ###
+/.env
+
 ### STS ###
 .apt_generated
 .classpath
@@ -27,3 +30,9 @@ bin/main/application.yaml
 
 applicationinsights-agent-*.jar
 *.log
+
+# Local Superpowers planning/assets
+superpowers/
+.superpowers/
+**/superpowers/
+**/.superpowers/
