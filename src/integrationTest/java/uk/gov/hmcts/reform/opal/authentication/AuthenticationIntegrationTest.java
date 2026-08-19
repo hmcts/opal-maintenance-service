@@ -48,6 +48,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -65,6 +66,7 @@ class AuthenticationIntegrationTest extends BaseIntegrationTest {
     private static final String AUTHENTICATED_PATH = "/integration-test/authenticated";
     private static final String DOWNSTREAM_IDENTITY_BODY = "downstream-identity-body-64824a37";
     private static final String DOWNSTREAM_UNSAFE_HEADER = "downstream-unsafe-header-8bc00e91";
+    private static final String EXPECTED_AUDIENCE = "test-client-id";
     private static final String PRIVATE_OBJECT_ID = "private-object-id-732edac6";
     private static final String PRIVATE_SUBJECT = "private-subject-a4e618c9";
     private static final String TEST_REMOTE_ADDRESS = "198.51.100.42";
@@ -165,6 +167,35 @@ class AuthenticationIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    void rejectsTokenWithoutAudienceBeforeUserStateResolution() throws Exception {
+        stubJwkSet();
+        WIRE_MOCK_SERVER.stubFor(com.github.tomakehurst.wiremock.client.WireMock.get(USER_STATE_PATH)
+                                     .willReturn(okJson(USER_STATE_RESPONSE)));
+        String token = tokenWithoutAudience(
+            "test-subject",
+            issuer(),
+            Instant.now().plus(5, ChronoUnit.MINUTES)
+        );
+
+        assertRejectedBeforeUserStateResolution(token);
+    }
+
+    @Test
+    void rejectsTokenWithWrongAudienceBeforeUserStateResolution() throws Exception {
+        stubJwkSet();
+        WIRE_MOCK_SERVER.stubFor(com.github.tomakehurst.wiremock.client.WireMock.get(USER_STATE_PATH)
+                                     .willReturn(okJson(USER_STATE_RESPONSE)));
+        String token = tokenWithAudience(
+            "test-subject",
+            "wrong-audience",
+            issuer(),
+            Instant.now().plus(5, ChronoUnit.MINUTES)
+        );
+
+        assertRejectedBeforeUserStateResolution(token);
+    }
+
+    @Test
     void rejectsMalformedTokenWithoutLoggingRemoteAddressAsUserIdentifier(CapturedOutput output) throws Exception {
         mockMvc.perform(get(AUTHENTICATED_PATH)
                             .with(request -> {
@@ -250,11 +281,20 @@ class AuthenticationIntegrationTest extends BaseIntegrationTest {
     }
 
     private static String tokenWith(String subject, String tokenIssuer, Instant expiration) throws JOSEException {
-        return tokenWith(subject, null, tokenIssuer, expiration);
+        return tokenWith(subject, null, EXPECTED_AUDIENCE, tokenIssuer, expiration);
     }
 
     private static String tokenWith(String subject, String objectId, String tokenIssuer, Instant expiration)
         throws JOSEException {
+        return tokenWith(subject, objectId, EXPECTED_AUDIENCE, tokenIssuer, expiration);
+    }
+
+    private static String tokenWith(
+        String subject,
+        String objectId,
+        String audience,
+        String tokenIssuer,
+        Instant expiration) throws JOSEException {
         Instant issuedAt = Instant.now().minus(1, ChronoUnit.MINUTES);
         JWTClaimsSet.Builder claimsBuilder = new JWTClaimsSet.Builder()
             .subject(subject)
@@ -265,6 +305,9 @@ class AuthenticationIntegrationTest extends BaseIntegrationTest {
         if (objectId != null) {
             claimsBuilder.claim("oid", objectId);
         }
+        if (audience != null) {
+            claimsBuilder.audience(audience);
+        }
         JWTClaimsSet claims = claimsBuilder.build();
         SignedJWT jwt = new SignedJWT(
             new JWSHeader.Builder(JWSAlgorithm.RS256).keyID(RSA_KEY.getKeyID()).build(),
@@ -272,6 +315,31 @@ class AuthenticationIntegrationTest extends BaseIntegrationTest {
         );
         jwt.sign(new RSASSASigner(RSA_KEY));
         return jwt.serialize();
+    }
+
+    private static String tokenWithoutAudience(String subject, String tokenIssuer, Instant expiration)
+        throws JOSEException {
+        return tokenWith(subject, null, null, tokenIssuer, expiration);
+    }
+
+    private static String tokenWithAudience(
+        String subject,
+        String audience,
+        String tokenIssuer,
+        Instant expiration) throws JOSEException {
+        return tokenWith(subject, null, audience, tokenIssuer, expiration);
+    }
+
+    private void assertRejectedBeforeUserStateResolution(String token) throws Exception {
+        int responseStatus = mockMvc.perform(
+            get(AUTHENTICATED_PATH).header(HttpHeaders.AUTHORIZATION, bearer(token))
+        ).andReturn().getResponse().getStatus();
+
+        assertAll(
+            () -> assertThat(responseStatus).isEqualTo(401),
+            () -> WIRE_MOCK_SERVER.verify(0, getRequestedFor(urlEqualTo(USER_STATE_PATH))),
+            () -> verifyNoInteractions(redisTemplate, redisValueOperations)
+        );
     }
 
     private static RSAKey generateRsaKey() {
