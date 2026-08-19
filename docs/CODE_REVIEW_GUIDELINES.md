@@ -23,8 +23,8 @@ Optional improvements are not findings unless advisory feedback was requested.
   semantics.
 - Transaction boundaries, persistence fetch behavior, query count, locking,
   and data integrity.
-- Flyway ordering, immutability, environment scope, and deployment
-  compatibility.
+- Flyway ordering, immutability, environment scope, deployment compatibility,
+  and the safety checks in [Database Migrations](DATABASE_MIGRATIONS.md).
 - Secret handling, log safety, configuration defaults, operational endpoints,
   and dependency suppressions.
 - Test coverage for likely regressions and evidence for required checks.

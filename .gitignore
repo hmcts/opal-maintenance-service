@@ -36,3 +36,6 @@ superpowers/
 .superpowers/
 **/superpowers/
 **/.superpowers/
+
+docs/designs/
+docs/plans/
