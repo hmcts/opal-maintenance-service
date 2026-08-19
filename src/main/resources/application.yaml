@@ -2,7 +2,15 @@ server:
   port: 4551
   shutdown: "graceful"
 
+hmcts:
+  common:
+    exceptions:
+      enable-exception-handler: true
+
 management:
+  health:
+    redis:
+      enabled: ${opal.redis.enabled:false}
   endpoint:
     health:
       show-details: "always"
@@ -21,6 +29,24 @@ spring:
     import: "optional:configtree:/mnt/secrets/opal/"
   application:
     name: Opal Maintenance Service
+  security:
+    oauth2:
+      client:
+        registration:
+          internal-azure-ad:
+            client-id: ${AAD_CLIENT_ID:00000000-0000-0000-0000-000000000000}
+            client-secret: ${AAD_CLIENT_SECRET:}
+            scope: api://${AAD_CLIENT_ID:00000000-0000-0000-0000-000000000000}/opalinternaluser
+            issuer-uri: https://sts.windows.net/${AAD_TENANT_ID:00000000-0000-0000-0000-000000000000}/
+            claims: preferred_username
+        provider:
+          internal-azure-ad-provider:
+            authorization-uri: ${opal.azure.active-directory-justice-auth-uri}/${AAD_TENANT_ID:00000000-0000-0000-0000-000000000000}/oauth2/v2.0/authorize
+            token-uri: ${opal.azure.active-directory-justice-auth-uri}/${AAD_TENANT_ID:00000000-0000-0000-0000-000000000000}/oauth2/v2.0/token
+            jwk-set-uri: ${opal.azure.active-directory-justice-auth-uri}/${AAD_TENANT_ID:00000000-0000-0000-0000-000000000000}/discovery/v2.0/keys
+  data:
+    redis:
+      url: ${REDIS_CONNECTION_STRING:redis://localhost:6379}
   datasource:
     driver-class-name: org.postgresql.Driver
     url: jdbc:postgresql://${OPAL_MAINTENANCE_DB_HOST:localhost}:${OPAL_MAINTENANCE_DB_PORT:5432}/${OPAL_MAINTENANCE_DB_NAME:opal-maintenance-db}${OPAL_MAINTENANCE_DB_OPTIONS:}
@@ -58,3 +84,29 @@ dbMigration:
 azure:
   application-insights:
     instrumentation-key: ${opal.AppInsightsInstrumentationKey:00000000-0000-0000-0000-000000000000}
+
+user:
+  service:
+    url: ${OPAL_USER_SERVICE_API_URL:http://localhost:4555}
+
+logging-service:
+  pdpl:
+    async:
+      protocol: ${SERVICEBUS_LOGGING_PDPL_PROTOCOL:amqp}
+      connection-string: ${SERVICEBUS_CONNECTION_STRING:}
+      queue-name: ${SERVICEBUS_LOGGING_PDPL_QUEUE_NAME:logging-pdpl}
+
+launchdarkly:
+  enabled: ${LAUNCH_DARKLY_ENABLED:false}
+  sdk-key: ${LAUNCH_DARKLY_SDK_KEY:}
+  offline-mode: ${LAUNCH_DARKLY_OFFLINE_MODE:true}
+
+opal:
+  azure:
+    active-directory-justice-auth-uri: https://login.microsoftonline.com
+  redis:
+    enabled: ${OPAL_REDIS_ENABLED:false}
+  testing-support-endpoints:
+    enabled: ${TESTING_SUPPORT_ENDPOINTS_ENABLED:false}
+  common:
+    domain: maintenance

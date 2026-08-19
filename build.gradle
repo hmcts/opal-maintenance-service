@@ -229,13 +229,14 @@ ext['snakeyaml.version'] = '2.0'
 dependencyManagement {
   imports {
     mavenBom 'org.testcontainers:testcontainers-bom:2.0.5'
-    mavenBom 'org.springframework.cloud:spring-cloud-dependencies:2025.1.1'
+    mavenBom 'org.springframework.cloud:spring-cloud-dependencies:2025.1.2'
   }
 }
 
 dependencies {
   implementation 'org.springframework.boot:spring-boot-starter-web'
   implementation 'org.springframework.boot:spring-boot-starter-actuator'
+  runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
   implementation 'org.springframework.boot:spring-boot-starter-aspectj'
   implementation 'org.springframework.boot:spring-boot-flyway'
   implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
