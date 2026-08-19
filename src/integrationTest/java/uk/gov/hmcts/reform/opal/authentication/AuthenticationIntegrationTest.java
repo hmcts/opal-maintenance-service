@@ -56,6 +56,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class AuthenticationIntegrationTest extends BaseIntegrationTest {
 
     private static final String AUTHENTICATED_PATH = "/integration-test/authenticated";
+    private static final String DOWNSTREAM_IDENTITY_BODY = "downstream-identity-body-64824a37";
+    private static final String DOWNSTREAM_UNSAFE_HEADER = "downstream-unsafe-header-8bc00e91";
     private static final String PRIVATE_OBJECT_ID = "private-object-id-732edac6";
     private static final String PRIVATE_SUBJECT = "private-subject-a4e618c9";
     private static final String TEST_REMOTE_ADDRESS = "198.51.100.42";
@@ -203,10 +205,12 @@ class AuthenticationIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
-    void doesNotLeakResolvedIdentityWhenUserStateFails() throws Exception {
+    void doesNotLeakDownstreamIdentityWhenUserStateFails(CapturedOutput output) throws Exception {
         stubJwkSet();
         WIRE_MOCK_SERVER.stubFor(com.github.tomakehurst.wiremock.client.WireMock.get(USER_STATE_PATH)
-                                     .willReturn(aResponse().withStatus(500)));
+                                     .willReturn(aResponse().withStatus(500)
+                                                               .withHeader("Set-Cookie", DOWNSTREAM_UNSAFE_HEADER)
+                                                               .withBody(DOWNSTREAM_IDENTITY_BODY)));
         String token = tokenWith("test-subject", issuer(), Instant.now().plus(5, ChronoUnit.MINUTES));
 
         HttpRequest request = HttpRequest.newBuilder()
@@ -219,7 +223,8 @@ class AuthenticationIntegrationTest extends BaseIntegrationTest {
 
         assertThat(response.statusCode() / 100).isNotEqualTo(2);
         assertThat(response.body())
-            .doesNotContain("test-subject", "test-user@example.invalid", "Test User", "BUU-42");
+            .doesNotContain(DOWNSTREAM_IDENTITY_BODY, DOWNSTREAM_UNSAFE_HEADER);
+        assertThat(output).doesNotContain(DOWNSTREAM_IDENTITY_BODY, DOWNSTREAM_UNSAFE_HEADER);
     }
 
     private static void stubJwkSet() {
