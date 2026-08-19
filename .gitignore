@@ -42,3 +42,7 @@ docs/plans/
 
 # Local linked worktrees
 /.worktrees/
+
+# Bruno local environments
+bruno/environments/*.bru
+!bruno/environments/env.bru.template

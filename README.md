@@ -37,6 +37,16 @@ Application configuration can be overridden with the following environment varia
 | `OPAL_MAINTENANCE_DB_OPTIONS` | empty | Additional JDBC connection options |
 | `RUN_DB_MIGRATION_ON_STARTUP` | `true` | Run Flyway migrations when the service starts |
 | `FLYWAY_LOCATIONS` | configured migration locations | Select the Flyway migration locations |
+| `AAD_TENANT_ID` | `00000000-0000-0000-0000-000000000000` | Azure Active Directory tenant identifier |
+| `AAD_CLIENT_ID` | `00000000-0000-0000-0000-000000000000` | Azure Active Directory application identifier |
+| `AAD_CLIENT_SECRET` | empty | Azure Active Directory application secret |
+| `OPAL_USER_SERVICE_API_URL` | `http://localhost:4555` | User Service base URL |
+| `REDIS_CONNECTION_STRING` | `redis://localhost:6379` | Redis connection URL |
+| `OPAL_REDIS_ENABLED` | `false` | Enable Redis-backed health and caching support |
+| `TESTING_SUPPORT_ENDPOINTS_ENABLED` | `false` | Enable testing-support diagnostic endpoints |
+| `SERVICEBUS_LOGGING_PDPL_PROTOCOL` | `amqp` | PDPL Service Bus transport protocol |
+| `SERVICEBUS_CONNECTION_STRING` | empty | PDPL Service Bus connection string |
+| `SERVICEBUS_LOGGING_PDPL_QUEUE_NAME` | `logging-pdpl` | PDPL Service Bus queue name |
 
 Do not commit credentials or other secrets. Supply non-local values through environment or platform secret stores.
 
@@ -101,6 +111,28 @@ Run individual suites when focused feedback is more useful:
 ```
 
 Functional and smoke tests require a suitable running service and use `TEST_URL`, which defaults to `http://localhost:4551`. See [Testing](docs/TESTING.md) for suite details, focused commands, and evidence expectations.
+
+### Optional Bruno diagnostic checks
+
+The tracked [Bruno collection](bruno) provides manual health, testing-support,
+and User Service requests without committing local credentials. Testing-support
+endpoints are disabled by default. To enable them for a local manual check,
+start the service with:
+
+```bash
+TESTING_SUPPORT_ENDPOINTS_ENABLED=true ./gradlew bootRun
+```
+
+Then create a local Bruno environment using repository-relative paths:
+
+```bash
+cd bruno
+cp environments/env.bru.template environments/local.bru
+```
+
+Open `bruno` in Bruno, run health and ping, and use the User Service request
+to obtain an access token only when performing the optional authenticated
+diagnostic check. Keep the token in the ignored local environment file.
 
 ## Database migrations
 

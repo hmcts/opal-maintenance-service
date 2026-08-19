@@ -1,0 +1,17 @@
+{
+  "version": "1.0",
+  "name": "Opal Maintenance Service REST API Collection",
+  "type": "workspace",
+  "settings": {
+    "requestTimeout": 30000,
+    "followRedirects": true,
+    "prettyPrintResponse": true,
+    "validateSSL": false
+  },
+  "envs": {
+    "default": "local",
+    "paths": [
+      "./environments"
+    ]
+  }
+}

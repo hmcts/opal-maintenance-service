@@ -87,6 +87,10 @@ command that did not exercise changed behaviour as sufficient validation.
 
 - Preserve the root `GET /` endpoint unless deployment configuration changes
   with it; Azure App Service uses it for Always On requests.
+- Keep `/`, `/health`, `/prometheus`, Swagger UI, and OpenAPI endpoints public.
+  All other application endpoints must require authentication by default.
+  When testing-support diagnostics are explicitly enabled, keep ping public and
+  require authentication for the auth-check endpoint.
 - Use Spring MVC response types and status codes that accurately describe the
   outcome. Validate untrusted request data at the HTTP boundary.
 - Keep externally visible contracts explicit and do not expose persistence

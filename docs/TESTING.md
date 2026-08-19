@@ -15,6 +15,13 @@
 
 Mirror production packages, use `*Test`, and assert observable behaviour. Cover validation, error, empty, and configuration paths affected by a change. Keep Testcontainers and network boundaries explicit; do not make unit tests depend on them.
 
+Authentication integration tests generate their own JWTs at runtime and use
+WireMock for User Service responses. They do not require a real AAD tenant or
+User Service. The Bruno collection is a separate, optional manual check for a
+real AAD/User Service setup; enable testing-support endpoints explicitly with
+`TESTING_SUPPORT_ENDPOINTS_ENABLED=true` before using its ping or authenticated
+diagnostic requests. Never place a bearer value in a tracked Bruno file.
+
 ## Infrastructure and evidence
 
 Integration tests need Docker for Testcontainers. HTTP functional and smoke checks need a running service. Record exact commands, results, manual scenarios, and reasons for skipped checks. A successful pipeline is not evidence that every changed scenario ran.
