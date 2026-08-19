@@ -19,6 +19,7 @@ The default local port is `4551`; configured endpoints are `/health` and `/prome
 - Add or update relevant tests and documentation.
 - Do not change dependencies unless required.
 - Do not force-add ignored files with `git add -f` or `git add --force` unless the user explicitly approves adding that specific file.
+- Treat Superpowers design and implementation-plan artifacts as local-only. Keep them under ignored `docs/superpowers/` paths. Never stage, force-add, commit, or relocate them into a tracked path to bypass ignore rules unless the user explicitly requests it.
 
 ## Commands
 

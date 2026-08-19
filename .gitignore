@@ -39,3 +39,6 @@ superpowers/
 
 docs/designs/
 docs/plans/
+
+# Local linked worktrees
+/.worktrees/
