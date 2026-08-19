@@ -54,6 +54,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -134,19 +135,59 @@ class AuthenticationIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
-    void allowsOnlyConfiguredPublicEndpointsWithoutAuthentication() throws Exception {
+    void allowsContractedGetEndpointsWithoutAuthentication() throws Exception {
         mockMvc.perform(get("/"))
             .andExpect(status().isOk());
         mockMvc.perform(get("/health"))
             .andExpect(status().isOk());
         mockMvc.perform(get("/prometheus"))
             .andExpect(status().isOk());
+        mockMvc.perform(get("/swagger-ui.html"))
+            .andExpect(status().is3xxRedirection());
+        mockMvc.perform(get("/swagger-ui/index.html"))
+            .andExpect(status().isOk());
         mockMvc.perform(get("/v3/api-docs"))
             .andExpect(status().isOk());
+        mockMvc.perform(get("/v3/api-docs.yaml"))
+            .andExpect(status().isOk());
+        mockMvc.perform(get("/v3/api-docs/swagger-config"))
+            .andExpect(status().isOk());
+    }
+
+    @Test
+    void rejectsUnauthenticatedSiblingRoutes() {
+        assertAll(
+            () -> mockMvc.perform(get("/v3/future-resource"))
+                .andExpect(status().isUnauthorized()),
+            () -> mockMvc.perform(get("/testing-support/future-resource"))
+                .andExpect(status().isUnauthorized())
+        );
+    }
+
+    @Test
+    void rejectsUnauthenticatedOperationalAndStaticSiblings() {
+        assertAll(
+            () -> mockMvc.perform(get("/info"))
+                .andExpect(status().isUnauthorized()),
+            () -> mockMvc.perform(get("/health/db"))
+                .andExpect(status().isUnauthorized()),
+            () -> mockMvc.perform(get("/css/future-resource"))
+                .andExpect(status().isUnauthorized())
+        );
+    }
+
+    @Test
+    void rejectsWrongMethodOnPublicPath() throws Exception {
+        mockMvc.perform(post("/v3/api-docs"))
+            .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void leavesDisabledTestingSupportEndpointsAbsent() throws Exception {
         mockMvc.perform(get("/testing-support/ping"))
             .andExpect(status().isNotFound());
-        mockMvc.perform(get(AUTHENTICATED_PATH))
-            .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/testing-support/auth/check"))
+            .andExpect(status().isNotFound());
     }
 
     @Test

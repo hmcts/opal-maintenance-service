@@ -47,6 +47,12 @@ class TestingSupportControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    void rejectsUnauthenticatedTestingSupportSibling() throws Exception {
+        mockMvc.perform(get("/testing-support/future-resource"))
+            .andExpect(status().isUnauthorized());
+    }
+
+    @Test
     void returnsMockedUserStateForAuthenticatedAuthCheck() throws Exception {
         UserState userState = new UserState(
             123L,

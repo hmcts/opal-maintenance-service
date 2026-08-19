@@ -1,9 +1,9 @@
 package uk.gov.hmcts.reform.opal.authentication.config;
 
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.security.autoconfigure.web.servlet.PathRequest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.annotation.web.configurers.FormLoginConfigurer;
@@ -16,9 +16,9 @@ import uk.gov.hmcts.opal.common.user.authentication.exception.CustomAuthenticati
 @Configuration
 public class SecurityConfig {
 
-    private static final String[] PUBLIC_ENDPOINTS = {
-        "/swagger-ui.html", "/swagger-ui/**", "/swagger-resources/**", "/v3/**",
-        "/favicon.ico", "/health/**", "/info", "/prometheus", "/"
+    private static final String[] PUBLIC_GET_ENDPOINTS = {
+        "/", "/health", "/prometheus", "/swagger-ui.html", "/swagger-ui/**",
+        "/v3/api-docs", "/v3/api-docs.yaml", "/v3/api-docs/swagger-config"
     };
 
     private final CustomAuthenticationExceptions customAuthenticationExceptions;
@@ -41,12 +41,17 @@ public class SecurityConfig {
             .formLogin(FormLoginConfigurer::disable)
             .logout(LogoutConfigurer::disable)
             .authorizeHttpRequests(authorize -> {
-                authorize.requestMatchers(PathRequest.toStaticResources().atCommonLocations()).permitAll();
-                authorize.requestMatchers(PUBLIC_ENDPOINTS).permitAll();
+                authorize.requestMatchers(HttpMethod.GET, PUBLIC_GET_ENDPOINTS).permitAll();
                 if (testingSupportEnabled) {
-                    authorize.requestMatchers("/testing-support/auth/**").authenticated();
+                    authorize.requestMatchers(HttpMethod.GET, "/testing-support/ping").permitAll();
+                    authorize.requestMatchers(HttpMethod.GET, "/testing-support/auth/check").authenticated();
+                } else {
+                    authorize.requestMatchers(
+                        HttpMethod.GET,
+                        "/testing-support/ping",
+                        "/testing-support/auth/check"
+                    ).permitAll();
                 }
-                authorize.requestMatchers("/testing-support/**").permitAll();
                 authorize.anyRequest().authenticated();
             })
             .exceptionHandling(errors -> errors
