@@ -110,6 +110,8 @@ Schema migrations are stored in `src/main/resources/db/migration/ddl`. Environme
 
 Treat committed or deployed migrations as immutable. Add a new versioned migration for subsequent database changes.
 
+See [Database Migrations](docs/DATABASE_MIGRATIONS.md) for ownership, naming, environment scope, safe authoring, validation, and recovery guidance.
+
 ## OpenAPI
 
 When the application is running, its OpenAPI documentation is available at:

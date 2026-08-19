@@ -25,7 +25,7 @@ When persistence is introduced, put transaction boundaries around service operat
 
 ## Flyway migrations
 
-Treat committed or deployed migrations as immutable; add a new versioned migration for later schema changes. Keep schema changes in `ddl` and use the established environment data locations intentionally. Make migration ordering, rollback implications, and environment scope explicit in PR evidence.
+Treat committed or deployed migrations as immutable; add a new versioned migration for later schema changes. Keep schema changes in `ddl` and use established environment-data locations intentionally. Follow [Database Migrations](DATABASE_MIGRATIONS.md) for ownership, version allocation, safe authoring, validation, and recovery evidence.
 
 ## Configuration and operations
 

@@ -18,3 +18,5 @@ Mirror production packages, use `*Test`, and assert observable behaviour. Cover 
 ## Infrastructure and evidence
 
 Integration tests need Docker for Testcontainers. HTTP functional and smoke checks need a running service. Record exact commands, results, manual scenarios, and reasons for skipped checks. A successful pipeline is not evidence that every changed scenario ran.
+
+For Flyway or SQL changes, follow the fresh-database, upgrade-path, database-boundary, and evidence requirements in [Database Migrations](DATABASE_MIGRATIONS.md).
