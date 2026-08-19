@@ -19,11 +19,14 @@ import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -45,6 +48,10 @@ import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -90,8 +97,13 @@ class AuthenticationIntegrationTest extends BaseIntegrationTest {
     @Autowired
     private MockMvc mockMvc;
 
+    @MockitoBean
+    private StringRedisTemplate redisTemplate;
+
     @LocalServerPort
     private int serverPort;
+
+    private ValueOperations<String, String> redisValueOperations;
 
     @DynamicPropertySource
     static void registerAuthenticationProperties(DynamicPropertyRegistry registry) {
@@ -109,6 +121,9 @@ class AuthenticationIntegrationTest extends BaseIntegrationTest {
     @BeforeEach
     void resetWireMock() {
         WIRE_MOCK_SERVER.resetAll();
+        redisValueOperations = mock();
+        when(redisTemplate.opsForValue()).thenReturn(redisValueOperations);
+        clearInvocations(redisTemplate, redisValueOperations);
     }
 
     @AfterAll
@@ -146,6 +161,7 @@ class AuthenticationIntegrationTest extends BaseIntegrationTest {
 
         WIRE_MOCK_SERVER.verify(getRequestedFor(urlEqualTo(USER_STATE_PATH))
                                    .withHeader(HttpHeaders.AUTHORIZATION, equalTo(bearer(token))));
+        verifyNoInteractions(redisTemplate, redisValueOperations);
     }
 
     @Test
