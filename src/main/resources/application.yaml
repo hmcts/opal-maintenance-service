@@ -101,6 +101,10 @@ launchdarkly:
   sdk-key: ${LAUNCH_DARKLY_SDK_KEY:}
   offline-mode: ${LAUNCH_DARKLY_OFFLINE_MODE:true}
 
+logging:
+  level:
+    opal.UserStateClientService: ERROR
+
 opal:
   azure:
     active-directory-justice-auth-uri: https://login.microsoftonline.com

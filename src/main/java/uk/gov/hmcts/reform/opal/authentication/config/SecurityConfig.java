@@ -12,7 +12,6 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.server.resource.authentication.JwtIssuerAuthenticationManagerResolver;
 import org.springframework.security.web.SecurityFilterChain;
 import uk.gov.hmcts.opal.common.user.authentication.exception.CustomAuthenticationExceptions;
-import uk.gov.hmcts.opal.common.user.authentication.exception.CustomOauth2AuthenticationEntryPoint;
 
 @Configuration
 public class SecurityConfig {
@@ -23,13 +22,13 @@ public class SecurityConfig {
     };
 
     private final CustomAuthenticationExceptions customAuthenticationExceptions;
-    private final CustomOauth2AuthenticationEntryPoint customOauth2AuthenticationEntryPoint;
+    private final PrivacyPreservingOauth2AuthenticationEntryPoint oauth2AuthenticationEntryPoint;
 
     public SecurityConfig(
         CustomAuthenticationExceptions customAuthenticationExceptions,
-        CustomOauth2AuthenticationEntryPoint customOauth2AuthenticationEntryPoint) {
+        PrivacyPreservingOauth2AuthenticationEntryPoint oauth2AuthenticationEntryPoint) {
         this.customAuthenticationExceptions = customAuthenticationExceptions;
-        this.customOauth2AuthenticationEntryPoint = customOauth2AuthenticationEntryPoint;
+        this.oauth2AuthenticationEntryPoint = oauth2AuthenticationEntryPoint;
     }
 
     @Bean
@@ -55,7 +54,7 @@ public class SecurityConfig {
                 .accessDeniedHandler(customAuthenticationExceptions))
             .oauth2ResourceServer(oauth -> oauth
                 .authenticationManagerResolver(resolver)
-                .authenticationEntryPoint(customOauth2AuthenticationEntryPoint));
+                .authenticationEntryPoint(oauth2AuthenticationEntryPoint));
         return http.build();
     }
 }

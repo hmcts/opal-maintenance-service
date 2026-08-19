@@ -12,11 +12,15 @@ import com.nimbusds.jwt.SignedJWT;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -42,14 +46,19 @@ import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @AutoConfigureMockMvc
+@ExtendWith(OutputCaptureExtension.class)
 @Import(AuthenticationIntegrationTest.AuthenticatedTestController.class)
 class AuthenticationIntegrationTest extends BaseIntegrationTest {
 
     private static final String AUTHENTICATED_PATH = "/integration-test/authenticated";
+    private static final String PRIVATE_OBJECT_ID = "private-object-id-732edac6";
+    private static final String PRIVATE_SUBJECT = "private-subject-a4e618c9";
+    private static final String TEST_REMOTE_ADDRESS = "198.51.100.42";
     private static final String USER_STATE_PATH = "/v2/users/0/state";
     private static final String USER_STATE_RESPONSE = """
         {
@@ -138,10 +147,18 @@ class AuthenticationIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
-    void rejectsMalformedToken() throws Exception {
+    void rejectsMalformedTokenWithoutLoggingRemoteAddressAsUserIdentifier(CapturedOutput output) throws Exception {
         mockMvc.perform(get(AUTHENTICATED_PATH)
+                            .with(request -> {
+                                request.setRemoteAddr(TEST_REMOTE_ADDRESS);
+                                return request;
+                            })
                             .header(HttpHeaders.AUTHORIZATION, "Bearer not-a-jwt"))
             .andExpect(status().isUnauthorized());
+
+        assertThat(output)
+            .doesNotContain("UserIdentifier=" + TEST_REMOTE_ADDRESS)
+            .contains("UserIdentifier=Unauthenticated");
     }
 
     @Test
@@ -164,14 +181,25 @@ class AuthenticationIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
-    void rejectsTokenWhenUserStateIsNotFound() throws Exception {
+    void rejectsTokenWhenUserStateIsNotFoundWithoutLoggingTokenIdentifiers(CapturedOutput output) throws Exception {
         stubJwkSet();
         WIRE_MOCK_SERVER.stubFor(com.github.tomakehurst.wiremock.client.WireMock.get(USER_STATE_PATH)
                                      .willReturn(aResponse().withStatus(404)));
-        String token = tokenWith("test-subject", issuer(), Instant.now().plus(5, ChronoUnit.MINUTES));
+        String token = tokenWith(PRIVATE_SUBJECT, PRIVATE_OBJECT_ID, issuer(),
+                                 Instant.now().plus(5, ChronoUnit.MINUTES));
 
         mockMvc.perform(get(AUTHENTICATED_PATH).header(HttpHeaders.AUTHORIZATION, bearer(token)))
-            .andExpect(status().isUnauthorized());
+            .andExpect(status().isUnauthorized())
+            .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+            .andExpect(jsonPath("$.type").value("https://hmcts.gov.uk/problems/unauthorized"))
+            .andExpect(jsonPath("$.title").value("Unauthorized"))
+            .andExpect(jsonPath("$.status").value(401))
+            .andExpect(jsonPath("$.detail").value("You are not authorized to access this resource"))
+            .andExpect(jsonPath("$.properties.retriable").value(false));
+
+        assertThat(output)
+            .doesNotContain(PRIVATE_SUBJECT, PRIVATE_OBJECT_ID)
+            .contains("UserIdentifier=Unauthenticated");
     }
 
     @Test
@@ -201,14 +229,22 @@ class AuthenticationIntegrationTest extends BaseIntegrationTest {
     }
 
     private static String tokenWith(String subject, String tokenIssuer, Instant expiration) throws JOSEException {
+        return tokenWith(subject, null, tokenIssuer, expiration);
+    }
+
+    private static String tokenWith(String subject, String objectId, String tokenIssuer, Instant expiration)
+        throws JOSEException {
         Instant issuedAt = Instant.now().minus(1, ChronoUnit.MINUTES);
-        JWTClaimsSet claims = new JWTClaimsSet.Builder()
+        JWTClaimsSet.Builder claimsBuilder = new JWTClaimsSet.Builder()
             .subject(subject)
             .issuer(tokenIssuer)
             .issueTime(Date.from(issuedAt))
             .notBeforeTime(Date.from(issuedAt))
-            .expirationTime(Date.from(expiration))
-            .build();
+            .expirationTime(Date.from(expiration));
+        if (objectId != null) {
+            claimsBuilder.claim("oid", objectId);
+        }
+        JWTClaimsSet claims = claimsBuilder.build();
         SignedJWT jwt = new SignedJWT(
             new JWSHeader.Builder(JWSAlgorithm.RS256).keyID(RSA_KEY.getKeyID()).build(),
             claims
