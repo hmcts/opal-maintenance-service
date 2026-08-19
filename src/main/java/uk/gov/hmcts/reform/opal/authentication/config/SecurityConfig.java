@@ -1,5 +1,6 @@
 package uk.gov.hmcts.reform.opal.authentication.config;
 
+import jakarta.servlet.DispatcherType;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -41,6 +42,7 @@ public class SecurityConfig {
             .formLogin(FormLoginConfigurer::disable)
             .logout(LogoutConfigurer::disable)
             .authorizeHttpRequests(authorize -> {
+                authorize.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll();
                 authorize.requestMatchers(HttpMethod.GET, PUBLIC_GET_ENDPOINTS).permitAll();
                 if (testingSupportEnabled) {
                     authorize.requestMatchers(HttpMethod.GET, "/testing-support/ping").permitAll();
