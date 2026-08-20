@@ -36,6 +36,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
@@ -48,6 +49,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.mock;
@@ -246,9 +248,7 @@ class AuthenticationIntegrationTest extends BaseIntegrationTest {
                             .header(HttpHeaders.AUTHORIZATION, "Bearer not-a-jwt"))
             .andExpect(status().isUnauthorized());
 
-        assertThat(output)
-            .doesNotContain("UserIdentifier=" + TEST_REMOTE_ADDRESS)
-            .contains("UserIdentifier=Unauthenticated");
+        assertUnauthenticatedAuditLoggedWithout(output, "UserIdentifier=" + TEST_REMOTE_ADDRESS);
     }
 
     @Test
@@ -287,9 +287,7 @@ class AuthenticationIntegrationTest extends BaseIntegrationTest {
             .andExpect(jsonPath("$.detail").value("You are not authorized to access this resource"))
             .andExpect(jsonPath("$.properties.retriable").value(false));
 
-        assertThat(output)
-            .doesNotContain(PRIVATE_SUBJECT, PRIVATE_OBJECT_ID)
-            .contains("UserIdentifier=Unauthenticated");
+        assertUnauthenticatedAuditLoggedWithout(output, PRIVATE_SUBJECT, PRIVATE_OBJECT_ID);
     }
 
     @Test
@@ -313,6 +311,13 @@ class AuthenticationIntegrationTest extends BaseIntegrationTest {
         assertThat(response.body())
             .doesNotContain(DOWNSTREAM_IDENTITY_BODY, DOWNSTREAM_UNSAFE_HEADER);
         assertThat(output).doesNotContain(DOWNSTREAM_IDENTITY_BODY, DOWNSTREAM_UNSAFE_HEADER);
+    }
+
+    private static void assertUnauthenticatedAuditLoggedWithout(CapturedOutput output, String... forbiddenValues) {
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(
+            () -> assertThat(output).contains("UserIdentifier=Unauthenticated")
+        );
+        assertThat(output).doesNotContain(forbiddenValues);
     }
 
     private static void stubJwkSet() {
