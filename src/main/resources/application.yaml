@@ -50,8 +50,8 @@ spring:
   datasource:
     driver-class-name: org.postgresql.Driver
     url: jdbc:postgresql://${OPAL_MAINTENANCE_DB_HOST:localhost}:${OPAL_MAINTENANCE_DB_PORT:5432}/${OPAL_MAINTENANCE_DB_NAME:opal-maintenance-db}${OPAL_MAINTENANCE_DB_OPTIONS:}
-    username: ${OPAL_MAINTENANCE_DB_USERNAME:opal-maintenance}
-    password: ${OPAL_MAINTENANCE_DB_PASSWORD:opal-maintenance}
+    username: ${OPAL_MAINTENANCE_DB_USERNAME:opal-db-user}
+    password: ${OPAL_MAINTENANCE_DB_PASSWORD:opal-db-password}
     properties:
       charSet: UTF-8
     hikari:
