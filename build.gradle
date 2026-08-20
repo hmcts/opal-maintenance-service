@@ -14,6 +14,7 @@ plugins {
   id 'uk.gov.hmcts.java' version '0.12.70'
   id 'org.flywaydb.flyway' version '13.3.0'
   id 'net.serenity-bdd.serenity-gradle-plugin' version '5.3.9'
+  id "org.openapi.generator" version "7.24.0"
 }
 
 group = 'uk.gov.hmcts.reform'
@@ -26,6 +27,12 @@ java {
 }
 
 sourceSets {
+  openapi {
+    java {
+      srcDirs = [file('src/openApi/java')]
+    }
+    resources.srcDirs = [file('src/openApi/resources')]
+  }
   functionalTest {
     java {
       compileClasspath += main.output
@@ -55,6 +62,9 @@ sourceSets {
 }
 
 configurations {
+  openapiImplementation.extendsFrom implementation
+  openapiRuntimeOnly.extendsFrom runtimeOnly
+
   functionalTestImplementation.extendsFrom testImplementation
   functionalTestRuntimeOnly.extendsFrom runtimeOnly
 
@@ -65,9 +75,66 @@ configurations {
   smokeTestRuntimeOnly.extendsFrom runtimeOnly
 }
 
+tasks.register("bundleOpenApi", JavaExec) {
+  dependsOn 'compileOpenapiJava'
+  classpath = sourceSets.openapi.runtimeClasspath
+  group = "openapi"
+  description = "Bundle multiple OpenAPI YAML files into one"
+  mainClass = 'uk.gov.hmcts.opal.openapi.OpenApiBundler'
+  args = ["$rootDir/src/main/resources/openapi", layout.buildDirectory.file("openapi-bundled.yaml").get().asFile.absolutePath]
+}
+
+openApiGenerate {
+  generatorName = "spring"
+  inputSpec = layout.buildDirectory.file("openapi-bundled.yaml").get().asFile.absolutePath
+  outputDir = layout.buildDirectory.dir("generated/openapi").get().asFile.absolutePath
+  apiPackage = "uk.gov.hmcts.opal.generated.".toString() + "http.api"
+  modelPackage = "uk.gov.hmcts.opal.generated.".toString() + "model"
+  importMappings = [
+          Nullable: "org.jspecify.annotations.Nullable"
+  ]
+  // Point to your customized mustache templates
+  templateDir = "$rootDir/openapi/templates".toString()
+  generateApiTests = false
+  generateModelTests = false
+  skipOperationExample = true
+  openapiNormalizer = [
+          REF_AS_PARENT_IN_ALLOF: "true"
+  ]
+  configOptions = [
+          dateLibrary                         : "java8-localdatetime",
+          interfaceOnly                       : "true",
+          useTags                             : "true",
+          useSpringBoot4                      : "true",
+          containerDefaultToNull              : "true",
+          generatedConstructorWithRequiredArgs: "false",
+          useBeanValidation                   : "true",
+          useLombokAnnotations                : "true",
+          generateBuilders                    : "true",
+          configPackage                       : "uk.gov.hmcts.opal.generated.configuration"
+  ]
+}
+tasks.named("openApiGenerate") {
+  dependsOn 'bundleOpenApi'
+  doLast {
+    def generatedJavaDir = layout.buildDirectory.dir("generated/openapi/src/main/java").get().asFile
+    fileTree(generatedJavaDir).matching {
+      include '**/*.java'
+    }.each { generatedFile ->
+      generatedFile.text = generatedFile.text.replace(
+              'import org.springframework.lang.Nullable;',
+              'import org.jspecify.annotations.Nullable;'
+      )
+    }
+  }
+}
 tasks.withType(JavaCompile) {
   options.compilerArgs << "-Xlint:unchecked" << "-Werror"
 }
+tasks.named("compileJava") {
+  dependsOn 'openApiGenerate'
+}
+
 
 // https://github.com/gradle/gradle/issues/16791
 tasks.withType(JavaExec).configureEach {
@@ -230,6 +297,7 @@ dependencyManagement {
   imports {
     mavenBom 'org.testcontainers:testcontainers-bom:2.0.5'
     mavenBom 'org.springframework.cloud:spring-cloud-dependencies:2025.1.2'
+    mavenBom "io.netty:netty-bom:4.2.17.Final"
   }
 }
 
@@ -247,7 +315,7 @@ dependencies {
   implementation 'org.springframework.cloud:spring-cloud-starter-openfeign'
   implementation 'io.github.openfeign:feign-jackson:13.6'
   implementation 'uk.gov.hmcts:opal-common-lib:0.3.9'
-  implementation('uk.gov.hmcts:opal-logging-service-integration-lib:0.0.10') {
+  implementation('uk.gov.hmcts:opal-logging-service-integration-lib:0.0.14') {
     exclude group: 'com.microsoft.azure', module: 'applicationinsights-spring-boot-starter'
     exclude group: 'org.springframework.boot'
   }
@@ -282,6 +350,12 @@ dependencies {
     exclude group: 'junit', module: 'junit'
     exclude group: 'org.junit.vintage', module: 'junit-vintage-engine'
   }
+  //OpenAPI
+  openapiImplementation "io.swagger.parser.v3:swagger-parser:2.1.46"
+  openapiImplementation "io.swagger.core.v3:swagger-models:2.2.53"
+  openapiImplementation "io.swagger.core.v3:swagger-core:2.2.53"
+  openapiImplementation "tools.jackson.dataformat:jackson-dataformat-yaml"
+
 
   //Added to override dependency version to resolve vulnerability
   implementation 'org.apache.tomcat.embed:tomcat-embed-core:11.0.24'
@@ -325,4 +399,16 @@ task migratePostgresDatabase(type: org.flywaydb.gradle.task.FlywayMigrateTask) {
     url = "jdbc:postgresql://${dburl}"
   }
   println "Flyway jbdc property 'url' (derived from System property 'FLYWAY_URL'?) is: ${url}"
+}
+
+checkstyle {
+  checkstyleMain.exclude '**/generated/**'
+}
+
+tasks.register('runAllStyleChecks') {
+  dependsOn 'checkstyleMain'
+  dependsOn 'checkstyleTest'
+  dependsOn 'checkstyleIntegrationTest'
+  dependsOn 'checkstyleFunctionalTest'
+  dependsOn 'checkstyleOpenapi'
 }
