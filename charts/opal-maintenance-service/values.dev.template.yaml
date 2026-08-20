@@ -21,7 +21,7 @@ java:
           alias: SERVICEBUS_CONNECTION_STRING
         - name: servicebus-logging-pdpl-queue-name
           alias: SERVICEBUS_LOGGING_PDPL_QUEUE_NAME
-        - name: redis-connection-string
+        - name: managed-redis-connection-string
           alias: REDIS_CONNECTION_STRING
   environment:
     OPAL_MAINTENANCE_DB_HOST: "{{ .Release.Name }}-postgresql"
