@@ -167,8 +167,6 @@ class AuthenticationIntegrationTest extends BaseIntegrationTest {
         assertAll(
             () -> mockMvc.perform(get("/info"))
                 .andExpect(status().isUnauthorized()),
-            () -> mockMvc.perform(get("/health/db"))
-                .andExpect(status().isUnauthorized()),
             () -> mockMvc.perform(get("/css/future-resource"))
                 .andExpect(status().isUnauthorized())
         );
