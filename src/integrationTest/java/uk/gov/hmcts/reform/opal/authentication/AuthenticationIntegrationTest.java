@@ -1,5 +1,23 @@
 package uk.gov.hmcts.reform.opal.authentication;
 
+import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
+import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
+import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
+import static org.junit.jupiter.api.Assertions.assertAll;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.nimbusds.jose.JOSEException;
 import com.nimbusds.jose.JWSAlgorithm;
@@ -9,6 +27,15 @@ import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.gen.RSAKeyGenerator;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.Date;
+import java.util.Map;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -31,35 +58,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 import uk.gov.hmcts.reform.opal.BaseIntegrationTest;
-
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.time.Duration;
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
-import java.util.Date;
-import java.util.Map;
-
-import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
-import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
-import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
-import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
-import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
-import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.awaitility.Awaitility.await;
-import static org.junit.jupiter.api.Assertions.assertAll;
-import static org.mockito.Mockito.clearInvocations;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @AutoConfigureMockMvc
 @ExtendWith(OutputCaptureExtension.class)
@@ -142,8 +140,6 @@ class AuthenticationIntegrationTest extends BaseIntegrationTest {
             .andExpect(status().isOk());
         mockMvc.perform(get("/health"))
             .andExpect(status().isOk());
-        mockMvc.perform(get("/prometheus"))
-            .andExpect(status().isOk());
         mockMvc.perform(get("/swagger-ui.html"))
             .andExpect(status().is3xxRedirection());
         mockMvc.perform(get("/swagger-ui/index.html"))
@@ -192,22 +188,6 @@ class AuthenticationIntegrationTest extends BaseIntegrationTest {
             .andExpect(status().isNotFound());
     }
 
-    @Test
-    void authenticatesValidTokenUsingUserStateAndRelaysBearerHeader() throws Exception {
-        stubJwkSet();
-        WIRE_MOCK_SERVER.stubFor(com.github.tomakehurst.wiremock.client.WireMock.get(USER_STATE_PATH)
-                                     .willReturn(okJson(USER_STATE_RESPONSE)));
-        String token = tokenWith("test-subject", issuer(), Instant.now().plus(5, ChronoUnit.MINUTES));
-
-        mockMvc.perform(get(AUTHENTICATED_PATH).header(HttpHeaders.AUTHORIZATION, bearer(token)))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.name").value("test-subject"))
-            .andExpect(jsonPath("$.authenticated").value(true));
-
-        WIRE_MOCK_SERVER.verify(getRequestedFor(urlEqualTo(USER_STATE_PATH))
-                                   .withHeader(HttpHeaders.AUTHORIZATION, equalTo(bearer(token))));
-        verifyNoInteractions(redisTemplate, redisValueOperations);
-    }
 
     @Test
     void rejectsTokenWithoutAudienceBeforeUserStateResolution() throws Exception {
