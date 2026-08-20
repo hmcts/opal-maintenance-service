@@ -49,3 +49,12 @@ Supporting repository documents remain authoritative when a relevant skill is un
 - Report exact commands and results, and list checks not run with reasons.
 - Record configuration or migration implications.
 - Do not claim unverified external steps.
+
+## Definition of Done
+
+Before handoff, use the repository's authoritative
+[Backend Definition of Done](docs/BACKEND_DEFINITION_OF_DONE.md). Every
+applicable agent-executable criterion must pass, and every item marked **Not
+applicable** must have a recorded reason. If an applicable criterion remains
+unmet, report **Not Agent Complete** with the unmet criterion and required
+remediation; do not claim the work is ready for human review.

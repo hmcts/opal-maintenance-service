@@ -9,7 +9,14 @@
 
 ## Baseline and focused commands
 
-`./gradlew build` is the baseline validation. In this repository, `check` depends on `integration`. Run focused tests with `./gradlew test --tests 'fully.qualified.Pattern'` or `./gradlew integration --tests 'fully.qualified.Pattern'`. Focused quality commands are `./gradlew checkstyleMain`, `./gradlew pmdMain`, and `./gradlew jacocoTestReport`.
+`./gradlew build` is the baseline validation for source, build, and runtime
+configuration changes. In this repository, `check` depends on `integration`.
+Run focused tests with `./gradlew test --tests 'fully.qualified.Pattern'` or
+`./gradlew integration --tests 'fully.qualified.Pattern'`. Focused quality
+commands are `./gradlew checkstyleMain`, `./gradlew pmdMain`, and
+`./gradlew jacocoTestReport`. For documentation-only or similarly
+non-executable changes, run checks appropriate to the changed artefacts and
+record why the baseline build was not run.
 
 ## Test design
 
@@ -24,6 +31,10 @@ diagnostic requests. Never place a bearer value in a tracked Bruno file.
 
 ## Infrastructure and evidence
 
-Integration tests need Docker for Testcontainers. HTTP functional and smoke checks need a running service. Record exact commands, results, manual scenarios, and reasons for skipped checks. A successful pipeline is not evidence that every changed scenario ran.
+Integration tests need Docker for Testcontainers. HTTP functional and smoke
+checks need a running service. Record exact commands, results, environments,
+and manual scenarios. For every relevant skipped check, record the reason, the
+scenario, the setup needed to execute it, and the expected result. A successful
+pipeline is not evidence that every changed scenario ran.
 
 For Flyway or SQL changes, follow the fresh-database, upgrade-path, database-boundary, and evidence requirements in [Database Migrations](DATABASE_MIGRATIONS.md).
