@@ -1,10 +1,10 @@
 openapi: 3.1.1
 info:
-  description: Opal File Handler Service - Types
+  description: Opal Maintenance Service - Types
   license:
     name: MIT
     url: 'https://opensource.org/licenses/MIT'
-  title: Opal File Handler Service
+  title: Opal Maintenance Service
   version: v0.0.1
 components:
   schemas:
