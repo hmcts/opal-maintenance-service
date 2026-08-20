@@ -32,7 +32,9 @@ public class SecurityConfig {
         this.oauth2AuthenticationEntryPoint = oauth2AuthenticationEntryPoint;
     }
 
+    // CSRF does not apply: this stateless API authenticates only explicit bearer credentials.
     @Bean
+    @SuppressWarnings("squid:S4502")
     public SecurityFilterChain filterChain(
         HttpSecurity http,
         JwtIssuerAuthenticationManagerResolver resolver,
