@@ -1,10 +1,13 @@
 package uk.gov.hmcts.reform.opal.config;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+
 import feign.Response;
 import feign.codec.Decoder;
 import feign.codec.ErrorDecoder;
-import feign.jackson.JacksonDecoder;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.cloud.openfeign.support.FeignHttpMessageConverters;
+import org.springframework.cloud.openfeign.support.ResponseEntityDecoder;
+import org.springframework.cloud.openfeign.support.SpringDecoder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -18,8 +21,8 @@ public class FeignConfiguration {
     private static final String RETRY_AFTER_HEADER = "Retry-After";
 
     @Bean
-    public Decoder feignDecoder(final ObjectMapper objectMapper) {
-        return new JacksonDecoder(objectMapper);
+    public Decoder feignDecoder(ObjectProvider<FeignHttpMessageConverters> messageConverters) {
+        return new ResponseEntityDecoder(new SpringDecoder(messageConverters));
     }
 
     @Bean

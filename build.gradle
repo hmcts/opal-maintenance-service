@@ -304,7 +304,6 @@ dependencyManagement {
 dependencies {
   implementation 'org.springframework.boot:spring-boot-starter-web'
   implementation 'org.springframework.boot:spring-boot-starter-actuator'
-  runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
   implementation 'org.springframework.boot:spring-boot-starter-aspectj'
   implementation 'org.springframework.boot:spring-boot-flyway'
   implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
@@ -313,7 +312,6 @@ dependencies {
   implementation 'org.springframework.boot:spring-boot-starter-data-redis'
   implementation 'org.springframework.boot:spring-boot-starter-cache'
   implementation 'org.springframework.cloud:spring-cloud-starter-openfeign'
-  implementation 'io.github.openfeign:feign-jackson:13.6'
   implementation 'uk.gov.hmcts:opal-common-lib:0.3.9'
   implementation('uk.gov.hmcts:opal-logging-service-integration-lib:0.0.14') {
     exclude group: 'com.microsoft.azure', module: 'applicationinsights-spring-boot-starter'
