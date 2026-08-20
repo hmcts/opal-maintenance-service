@@ -18,7 +18,7 @@ import uk.gov.hmcts.opal.common.user.authentication.exception.CustomAuthenticati
 public class SecurityConfig {
 
     private static final String[] PUBLIC_GET_ENDPOINTS = {
-        "/", "/health", "/prometheus", "/swagger-ui.html", "/swagger-ui/**",
+        "/", "/health/**", "/prometheus", "/swagger-ui.html", "/swagger-ui/**",
         "/v3/api-docs", "/v3/api-docs.yaml", "/v3/api-docs/swagger-config"
     };
 
