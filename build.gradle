@@ -315,7 +315,6 @@ dependencies {
   implementation 'org.springframework.cloud:spring-cloud-starter-openfeign'
   implementation 'uk.gov.hmcts:opal-common-lib:0.3.28'
   implementation('uk.gov.hmcts:opal-logging-service-integration-lib:0.0.14')
-  implementation 'uk.gov.hmcts:spring-exception-handler:1.0.1'
   implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.1.0'
 
   implementation 'com.github.hmcts.java-logging:logging:8.0.0'
