@@ -1,0 +1,9 @@
+services:
+  opal-maintenance-service:
+    image: opal-maintenance-service:local
+    build:
+      context: ../opal-maintenance-service
+      args:
+        - http_proxy
+        - https_proxy
+        - no_proxy
