@@ -8,6 +8,18 @@ java:
       secrets:
         - name: app-insights-connection-string
           alias: app-insights-connection-string
+        - name: AzureADTenantId
+          alias: AAD_TENANT_ID
+        - name: AzureADClientId
+          alias: AAD_CLIENT_ID
+        - name: AzureADClientSecret
+          alias: AAD_CLIENT_SECRET
+        - name: servicebus-connection-string
+          alias: SERVICEBUS_CONNECTION_STRING
+        - name: servicebus-logging-pdpl-queue-name
+          alias: SERVICEBUS_LOGGING_PDPL_QUEUE_NAME
+        - name: managed-redis-connection-string
+          alias: REDIS_CONNECTION_STRING
         - name: maintenance-service-POSTGRES-HOST
           alias: OPAL_MAINTENANCE_DB_HOST
         - name: maintenance-service-POSTGRES-PASS
@@ -22,6 +34,10 @@ java:
   environment:
     RUN_DB_MIGRATION_ON_STARTUP: true
     FLYWAY_LOCATIONS: classpath:db/migration/ddl,classpath:db/migration/data/allEnvs
+    OPAL_REDIS_ENABLED: false
+    TESTING_SUPPORT_ENDPOINTS_ENABLED: false
+    OPAL_USER_SERVICE_API_URL: https://opal-user-service.{{ .Values.global.environment }}.platform.hmcts.net
+    SERVICEBUS_LOGGING_PDPL_PROTOCOL: amqps
   postgresql:
     enabled: false
     image:
