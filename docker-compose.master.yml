@@ -1,0 +1,3 @@
+services:
+  opal-maintenance-service:
+    image: hmctsprod.azurecr.io/opal/maintenance-service:latest
