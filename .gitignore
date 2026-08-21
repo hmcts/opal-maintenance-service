@@ -5,6 +5,9 @@
 *.class
 bin/main/application.yaml
 
+### Local environment ###
+/.env
+
 ### STS ###
 .apt_generated
 .classpath
@@ -27,3 +30,19 @@ bin/main/application.yaml
 
 applicationinsights-agent-*.jar
 *.log
+
+# Local Superpowers planning/assets
+superpowers/
+.superpowers/
+**/superpowers/
+**/.superpowers/
+
+docs/designs/
+docs/plans/
+
+# Local linked worktrees
+/.worktrees/
+
+# Bruno local environments
+bruno/environments/*.bru
+!bruno/environments/env.bru.template

@@ -1,156 +1,162 @@
 # Opal Maintenance Service
 
+Opal Maintenance Service is a Java 21 Spring Boot service responsible for Opal maintenance operations and Flyway database migrations.
 
-The application exposes health endpoint (http://localhost:4550/health) and metrics endpoint
-(http://localhost:4550/metrics).
+## Getting Started
 
-## Plugins
+### Prerequisites
 
-This project contains the following plugins:
+- [JDK 21](https://java.com)
+- [Docker](https://docker.com) with Docker Compose
 
-  * checkstyle
-
-    https://docs.gradle.org/current/userguide/checkstyle_plugin.html
-
-    Performs code style checks on Java source files using Checkstyle and generates reports from these checks.
-    The checks are included in gradle's *check* task (you can run them by executing `./gradlew check` command).
-
-  * pmd
-
-    https://docs.gradle.org/current/userguide/pmd_plugin.html
-
-    Performs static code analysis to finds common programming flaws. Included in gradle `check` task.
-
-
-  * jacoco
-
-    https://docs.gradle.org/current/userguide/jacoco_plugin.html
-
-    Provides code coverage metrics for Java code via integration with JaCoCo.
-    You can create the report by running the following command:
-
-    ```bash
-      ./gradlew jacocoTestReport
-    ```
-
-    The report will be created in build/reports subdirectory in your project directory.
-
-  * io.spring.dependency-management
-
-    https://github.com/spring-gradle-plugins/dependency-management-plugin
-
-    Provides Maven-like dependency management. Allows you to declare dependency management
-    using `dependency 'groupId:artifactId:version'`
-    or `dependency group:'group', name:'name', version:version'`.
-
-  * org.springframework.boot
-
-    http://projects.spring.io/spring-boot/
-
-    Reduces the amount of work needed to create a Spring application
-
-  * org.owasp.dependencycheck
-
-    https://jeremylong.github.io/DependencyCheck/dependency-check-gradle/index.html
-
-    Provides monitoring of the project's dependent libraries and creating a report
-    of known vulnerable components that are included in the build. To run it
-    execute `gradle dependencyCheck` command.
-
-  * com.github.ben-manes.versions
-
-    https://github.com/ben-manes/gradle-versions-plugin
-
-    Provides a task to determine which dependencies have updates. Usage:
-
-    ```bash
-      ./gradlew dependencyUpdates -Drevision=release
-    ```
-
-## Setup
-
-Located in `./bin/init.sh`. Simply run and follow the explanation how to execute it.
+The repository includes the Gradle wrapper, so a separate Gradle installation is not required.
 
 ## Building and deploying the application
 
-### Building the application
-
-The project uses [Gradle](https://gradle.org) as a build tool. It already contains
-`./gradlew` wrapper script, so there's no need to install gradle.
-
-To build the project execute the following command:
-
-```bash
-  ./gradlew build
-```
-
 ### Running the application
 
-Create the image of the application by executing the following command:
+#### Environment variables
+
+Create the local environment file from the tracked example before using Docker Compose:
 
 ```bash
-  ./gradlew assemble
+cp .env.example .env
 ```
 
-Create docker image:
+The local `.env` file is ignored by Git. The example sets `SERVER_PORT=4551`, which Docker Compose uses for the service port mapping.
+
+Application configuration can be overridden with the following environment variables:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `OPAL_MAINTENANCE_DB_HOST` | `localhost` | PostgreSQL host |
+| `OPAL_MAINTENANCE_DB_PORT` | `5432` | PostgreSQL port |
+| `OPAL_MAINTENANCE_DB_NAME` | `opal-maintenance-db` | Database name |
+| `OPAL_MAINTENANCE_DB_USERNAME` | `opal-maintenance` | Database username |
+| `OPAL_MAINTENANCE_DB_PASSWORD` | `opal-maintenance` | Database password |
+| `OPAL_MAINTENANCE_DB_OPTIONS` | empty | Additional JDBC connection options |
+| `RUN_DB_MIGRATION_ON_STARTUP` | `true` | Run Flyway migrations when the service starts |
+| `FLYWAY_LOCATIONS` | configured migration locations | Select the Flyway migration locations |
+| `AAD_TENANT_ID` | `00000000-0000-0000-0000-000000000000` | Azure Active Directory tenant identifier |
+| `AAD_CLIENT_ID` | `00000000-0000-0000-0000-000000000000` | Azure Active Directory application identifier |
+| `AAD_CLIENT_SECRET` | empty | Azure Active Directory application secret |
+| `OPAL_USER_SERVICE_API_URL` | `http://localhost:4555` | User Service base URL |
+| `REDIS_CONNECTION_STRING` | `redis://localhost:6379` | Redis connection URL |
+| `OPAL_REDIS_ENABLED` | `false` | Enable Redis-backed health and caching support |
+| `TESTING_SUPPORT_ENDPOINTS_ENABLED` | `false` | Enable testing-support diagnostic endpoints |
+| `SERVICEBUS_LOGGING_PDPL_PROTOCOL` | `amqp` | PDPL Service Bus transport protocol |
+| `SERVICEBUS_CONNECTION_STRING` | empty | PDPL Service Bus connection string |
+| `SERVICEBUS_LOGGING_PDPL_QUEUE_NAME` | `logging-pdpl` | PDPL Service Bus queue name |
+
+Do not commit credentials or other secrets. Supply non-local values through environment or platform secret stores.
+
+#### Approach 1: Docker Compose (recommended)
+
+Start the service and PostgreSQL together:
 
 ```bash
-  docker-compose build
+docker compose up --build
 ```
 
-Run the distribution (created in `build/install/opal-maintenance-service` directory)
-by executing the following command:
+To stop the environment, press `Ctrl+C`, then remove the containers with:
 
 ```bash
-  docker-compose up
+docker compose down
 ```
 
-This will start the API container exposing the application's port
-(set to `4550` in this app).
+#### Approach 2: Run the application on the local JVM
 
-In order to test if the application is up, you can call its health endpoint:
+Start PostgreSQL in Docker:
 
 ```bash
-  curl http://localhost:4550/health
+docker compose up -d opal-maintenance-db
 ```
 
-You should get a response similar to this:
-
-```
-  {"status":"UP","diskSpace":{"status":"UP","total":249644974080,"free":137188298752,"threshold":10485760}}
-```
-
-### Alternative script to run application
-
-To skip all the setting up and building, just execute the following command:
+The container's PostgreSQL port is published on host port `5435`. Start the application against it with:
 
 ```bash
-./bin/run-in-docker.sh
+OPAL_MAINTENANCE_DB_PORT=5435 ./gradlew bootRun
 ```
 
-For more information:
+### Verifying application startup
+
+Check the health and Prometheus endpoints after starting the application:
 
 ```bash
-./bin/run-in-docker.sh -h
+curl http://localhost:4551/health
+curl http://localhost:4551/prometheus
 ```
 
-Script includes bare minimum environment variables necessary to start api instance. Whenever any variable is changed or any other script regarding docker image/container build, the suggested way to ensure all is cleaned up properly is by this command:
+The health response should report an `UP` status.
+
+### Building the application
+
+Build and run the baseline validation with:
 
 ```bash
-docker-compose rm
+./gradlew build
 ```
 
-It clears stopped containers correctly. Might consider removing clutter of images too, especially the ones fiddled with:
+The build includes unit, integration, static-analysis, and packaging checks configured by the project. Docker is required because the integration tests use Testcontainers PostgreSQL.
+
+### Test tasks
+
+Run individual suites when focused feedback is more useful:
 
 ```bash
-docker images
-
-docker image rm <image-id>
+./gradlew test
+./gradlew integration
+./gradlew functional
+./gradlew smoke
 ```
 
-There is no need to remove postgres and java or similar core images!
+Functional and smoke tests require a suitable running service and use `TEST_URL`, which defaults to `http://localhost:4551`. See [Testing](docs/TESTING.md) for suite details, focused commands, and evidence expectations.
+
+### Optional Bruno diagnostic checks
+
+The tracked [Bruno collection](bruno) provides manual health, testing-support,
+and User Service requests without committing local credentials. Testing-support
+endpoints are disabled by default. To enable them for a local manual check,
+start the service with:
+
+```bash
+TESTING_SUPPORT_ENDPOINTS_ENABLED=true ./gradlew bootRun
+```
+
+Then create a local Bruno environment using repository-relative paths:
+
+```bash
+cd bruno
+cp environments/env.bru.template environments/local.bru
+```
+
+Open `bruno` in Bruno, run health and ping, and use the User Service request
+to obtain an access token only when performing the optional authenticated
+diagnostic check. Keep the token in the ignored local environment file.
+
+## Database migrations
+
+Schema migrations are stored in `src/main/resources/db/migration/ddl`. Environment data migrations are stored under `src/main/resources/db/migration/data`.
+
+`RUN_DB_MIGRATION_ON_STARTUP` controls whether Flyway applies migrations when the application starts. When disabled, the application verifies that all migrations have already been applied. `FLYWAY_LOCATIONS` selects which migration locations are used.
+
+Treat committed or deployed migrations as immutable. Add a new versioned migration for subsequent database changes.
+
+See [Database Migrations](docs/DATABASE_MIGRATIONS.md) for ownership, naming, environment scope, safe authoring, validation, and recovery guidance.
+
+## OpenAPI
+
+When the application is running, its OpenAPI documentation is available at:
+
+- [Swagger UI](http://localhost:4551/swagger-ui/index.html)
+- [OpenAPI JSON](http://localhost:4551/v3/api-docs)
+
+## Development guidance
+
+Follow [AGENTS.md](AGENTS.md) for repository routing and safeguards. Detailed guidance is in [Repository Guidelines](docs/REPO_GUIDELINES.md), [Testing](docs/TESTING.md), [Contributing](docs/CONTRIBUTING.md), and [Code Review Guidelines](docs/CODE_REVIEW_GUIDELINES.md).
+
+Shared Opal Codex skills can be installed from the sibling `opal-dev-agent-skills` repository with `opal-skills install backend`. The checked-in repository documentation remains the authority for this service.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details
-
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
