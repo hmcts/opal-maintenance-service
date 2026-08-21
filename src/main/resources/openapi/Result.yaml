@@ -1,0 +1,107 @@
+openapi: 3.1.1
+
+servers:
+  - url: http://localhost:4551/
+
+info:
+  description: Opal Maintenance Service - Result reference data
+  version: v0.0.1
+  title: Opal Maintenance Service
+
+paths:
+  /results:
+    get:
+      tags:
+        - Result
+      summary: Returns Result reference data with optional filters
+      operationId: getResults
+      parameters:
+        - in: query
+          name: order_term
+          description: Filter Results by whether they are identified as Order Terms. When omitted, this criterion is not applied. DB Mapping - results.order_term
+          required: false
+          schema:
+            type: boolean
+        - in: query
+          name: active
+          description: Filter Results by active status. When omitted, this criterion is not applied. DB Mapping - results.active
+          required: false
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Result reference data returned successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceDataResponse'
+              example:
+                count: 1
+                refData:
+                  - result_id: ABC123
+                    result_title: Example Result
+        '400':
+          description: Bad request
+          content:
+            application/json+problem:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
+        '401':
+          description: Unauthorized
+          content:
+            application/json+problem:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
+        '403':
+          description: Forbidden
+          content:
+            application/json+problem:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
+        '500':
+          description: Internal server error
+          content:
+            application/json+problem:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
+        '503':
+          description: Service unavailable
+          content:
+            application/json+problem:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
+
+components:
+  schemas:
+    ReferenceDataResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - count
+        - refData
+      properties:
+        count:
+          type: integer
+          format: int32
+          minimum: 0
+          description: Total number of Results returned.
+        refData:
+          type: array
+          description: Result summaries matching the supplied filters.
+          items:
+            $ref: '#/components/schemas/ReferenceDataItem'
+    ReferenceDataItem:
+      type: object
+      additionalProperties: false
+      required:
+        - result_id
+        - result_title
+      properties:
+        result_id:
+          type: string
+          maxLength: 6
+          description: Unique Result code. DB Mapping - results.result_id
+        result_title:
+          type: string
+          maxLength: 60
+          description: Result title presented for selection. DB Mapping - results.result_title
