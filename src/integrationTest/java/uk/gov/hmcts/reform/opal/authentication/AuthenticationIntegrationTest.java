@@ -258,7 +258,7 @@ class AuthenticationIntegrationTest extends BaseIntegrationTest {
 
         mockMvc.perform(get(AUTHENTICATED_PATH).header(HttpHeaders.AUTHORIZATION, bearer(token)))
             .andExpect(status().isUnauthorized())
-            .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+            .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
             .andExpect(jsonPath("$.type").value("https://hmcts.gov.uk/problems/unauthorized"))
             .andExpect(jsonPath("$.title").value("Unauthorized"))
             .andExpect(jsonPath("$.status").value(401))
