@@ -33,6 +33,11 @@ sourceSets {
     }
     resources.srcDirs = [file('src/openApi/resources')]
   }
+  main {
+    java {
+      srcDir "$buildDir/generated/openapi/src/main/java"
+    }
+  }
   functionalTest {
     java {
       compileClasspath += main.output
@@ -116,6 +121,9 @@ openApiGenerate {
 }
 tasks.named("openApiGenerate") {
   dependsOn 'bundleOpenApi'
+  doFirst {
+    delete layout.buildDirectory.dir("generated/openapi")
+  }
   doLast {
     def generatedJavaDir = layout.buildDirectory.dir("generated/openapi/src/main/java").get().asFile
     fileTree(generatedJavaDir).matching {
