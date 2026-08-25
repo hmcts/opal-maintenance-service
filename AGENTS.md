@@ -52,9 +52,18 @@ Supporting repository documents remain authoritative when a relevant skill is un
 
 ## Definition of Done
 
-Before handoff, use the repository's authoritative
-[Backend Definition of Done](docs/BACKEND_DEFINITION_OF_DONE.md). Every
-applicable agent-executable criterion must pass, and every item marked **Not
-applicable** must have a recorded reason. If an applicable criterion remains
-unmet, report **Not Agent Complete** with the unmet criterion and required
-remediation; do not claim the work is ready for human review.
+Before handoff, every change must satisfy the repository's authoritative
+[Common Definition of Done](docs/COMMON_DEFINITION_OF_DONE.md). A change that
+affects backend or application concerns must also satisfy the
+[Backend Definition of Done](docs/BACKEND_DEFINITION_OF_DONE.md), and a change
+that affects database concerns must also satisfy the
+[Database Definition of Done](docs/DATABASE_DEFINITION_OF_DONE.md). A mixed
+backend and database change must satisfy all three. A change that affects
+neither concern, such as documentation, build or dependency management, CI/CD,
+Docker or Helm, or repository tooling, uses the Common Definition of Done on
+its own.
+
+Every applicable agent-executable criterion must pass, and every item marked
+**Not applicable** must have a recorded reason. If an applicable criterion
+remains unmet, report **Not Agent Complete** with the unmet criterion and
+required remediation; do not claim the work is ready for human review.
