@@ -110,7 +110,11 @@ Run individual suites when focused feedback is more useful:
 ./gradlew smoke
 ```
 
-Functional and smoke tests require a suitable running service and use `TEST_URL`, which defaults to `http://localhost:4551`. See [Testing](docs/TESTING.md) for suite details, focused commands, and evidence expectations.
+Functional and smoke tests require a suitable running service and use
+`TEST_URL`, which defaults to `http://localhost:4551`. See
+[Testing](docs/TESTING.md) for suite selection and general standards, and
+[End-to-end Testing](docs/E2E_TESTING.md) for external-suite setup, authoring,
+and evidence expectations.
 
 ### Optional Bruno diagnostic checks
 
