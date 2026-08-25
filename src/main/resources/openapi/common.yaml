@@ -1,0 +1,51 @@
+openapi: 3.1.1
+
+info:
+  description: Opal Maintenance Service - Common API components
+  version: v0.0.1
+  title: Opal Maintenance Service
+
+components:
+  schemas:
+    ProblemDetail:
+      type: object
+      description: RFC 9457 Problem Details response with OPAL correlation properties.
+      required:
+        - type
+        - title
+        - status
+        - detail
+        - instance
+      properties:
+        type:
+          type: string
+          format: uri
+          example: https://hmcts.gov.uk/problems/bad-request
+        title:
+          type: string
+          maxLength: 100
+          example: Bad Request
+        status:
+          type: integer
+          format: int32
+          example: 400
+        detail:
+          type: string
+          example: The request could not be processed.
+        instance:
+          type: string
+          format: uri
+          example: https://hmcts.gov.uk/problems/instance/123e4567-e89b-12d3-a456-426614174000
+        properties:
+          type: object
+          description: OPAL extensions to the standard Problem Details response.
+          properties:
+            operation_id:
+              type: string
+              format: uuid
+              description: Application Insights operation identifier used to correlate logs.
+            retriable:
+              type: boolean
+              description: Whether retrying the same request may succeed.
+          additionalProperties: false
+      additionalProperties: false

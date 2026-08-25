@@ -1,0 +1,121 @@
+openapi: 3.1.1
+
+servers:
+  - url: http://localhost:4551/
+
+info:
+  description: Opal Maintenance Service - Maintenance Application reference data
+  version: v0.0.1
+  title: Opal Maintenance Service
+
+paths:
+  /maintenance-applications:
+    get:
+      tags:
+        - Maintenance Application
+      summary: Returns Maintenance Application reference data for an Application Group
+      operationId: getMaintenanceApplications
+      parameters:
+        - in: query
+          name: application_group
+          description: Application Group used to select relevant Maintenance Applications. DB Mapping - maintenance_applications.application_group
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 20
+          example: Create Casefile
+        - in: query
+          name: active
+          description: Filter Maintenance Applications by active status. When omitted, this criterion is not applied. DB Mapping - maintenance_applications.active
+          required: false
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Maintenance Application reference data returned successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceDataResponse'
+        '400':
+          description: Bad request
+          content:
+            application/problem+json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
+        '500':
+          description: Internal server error
+          content:
+            application/problem+json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
+        '503':
+          description: Service unavailable
+          content:
+            application/problem+json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
+
+components:
+  schemas:
+    ReferenceDataResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - count
+        - refData
+      properties:
+        count:
+          type: integer
+          format: int32
+          minimum: 0
+          description: Total number of Maintenance Applications returned.
+        refData:
+          type: array
+          description: Maintenance Applications matching the supplied filters.
+          items:
+            $ref: '#/components/schemas/ReferenceDataItem'
+    ReferenceDataItem:
+      type: object
+      additionalProperties: false
+      required:
+        - application_id
+        - application_code
+        - application_title
+        - application_group
+        - active
+      properties:
+        application_id:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 32767
+          description: Database-generated Maintenance Application identifier. DB Mapping - maintenance_applications.application_id
+        application_code:
+          type: string
+          maxLength: 8
+          description: Unique Maintenance Application business code. DB Mapping - maintenance_applications.application_code
+        application_title:
+          type: string
+          maxLength: 255
+          description: Maintenance Application display title. DB Mapping - maintenance_applications.application_title
+        application_group:
+          type: string
+          maxLength: 20
+          description: Application Group used to categorise the application. DB Mapping - maintenance_applications.application_group
+        active:
+          type: boolean
+          description: Whether the Maintenance Application is active. DB Mapping - maintenance_applications.active

@@ -3,6 +3,7 @@ package uk.gov.hmcts.reform.opal.authentication.config;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.web.AuthenticationEntryPoint;
@@ -64,7 +65,7 @@ public class PrivacyPreservingOauth2AuthenticationEntryPoint implements Authenti
         problemDetail.setProperty("retriable", false);
 
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-        response.setContentType("application/json");
+        response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
         try (PrintWriter writer = response.getWriter()) {
             writer.write(ToJsonString.OBJECT_MAPPER.writeValueAsString(problemDetail));
         }
