@@ -35,7 +35,7 @@ paths:
           content:
             application/problem+json:
               schema:
-                $ref: './common.yaml#/components/schemas/ProblemDetail'
+                $ref: '#/components/schemas/TypeMismatchProblemDetail'
         '401':
           description: Unauthorized
           content:
@@ -63,6 +63,58 @@ paths:
 
 components:
   schemas:
+    TypeMismatchProblemDetail:
+      type: object
+      description: RFC 9457 Problem Details response for an invalid query-parameter value.
+      additionalProperties: false
+      required:
+        - type
+        - title
+        - status
+        - detail
+        - instance
+        - operation_id
+        - retriable
+        - reason
+      properties:
+        type:
+          type: string
+          format: uri
+          description: URI identifying the type-mismatch problem.
+          example: https://hmcts.gov.uk/problems/type-mismatch
+        title:
+          type: string
+          maxLength: 100
+          description: Short summary of the problem type.
+          example: Not Acceptable
+        status:
+          type: integer
+          format: int32
+          description: HTTP status code returned for the problem.
+          example: 406
+        detail:
+          type: string
+          description: Human-readable explanation of the problem.
+          example: Invalid parameter value format
+        instance:
+          type: string
+          format: uri
+          description: URI identifying this occurrence of the problem.
+          example: https://hmcts.gov.uk/problems/instance/4fbddd36053a46e5a241c57e23682616
+        operation_id:
+          type: string
+          description: Application Insights operation identifier used to correlate logs.
+          example: 4fbddd36053a46e5a241c57e23682616
+        retriable:
+          type: boolean
+          description: Whether retrying the same request may succeed.
+          example: false
+        reason:
+          type: string
+          description: Framework conversion failure that caused the type-mismatch response.
+          example: >-
+            Method parameter 'active': Failed to convert value of type 'java.lang.String' to required type
+            'java.lang.Boolean'; Invalid boolean value [not-a-boolean]
     ReferenceDataResponse:
       type: object
       additionalProperties: false
