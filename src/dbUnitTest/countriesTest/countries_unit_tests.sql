@@ -11,6 +11,8 @@ DECLARE
     actual_increment_by BIGINT;
     actual_cycle BOOLEAN;
     actual_cache_size BIGINT;
+    actual_sequence_data_type TEXT;
+    actual_default_sequence_dependency BOOLEAN;
     generated_country_id BIGINT;
 BEGIN
     ASSERT to_regclass('public.countries') IS NOT NULL,
@@ -41,6 +43,28 @@ BEGIN
 
     ASSERT actual_default LIKE 'nextval(%country_id_seq%regclass)%',
         format('Unexpected country_id default: %s', actual_default);
+
+    SELECT EXISTS (
+        SELECT 1
+        FROM pg_attrdef column_default
+        JOIN pg_depend default_dependency
+          ON default_dependency.classid = 'pg_attrdef'::regclass
+         AND default_dependency.objid = column_default.oid
+         AND default_dependency.refclassid = 'pg_class'::regclass
+         AND default_dependency.refobjid = 'public.country_id_seq'::regclass
+        WHERE column_default.adrelid = 'public.countries'::regclass
+          AND column_default.adnum = (
+              SELECT attribute.attnum
+              FROM pg_attribute attribute
+              WHERE attribute.attrelid = 'public.countries'::regclass
+                AND attribute.attname = 'country_id'
+                AND attribute.attisdropped IS FALSE
+          )
+    )
+    INTO actual_default_sequence_dependency;
+
+    ASSERT actual_default_sequence_dependency IS TRUE,
+        'country_id default must depend on public.country_id_seq';
 
     SELECT array_agg(attribute.attname ORDER BY key_position.ordinality)
     INTO actual_constraint_columns
@@ -118,11 +142,14 @@ BEGIN
     ASSERT actual_sequence_owner = 'public.countries.country_id',
         format('Unexpected country_id_seq owner: %s', actual_sequence_owner);
 
-    SELECT start_value, increment_by, cycle, cache_size
-    INTO actual_start_value, actual_increment_by, actual_cycle, actual_cache_size
+    SELECT data_type, start_value, increment_by, cycle, cache_size
+    INTO actual_sequence_data_type, actual_start_value, actual_increment_by,
+         actual_cycle, actual_cache_size
     FROM pg_sequences
     WHERE schemaname = 'public' AND sequencename = 'country_id_seq';
 
+    ASSERT actual_sequence_data_type = 'bigint',
+        format('Unexpected country_id_seq data type: %s', actual_sequence_data_type);
     ASSERT actual_start_value = 1, format('Unexpected country_id_seq start: %s', actual_start_value);
     ASSERT actual_increment_by = 1, format('Unexpected country_id_seq increment: %s', actual_increment_by);
     ASSERT actual_cycle IS FALSE, format('Unexpected country_id_seq cycle setting: %s', actual_cycle);
