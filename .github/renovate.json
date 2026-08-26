@@ -67,6 +67,24 @@
       ]
     },
     {
+      "description": "Group all Tomcat embed dependencies - Minor/Patch",
+      "matchManagers": ["gradle"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "Tomcat Embed Dependencies - Minor/Patch",
+      "matchPackageNames": [
+        "/^org\\.apache\\.tomcat\\.embed:tomcat-embed-.*/"
+      ]
+    },
+    {
+      "description": "Group all Tomcat embed dependencies - Major",
+      "matchManagers": ["gradle"],
+      "matchUpdateTypes": ["major"],
+      "groupName": "Tomcat Embed Dependencies - Major",
+      "matchPackageNames": [
+        "/^org\\.apache\\.tomcat\\.embed:tomcat-embed-.*/"
+      ]
+    },
+    {
       "description": "Group all test dependencies - Minor/Patch",
       "matchManagers": ["gradle"],
       "matchUpdateTypes": ["minor", "patch"],
