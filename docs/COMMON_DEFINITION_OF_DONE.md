@@ -6,9 +6,13 @@ This Definition of Done applies to every change in this repository.
 
 Apply the relevant supplement as well when a change affects
 [backend/application concerns](BACKEND_DEFINITION_OF_DONE.md),
-[database concerns](DATABASE_DEFINITION_OF_DONE.md), or both. A change that
-affects neither concern, such as documentation, build or dependency management,
-CI/CD, Docker or Helm, or repository tooling, uses this document on its own.
+[database concerns](DATABASE_DEFINITION_OF_DONE.md), or both.
+
+A change may use this document on its own only when it affects neither
+backend/application nor database concerns. File category must not be used to
+exclude a supplement. If a change affects either area, every relevant
+supplement is mandatory, including for documentation, build or dependency
+management, CI/CD, Docker, Helm, and repository-tooling changes.
 
 A change is **Ready for human review** when every applicable criterion below
 and in every applicable supplement is satisfied.

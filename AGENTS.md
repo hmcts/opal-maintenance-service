@@ -58,10 +58,13 @@ affects backend or application concerns must also satisfy the
 [Backend Definition of Done](docs/BACKEND_DEFINITION_OF_DONE.md), and a change
 that affects database concerns must also satisfy the
 [Database Definition of Done](docs/DATABASE_DEFINITION_OF_DONE.md). A mixed
-backend and database change must satisfy all three. A change that affects
-neither concern, such as documentation, build or dependency management, CI/CD,
-Docker or Helm, or repository tooling, uses the Common Definition of Done on
-its own.
+backend and database change must satisfy all three.
+
+A change may use the Common Definition of Done on its own only when it affects
+neither backend/application nor database concerns. File category must not be
+used to exclude a supplement. If a change affects either area, every relevant
+supplement is mandatory, including for documentation, build or dependency
+management, CI/CD, Docker, Helm, and repository-tooling changes.
 
 Every applicable agent-executable criterion must pass, and every item marked
 **Not applicable** must have a recorded reason. If an applicable criterion
