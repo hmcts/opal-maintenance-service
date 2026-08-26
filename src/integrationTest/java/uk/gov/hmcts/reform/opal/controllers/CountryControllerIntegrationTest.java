@@ -43,7 +43,9 @@ class CountryControllerIntegrationTest extends BaseIntegrationTest {
             .andExpect(jsonPath("$.title").value("Unauthorized"))
             .andExpect(jsonPath("$.status").value(401))
             .andExpect(jsonPath("$.instance").isNotEmpty())
-            .andExpect(jsonPath("$.properties.operation_id").isNotEmpty());
+            .andExpect(jsonPath("$.operation_id").isNotEmpty())
+            .andExpect(jsonPath("$.retriable").value(false))
+            .andExpect(jsonPath("$.properties").doesNotExist());
     }
 
     @Test

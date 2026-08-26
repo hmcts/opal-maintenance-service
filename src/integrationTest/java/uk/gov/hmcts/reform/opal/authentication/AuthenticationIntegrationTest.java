@@ -263,7 +263,9 @@ class AuthenticationIntegrationTest extends BaseIntegrationTest {
             .andExpect(jsonPath("$.title").value("Unauthorized"))
             .andExpect(jsonPath("$.status").value(401))
             .andExpect(jsonPath("$.detail").value("You are not authorized to access this resource"))
-            .andExpect(jsonPath("$.properties.retriable").value(false));
+            .andExpect(jsonPath("$.operation_id").isNotEmpty())
+            .andExpect(jsonPath("$.retriable").value(false))
+            .andExpect(jsonPath("$.properties").doesNotExist());
 
         assertUnauthenticatedAuditLoggedWithout(output, PRIVATE_SUBJECT, PRIVATE_OBJECT_ID);
     }
