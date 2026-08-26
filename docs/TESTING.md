@@ -29,6 +29,24 @@ real AAD/User Service setup; enable testing-support endpoints explicitly with
 `TESTING_SUPPORT_ENDPOINTS_ENABLED=true` before using its ping or authenticated
 diagnostic requests. Never place a bearer value in a tracked Bruno file.
 
+## Database SQL tests
+
+Database-contract SQL scripts live under `src/dbUnitTest`. Each script is
+executed by a focused JUnit integration test against the repository's
+disposable PostgreSQL 17 Testcontainer; do not run these scripts against a
+shared database.
+
+`src/dbUnitTest/countriesTest/countries_unit_tests.sql` is executed by
+`CountriesDatabaseIntegrationTest` inside a rollback-only JDBC transaction.
+Run it with:
+
+```bash
+./gradlew integration --tests '*CountriesDatabaseIntegrationTest'
+```
+
+Docker is required. A failed PostgreSQL `ASSERT` or unexpected SQL exception
+fails the integration test.
+
 ## Infrastructure and evidence
 
 Integration tests need Docker for Testcontainers. HTTP functional and smoke
