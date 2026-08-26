@@ -9,7 +9,7 @@ plugins {
   id 'jacoco'
   id 'io.spring.dependency-management' version '1.1.7'
   id 'org.springframework.boot' version '4.1.1'
-  id 'com.github.ben-manes.versions' version '0.61.0'
+  id 'io.github.ben-manes.versions' version '0.61.0'
   id 'org.sonarqube' version '7.4.0.8496'
   id 'uk.gov.hmcts.java' version '0.12.70'
   id 'org.flywaydb.flyway' version '13.3.0'
@@ -398,12 +398,16 @@ flyway {
   baselineVersion = '000'
 }
 
-task migratePostgresDatabase(type: org.flywaydb.gradle.task.FlywayMigrateTask) {
+tasks.register('migratePostgresDatabase', org.flywaydb.gradle.task.FlywayMigrateTask) {
   baselineOnMigrate = true
-  if (project.hasProperty("dburl")) {
-    url = "jdbc:postgresql://${dburl}"
+  def taskUrl = providers.gradleProperty("dburl")
+      .map { dbUrl -> "jdbc:postgresql://${dbUrl}" }
+      .orElse(providers.environmentVariable("FLYWAY_URL"))
+      .orNull
+  if (taskUrl) {
+    url = taskUrl
   }
-  println "Flyway jbdc property 'url' (derived from System property 'FLYWAY_URL'?) is: ${url}"
+  println "Flyway jbdc property 'url' is: ${taskUrl}"
 }
 
 checkstyle {
