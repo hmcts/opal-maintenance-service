@@ -17,7 +17,8 @@ public interface CountryRepository extends JpaRepository<CountryEntity, Long> {
         WHERE (:active IS NULL OR country.active = :active)
         ORDER BY
             CASE WHEN country.internationalCode = 'GBR' THEN 0 ELSE 1 END,
-            country.countryName ASC
+            country.countryName ASC,
+            country.countryId ASC
         """)
     List<CountryEntity> findCountries(@Param("active") @Nullable Boolean active);
 }

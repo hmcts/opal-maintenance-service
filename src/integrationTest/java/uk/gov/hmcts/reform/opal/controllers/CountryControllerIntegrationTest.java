@@ -84,6 +84,27 @@ class CountryControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @DisplayName("PO-10251 orders duplicate non-GBR country names by country ID")
+    void ordersDuplicateNonGbrCountryNamesByCountryId() throws Exception {
+        jdbcTemplate.update(
+            """
+                INSERT INTO public.countries (
+                    country_id, cjs_code, international_code, gov_code, country_name,
+                    demonym, date_used_from, date_used_to, active
+                ) VALUES
+                    (202, 2202, 'ZZ2', 'Z2', 'Zealand', 'Zealander', DATE '2002-02-02', NULL, TRUE),
+                    (201, 2201, 'ZZ1', 'Z1', 'Zealand', 'Zealander', DATE '2001-01-01', NULL, TRUE)
+                """
+        );
+
+        mockMvc.perform(get("/countries").with(user("test-user")))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.count").value(6))
+            .andExpect(jsonPath("$.refData[4].country_id").value(201))
+            .andExpect(jsonPath("$.refData[5].country_id").value(202));
+    }
+
+    @Test
     @DisplayName("PO-10251 maps all current OpenAPI fields and nullable values")
     void mapsAllOpenApiFields() throws Exception {
         mockMvc.perform(get("/countries").with(user("test-user")))
@@ -130,6 +151,8 @@ class CountryControllerIntegrationTest extends BaseIntegrationTest {
             .andExpect(jsonPath("$.detail").value("Invalid parameter value format"))
             .andExpect(jsonPath("$.status").value(406))
             .andExpect(jsonPath("$.instance").isNotEmpty())
-            .andExpect(jsonPath("$.operation_id").isNotEmpty());
+            .andExpect(jsonPath("$.operation_id").isNotEmpty())
+            .andExpect(jsonPath("$.retriable").value(false))
+            .andExpect(jsonPath("$.reason").isNotEmpty());
     }
 }
