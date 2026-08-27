@@ -15,6 +15,9 @@ import java.net.http.HttpResponse;
 public class BearerTokenStepDef extends BaseStepDef {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final HttpClient TOKEN_HTTP_CLIENT = HttpClient.newBuilder()
+        .connectTimeout(CONNECT_TIMEOUT)
+        .build();
     private static final ThreadLocal<String> TOKEN = new ThreadLocal<>();
 
     @Before
@@ -41,16 +44,10 @@ public class BearerTokenStepDef extends BaseStepDef {
     }
 
     private static String fetchToken(String userEmail) {
-        HttpRequest request = HttpRequest.newBuilder()
-            .uri(URI.create(userServiceUrl() + "/testing-support/token/user"))
-            .header("Accept", "application/json")
-            .header("Content-Type", "application/json")
-            .header("X-User-Email", userEmail)
-            .GET()
-            .build();
+        HttpRequest request = tokenRequest(userEmail);
 
         try {
-            HttpResponse<String> response = HttpClient.newHttpClient().send(
+            HttpResponse<String> response = tokenHttpClient().send(
                 request,
                 HttpResponse.BodyHandlers.ofString()
             );
@@ -72,5 +69,20 @@ public class BearerTokenStepDef extends BaseStepDef {
         } catch (IOException exception) {
             throw new IllegalStateException("Failed to fetch functional-test access token", exception);
         }
+    }
+
+    static HttpClient tokenHttpClient() {
+        return TOKEN_HTTP_CLIENT;
+    }
+
+    static HttpRequest tokenRequest(String userEmail) {
+        return HttpRequest.newBuilder()
+            .uri(URI.create(userServiceUrl() + "/testing-support/token/user"))
+            .timeout(REQUEST_TIMEOUT)
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/json")
+            .header("X-User-Email", userEmail)
+            .GET()
+            .build();
     }
 }

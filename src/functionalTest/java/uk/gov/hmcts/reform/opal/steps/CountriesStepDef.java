@@ -107,16 +107,30 @@ public class CountriesStepDef extends BaseStepDef {
 
     private Map<Long, Boolean> readCountries(Response response) throws IOException {
         assertEquals(200, response.statusCode(), "Country request did not succeed");
-        JsonNode root = OBJECT_MAPPER.readTree(response.asString());
-        assertTrue(root.path("count").canConvertToInt(), "Country response count is missing or invalid");
+        return readCountries(response.asString());
+    }
+
+    static Map<Long, Boolean> readCountries(String responseBody) throws IOException {
+        JsonNode root = OBJECT_MAPPER.readTree(responseBody);
+        JsonNode count = root.path("count");
+        assertTrue(
+            count.isIntegralNumber() && count.canConvertToInt() && count.intValue() >= 0,
+            "Country response count is missing or invalid"
+        );
         assertTrue(root.path("refData").isArray(), "Country response refData is missing or invalid");
-        assertEquals(root.path("count").asInt(), root.path("refData").size());
+        assertEquals(count.intValue(), root.path("refData").size());
 
         Map<Long, Boolean> countries = new LinkedHashMap<>();
         for (JsonNode item : root.path("refData")) {
-            assertTrue(item.path("country_id").canConvertToLong(), "Country identifier is missing or invalid");
+            JsonNode countryIdNode = item.path("country_id");
+            assertTrue(
+                countryIdNode.isIntegralNumber()
+                    && countryIdNode.canConvertToLong()
+                    && countryIdNode.longValue() > 0,
+                "Country identifier is missing or invalid"
+            );
             assertTrue(item.path("active").isBoolean(), "Country active state is missing or invalid");
-            long countryId = item.path("country_id").asLong();
+            long countryId = countryIdNode.longValue();
             Boolean previous = countries.put(countryId, item.path("active").asBoolean());
             assertNull(previous, "Duplicate Country identifier returned: " + countryId);
         }

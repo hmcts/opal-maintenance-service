@@ -1,5 +1,6 @@
 package uk.gov.hmcts.reform.opal.steps;
 
+import io.restassured.config.HttpClientConfig;
 import io.restassured.config.LogConfig;
 import io.restassured.config.RestAssuredConfig;
 import io.restassured.response.Response;
@@ -8,8 +9,16 @@ import net.serenitybdd.rest.SerenityRest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 
+import java.time.Duration;
+
 public abstract class BaseStepDef {
 
+    static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
+    static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(30);
+
+    private static final String CONNECTION_TIMEOUT_PARAMETER = "http.connection.timeout";
+    private static final String SOCKET_TIMEOUT_PARAMETER = "http.socket.timeout";
+    private static final String CONNECTION_MANAGER_TIMEOUT_PARAMETER = "http.conn-manager.timeout";
     private static final String TEST_URL = withoutTrailingSlash(
         System.getenv().getOrDefault("TEST_URL", "http://localhost:4551")
     );
@@ -33,13 +42,23 @@ public abstract class BaseStepDef {
     }
 
     private static RequestSpecification jsonRequest() {
-        RestAssuredConfig config = RestAssuredConfig.config().logConfig(
-            LogConfig.logConfig().blacklistHeader(HttpHeaders.AUTHORIZATION)
-        );
         return SerenityRest.given()
-            .config(config)
+            .config(requestConfig())
             .accept(MediaType.APPLICATION_JSON_VALUE)
             .contentType(MediaType.APPLICATION_JSON_VALUE);
+    }
+
+    static RestAssuredConfig requestConfig() {
+        int connectTimeoutMillis = Math.toIntExact(CONNECT_TIMEOUT.toMillis());
+        int requestTimeoutMillis = Math.toIntExact(REQUEST_TIMEOUT.toMillis());
+        HttpClientConfig httpClientConfig = HttpClientConfig.httpClientConfig()
+            .setParam(CONNECTION_TIMEOUT_PARAMETER, connectTimeoutMillis)
+            .setParam(SOCKET_TIMEOUT_PARAMETER, requestTimeoutMillis)
+            .setParam(CONNECTION_MANAGER_TIMEOUT_PARAMETER, (long) connectTimeoutMillis);
+
+        return RestAssuredConfig.config()
+            .httpClient(httpClientConfig)
+            .logConfig(LogConfig.logConfig().blacklistHeader(HttpHeaders.AUTHORIZATION));
     }
 
     private static String withoutTrailingSlash(String url) {
