@@ -6,8 +6,21 @@ def type = "java"
 def product = "opal"
 def component = "maintenance-service"
 
+def configurePrUserService() {
+  env.DEV_ENABLE_OPAL_USER_SERVICE = true
+  env.DEV_OPAL_USER_SERVICE_IMAGE_SUFFIX = 'latest'
+  env.OPAL_USER_SERVICE_API_URL =
+    "https://opal-maintenance-service-pr-${env.CHANGE_ID}-user-service.dev.platform.hmcts.net"
+}
+
 withPipeline(type, product, component) {
-  if (!env.OPAL_USER_SERVICE_API_URL) {
+  if (!env.OPAL_USER_SERVICE_API_URL && !env.CHANGE_ID) {
     env.OPAL_USER_SERVICE_API_URL = 'https://opal-user-service.staging.platform.hmcts.net'
+  }
+
+  before('akschartsinstall') {
+    onPR {
+      configurePrUserService()
+    }
   }
 }
