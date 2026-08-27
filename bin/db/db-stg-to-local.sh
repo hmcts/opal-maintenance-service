@@ -41,7 +41,6 @@ echo "Fetching secrets from staging key-vault..."
 
 PRIVATE_TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/opal-maintenance-stg-to-local.XXXXXX")"
 DUMP_FILE="$PRIVATE_TEMP_DIR/opal-api-stg-dump.sql"
-RESTORE_LOG_FILE="$PRIVATE_TEMP_DIR/opal-api-local-restore.log"
 RESTORE_OUTPUT="$PRIVATE_TEMP_DIR/opal-api-local-stdout.log"
 
 SCHEMA="public"
@@ -64,14 +63,14 @@ run_with_pgpassword "$STG_PASSWORD" \
 echo "Dump complete, dump file: $DUMP_FILE"
 echo "Restoring local database..."
 
-# drop the darts schema
-run_with_pgpassword "$LOCAL_PASSWORD" \
-  psql -h "$LOCAL_HOST" -U "$LOCAL_USER" -d "$DATABASE" -c "DROP SCHEMA IF EXISTS $SCHEMA CASCADE" &> /dev/null
-# restore from the dump file
-run_with_pgpassword "$LOCAL_PASSWORD" \
-  psql -h "$LOCAL_HOST" -U "$LOCAL_USER" -d "$DATABASE" -L "$RESTORE_LOG_FILE" \
-  < "$DUMP_FILE" &> "$RESTORE_OUTPUT"
+if ! run_with_pgpassword "$LOCAL_PASSWORD" \
+  psql -X -v ON_ERROR_STOP=1 --single-transaction \
+  -h "$LOCAL_HOST" -U "$LOCAL_USER" -d "$DATABASE" \
+  -c "DROP SCHEMA IF EXISTS \"$SCHEMA\" CASCADE" -f "$DUMP_FILE" \
+  > "$RESTORE_OUTPUT" 2>&1
+then
+  echo >&2 "Restore failed; the local schema transaction was rolled back."
+  exit 1
+fi
 
-echo "Restore complete, stdout: $RESTORE_OUTPUT  log file: $RESTORE_LOG_FILE"
-echo "Output: $RESTORE_OUTPUT"
-echo "Log file: $RESTORE_LOG_FILE"
+echo "Restore complete."

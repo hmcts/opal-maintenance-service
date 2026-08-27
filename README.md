@@ -36,17 +36,18 @@ So for local development, you will need to set these environment variables in yo
 ```
 #### Caching
 
-Redis has been configured as the default caching provider. When running docker-compose with the local configuration a Redis container will be started.
+When the service runs directly on the JVM from IntelliJ or Gradle, Redis-backed caching is disabled by default and the service uses a no-op cache manager. To use a Redis instance available on the host, set:
 
-If starting the opal-maintenance-service from Intellij or the command line you have the following options:
-Follow instructions under 'Running the application locally'
-
-In local env by default opal-maintenance-service uses simple cache instead of Redis cache. This can be enabled by setting this env variable:
 ```bash / zsh
 OPAL_REDIS_ENABLED=true
+REDIS_CONNECTION_STRING=redis://localhost:6379
 ```
 
-Alternatively the opal-maintenance-service can be run using a simple in-memory cache by starting the application with the profile in-memory-caching.
+The standalone `docker-compose.yml` starts Redis, explicitly enables Redis-backed caching, and configures the service to use `redis://redis:6379` on the Compose network. Start the complete environment with:
+
+```bash / zsh
+docker compose up --build
+```
 
 To view the cache - when running against local Redis - Intellij has a free plugin called Redis Helper.
 However, if you want to view the cache in staging the plugin doesn't support SSL. Instead, install:
@@ -56,14 +57,10 @@ brew install --cask another-redis-desktop-manager
 sudo xattr -rd com.apple.quarantine /Applications/Another\ Redis\ Desktop\ Manager.app
 ```
 
-You can also run redis container in local docker: (Not required if using Approach 4 as this spins up all your dependencies)
-**Bash**:
-```bash
-  docker-compose up redis
-```
-**Zsh**:
-```zsh
-  docker compose up redis
+To run only the standalone Redis container:
+
+```bash / zsh
+docker compose up redis
 ```
 
 **WARNING** - As of 10/02/2026 the recommended docker approach is "Approach 4: Docker with external dependencies"
@@ -123,7 +120,7 @@ by executing the following command:
   docker compose up
 ```
 
-To skip all the setting up and building with Docker, just execute the following command:
+To assemble the current application jar, rebuild the image, and start Docker Compose in one command, run:
 
 ```bash / zsh
 ./bin/run-in-docker.sh
@@ -134,7 +131,7 @@ For more information:
 ```bash / zsh
 ./bin/run-in-docker.sh -h
 ```
-Script includes bare minimum environment variables necessary to start api instance. Whenever any variable is changed or any other script regarding docker image/container build, the suggested way to ensure all is cleaned up properly is by this command:
+The script always assembles the current jar and invokes `docker compose up --build`, avoiding stale application artifacts. Use `--clean` when a clean Gradle build is required. Whenever any variable is changed or any other script regarding docker image/container build, the suggested way to ensure all is cleaned up properly is by this command:
 
 **Bash**:
 ```bash

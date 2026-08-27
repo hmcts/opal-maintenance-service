@@ -1,4 +1,5 @@
 #!/usr/bin/env sh
+set -e
 
 print_help() {
   echo "Script to run docker containers for Opal Maintenance API service
@@ -7,9 +8,11 @@ print_help() {
 
   ./run-in-docker.sh [OPTIONS]
 
+  By default, assembles the current application jar and rebuilds the Docker Compose services.
+
   Options:
-    --clean, -c                   Clean and install current state of source code
-    --install, -i                 Install current state of source code
+    --clean, -c                   Clean before assembling the current application jar
+    --install, -i                 Assemble the current application jar (default)
     --param PARAM=, -p PARAM=     Parse script parameter
     --help, -h                    Print this help block
 
@@ -20,7 +23,7 @@ print_help() {
 
 # script execution flags
 GRADLE_CLEAN=false
-GRADLE_INSTALL=false
+GRADLE_INSTALL=true
 
 # TODO custom environment variables application requires.
 # TODO also consider enlisting them in help string above ^
@@ -31,17 +34,17 @@ GRADLE_INSTALL=false
 #S2S_SECRET=secret
 
 execute_script() {
-  cd $(dirname "$0")/..
+  cd "$(dirname "$0")/.." || exit 1
 
-  if [ ${GRADLE_CLEAN} = true ]
+  if [ "${GRADLE_CLEAN}" = true ]
   then
     echo "Clearing previous build.."
     ./gradlew clean
   fi
 
-  if [ ${GRADLE_INSTALL} = true ]
+  if [ "${GRADLE_INSTALL}" = true ]
   then
-    echo "Assembling distribution.."
+    echo "Assembling current application jar.."
     ./gradlew assemble
   fi
 
@@ -53,7 +56,7 @@ execute_script() {
 
   echo "Bringing up docker containers.."
 
-  docker-compose up
+  docker compose up --build
 }
 
 while true ; do

@@ -220,6 +220,7 @@ tasks.register('functionalOpal', Test) {
   testLogging.showStandardStreams = true
   environment("IS_LEGACY_MODE", "false")
   exclude '**/OpalTestRunner.class'
+  finalizedBy 'mergeFunctionalResults', 'copyFunctionalReport'
 }
 
 tasks.register('copyFunctionalReport', Copy) {
@@ -264,10 +265,10 @@ tasks.register('smokeOpal', Test) {
   reports.junitXml.getOutputLocation().set(layout.buildDirectory.dir("test-results/smoke"))
   testLogging.showStandardStreams = true
   outputs.upToDateWhen { false }
+  finalizedBy 'packageSmokeOutput'
 }
 tasks.register('copySmokeReport', Copy) {
-  dependsOn 'aggregate'
-  from("${rootDir}/target/site/serenity")
+  from(layout.buildDirectory.dir("reports/tests/smokeOpal"))
   into("${rootDir}/smoke-test-report")
   doLast {
     logPublishedHtmlReport("Smoke Test Report", "${rootDir}/smoke-test-report")
@@ -297,7 +298,15 @@ tasks.register('smoke') {
 // that the functional and smoke suites actually generate.
 tasks.named('clearReports') {
   doLast {
-    delete(layout.buildDirectory.dir("test-results"))
+    delete(
+      layout.buildDirectory.dir("test-results/functional"),
+      layout.buildDirectory.dir("test-results/smoke"),
+      layout.buildDirectory.dir("reports/tests/functionalOpal"),
+      layout.buildDirectory.dir("reports/tests/smokeOpal"),
+      file("${rootDir}/functional-output"),
+      file("${rootDir}/smoke-test-report"),
+      file("${rootDir}/smoke-output")
+    )
   }
 }
 
