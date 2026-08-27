@@ -14,6 +14,11 @@ _opal_fetch_staging_secret() {
 }
 
 _opal_load_staging_secrets() {
+  if [[ "$-" == *x* ]]; then
+    echo >&2 "Bash xtrace is enabled. Run 'set +x' before sourcing this script to protect secret values."
+    return 1
+  fi
+
   local aad_client_id
   local aad_client_secret
   local aad_tenant_id

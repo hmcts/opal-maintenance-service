@@ -213,6 +213,7 @@ tasks.register('functionalOpal', Test) {
 
   description = "Runs functional tests against Opal mode"
   group = "Verification"
+  dependsOn 'clearFunctionalReports'
   testClassesDirs = sourceSets.functionalTest.output.classesDirs
   classpath = sourceSets.functionalTest.runtimeClasspath
   outputs.upToDateWhen { false }
@@ -267,6 +268,7 @@ tasks.register('functional') {
 tasks.register('smokeOpal', Test) {
   description = "Runs Smoke Tests"
   group = "Verification"
+  dependsOn 'clearSmokeReports'
   testClassesDirs = sourceSets.smokeTest.output.classesDirs
   classpath = sourceSets.smokeTest.runtimeClasspath
   reports.junitXml.getOutputLocation().set(layout.buildDirectory.dir("test-results/smoke"))

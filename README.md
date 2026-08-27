@@ -17,36 +17,54 @@ The repository includes the Gradle wrapper, so a separate Gradle installation is
 
 #### Environment variables
 
-The following environment variables are required to run the service.
+The service starts locally with safe defaults. Export integration values only
+for the flow you intend to exercise; never place real credentials in tracked
+files.
+
+Authentication flows require approved Azure AD application values:
 
 ```bash / zsh
-AAD_CLIENT_ID= <Ask Team Memebers>
-AAD_CLIENT_SECRET=<Ask Team Memebers>
-AAD_TENANT_ID=<Ask Team Memebers>
-OPAL_TEST_USER_PASSWORD=<Ask Team Memebers>
-
-LAUNCH_DARKLY_SDK_KEY=<Ask Team Memebers>
+export AAD_CLIENT_ID='<application-client-id>'
+export AAD_CLIENT_SECRET='<application-client-secret>'
+export AAD_TENANT_ID='<tenant-id>'
 ```
 
-You can also create a shared .env.shred file with these variables you can use the `create_env.sh` script from opal-shared-infrastructure:
-But these will only get picked up when running the application with docker.
-So for local development, you will need to set these environment variables in your IDE run configuration or terminal session.
+Online LaunchDarkly evaluation requires the SDK key and both settings below.
+Otherwise, standalone Docker Compose keeps LaunchDarkly disabled and offline:
+
 ```bash / zsh
-../opal-shared-infrastructure/bin/create_env.sh
+export LAUNCH_DARKLY_ENABLED=true
+export LAUNCH_DARKLY_OFFLINE_MODE=false
+export LAUNCH_DARKLY_SDK_KEY='<sdk-key-from-approved-secret-store>'
 ```
+
+The test user is needed only for optional authenticated diagnostic flows. Those
+flows must also explicitly enable the testing-support endpoints:
+
+```bash / zsh
+export TESTING_SUPPORT_ENDPOINTS_ENABLED=true
+export OPAL_TEST_USER_EMAIL='<test-account-email>'
+export OPAL_TEST_USER_PASSWORD='<test-account-password>'
+```
+
+The shared-infrastructure Docker workflow can create its own ignored
+`.env.shared` file. From the `opal-shared-infrastructure` directory, run
+`./bin/create_env.sh`. Direct Gradle or IDE runs instead use values exported in
+the current terminal or set in the IDE run configuration.
+
 #### Caching
 
 When the service runs directly on the JVM from IntelliJ or Gradle, Redis-backed caching is disabled by default and the service uses a no-op cache manager. To use a Redis instance available on the host, set:
 
 ```bash / zsh
-OPAL_REDIS_ENABLED=true
-REDIS_CONNECTION_STRING=redis://localhost:6379
+export OPAL_REDIS_ENABLED=true
+export REDIS_CONNECTION_STRING=redis://localhost:6379
 ```
 
 The standalone `docker-compose.yml` starts Redis, explicitly enables Redis-backed caching, and configures the service to use `redis://redis:6379` on the Compose network. Start the complete environment with:
 
 ```bash / zsh
-docker compose up --build
+./gradlew assemble && docker compose up --build
 ```
 
 To view the cache - when running against local Redis - Intellij has a free plugin called Redis Helper.
@@ -91,33 +109,12 @@ from the previous approach is an issue for development.
 
 #### Approach 3: Docker
 
-Create the image of the application by executing the following command:
+The Dockerfile copies the assembled boot jar from `build/libs`; Docker Compose
+does not build the Java artifact. From a fresh checkout, assemble the jar,
+rebuild the image, and start the services with:
 
 ```bash / zsh
-  ./gradlew assemble
-```
-
-Create docker image:
-
-**Bash**:
-```bash
-  docker-compose build
-```
-**Zsh**:
-```zsh
-  docker compose build
-```
-
-The assembled application boot jar is created in `build/libs`. Run it through
-Docker Compose by executing the following command:
-
-**Bash**:
-```bash
-  docker-compose up
-```
-**Zsh**:
-```zsh
-  docker compose up
+./gradlew assemble && docker compose up --build
 ```
 
 To assemble the current application jar, rebuild the image, and start Docker Compose in one command, run:
@@ -155,22 +152,23 @@ There is no need to remove postgres and java or similar core images.
 
 #### Approach 4: Docker with external dependencies (e.g. Redis, postgres, azure service bus, user service, logging service, etc) - Recommended approach for development
 
-Ensure you have pulled opal-shared-infrasturcutre as this contains scripts to support docker.
+Ensure you have pulled `opal-shared-infrastructure`, which contains the scripts
+that support the shared Docker environment.
 
-First you will need to ensure you have all repositories downloaded in the same parent direcotry.
+First ensure all repositories are downloaded in the same parent directory.
 To do this automatically you can run the following command from the opal-shared-infrastructure directory:
 ```bash / zsh
-../opal-shared-infrastructure/bin/pull_all_repos.sh
+./bin/pull_all_repos.sh
 ```
 
 Secondly you will need to ensure you have the required environment variables set up in a .env.shared file in the opal-shared-infrastructure/docker-files/ directory. You can use the following command to create this file with the required variables:
 ```bash / zsh
-../opal-shared-infrastructure/bin/create_env.sh
+./bin/create_env.sh
 ```
 
 Finally to run the application with all external dependencies using docker you can run the following command from the opal-shared-infrastructure directory:
 ```bash / zsh
-../opal-shared-infrastructure/docker-files/scripts/opalBuild.sh -lb
+./docker-files/scripts/opalBuild.sh -lb
 ```
 Full details of this script and the arguments can be found within the opal-shared-infrastructure repository
 
@@ -225,7 +223,8 @@ endpoints are disabled by default. To enable them for a local manual check,
 start the service with:
 
 ```bash
-TESTING_SUPPORT_ENDPOINTS_ENABLED=true ./gradlew bootRun
+export TESTING_SUPPORT_ENDPOINTS_ENABLED=true
+./gradlew bootRun
 ```
 
 Then create a local Bruno environment using repository-relative paths:
