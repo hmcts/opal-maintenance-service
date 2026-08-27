@@ -195,11 +195,16 @@ task functionalOpal(type: Test) {
   reports.junitXml.getOutputLocation().set(layout.buildDirectory.dir("test-results/functional"))
   testLogging.showStandardStreams = true
   gradle.startParameter.continueOnFailure = true
+  String cucumberFilterTags = System.getProperty("cucumber.filter.tags")
   systemProperty "cucumber.filter.tags",
-    System.getProperty("cucumber.filter.tags", "@Opal and not @Smoke and not @Ignore")
+    cucumberFilterTags != null ? cucumberFilterTags : "@Opal and not @Smoke and not @Ignore"
   systemProperty "cucumber.plugin",
     "net.serenitybdd.cucumber.core.plugin.SerenityReporterParallel,pretty"
-  include '**/OpalTestRunner.class', '**/*FunctionalTest.class', '**/*Test.class'
+  if (cucumberFilterTags != null) {
+    include '**/OpalTestRunner.class'
+  } else {
+    include '**/OpalTestRunner.class', '**/*FunctionalTest.class', '**/*Test.class'
+  }
   if (!file("src/functionalTest/resources/features/opalMode").exists()) {
     exclude '**/OpalTestRunner.class'
   }
