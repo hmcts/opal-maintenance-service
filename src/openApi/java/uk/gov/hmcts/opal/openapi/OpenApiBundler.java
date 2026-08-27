@@ -12,12 +12,13 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-
-
+import java.util.Set;
 
 public class OpenApiBundler {
 
     private static final ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
+
+    private static final Set<String> SHARED_COMPONENT_FILES = Set.of("common", "types");
 
     private OpenApiBundler() {
 
@@ -57,16 +58,17 @@ public class OpenApiBundler {
             .forEach(file -> {
                 try {
                     Map<String, Object> yaml = mapper.readValue(file.toFile(), Map.class);
-                    String suffix = capitalize(stripYaml(file.getFileName().toString()));
+                    String fileName = stripYaml(file.getFileName().toString());
+                    String prefix = componentPrefix(fileName);
 
                     // Merge paths (rewrite local & cross-file refs)
                     Map<String, Object> paths = (Map<String, Object>) yaml.get("paths");
                     if (paths != null) {
-                        paths.replaceAll((k, v) -> rewriteRefs(v, suffix));
+                        paths.replaceAll((k, v) -> rewriteRefs(v, prefix));
                         ((Map<String, Object>) bundled.get("paths")).putAll(paths);
                     }
 
-                    // Merge ALL component sections, adding the file suffix to each component key
+                    // Merge all component sections, prefixing resource-specific names with the file name.
                     Map<String, Object> components = (Map<String, Object>) yaml.get("components");
                     if (components != null) {
                         for (String section : COMPONENT_SECTIONS) {
@@ -78,8 +80,8 @@ public class OpenApiBundler {
                             Map<String, Object> dst = getOrCreateSection(bundledComponents, section);
                             for (Map.Entry<String, Object> e : src.entrySet()) {
                                 String oldName = e.getKey();
-                                String newName = maybeSuffix(oldName, suffix);
-                                Object valueWithRewrites = rewriteRefs(e.getValue(), suffix);
+                                String newName = qualifyComponentName(oldName, prefix);
+                                Object valueWithRewrites = rewriteRefs(e.getValue(), prefix);
 
                                 if (dst.containsKey(newName)) {
                                     // You can choose to overwrite, skip, or fail. Failing is safest.
@@ -102,7 +104,7 @@ public class OpenApiBundler {
     }
 
     @SuppressWarnings("unchecked")
-    private static Object rewriteRefs(Object node, String currentSuffix) {
+    private static Object rewriteRefs(Object node, String currentPrefix) {
         if (node instanceof Map) {
             Map<String, Object> map = new LinkedHashMap<>((Map<String, Object>) node);
 
@@ -112,37 +114,36 @@ public class OpenApiBundler {
                 if (ref.startsWith("./")) {
                     String[] fileAndPath = ref.split("#", 2);
                     String fileName = stripYaml(new File(fileAndPath[0]).getName());
-                    String suffix = capitalize(fileName);
+                    String prefix = componentPrefix(fileName);
 
                     if (fileAndPath.length == 2 && fileAndPath[1].startsWith("/components/")) {
                         String componentPath = fileAndPath[1].replaceFirst("^/components/", "");
-                        map.put("$ref", "#/components/" + addSuffixToLastSegment(componentPath, suffix));
+                        map.put("$ref", "#/components/" + qualifyLastSegment(componentPath, prefix));
                     }
                     // Case 2: local reference: #/components/<section>/<name>[...]
                 } else if (ref.startsWith("#/components/")) {
                     String componentPath = ref.replaceFirst("^#/components/", "");
-                    String suffix = currentSuffix; // already capitalized outside
-                    map.put("$ref", "#/components/" + addSuffixToLastSegment(componentPath, suffix));
+                    map.put("$ref", "#/components/" + qualifyLastSegment(componentPath, currentPrefix));
                 }
             }
 
             // Recurse
-            map.replaceAll((k, v) -> rewriteRefs(v, currentSuffix));
+            map.replaceAll((k, v) -> rewriteRefs(v, currentPrefix));
             return map;
         } else if (node instanceof List) {
             List<Object> list = new ArrayList<>();
             for (Object item : (List<Object>) node) {
-                list.add(rewriteRefs(item, currentSuffix));
+                list.add(rewriteRefs(item, currentPrefix));
             }
             return list;
         }
         return node;
     }
 
-    // Append suffix only to the final name segment, keeping the section and any trailing JSON Pointers intact.
-    // e.g. "headers/ETagCommon" -> "headers/ETagCommonX"
-    //      "schemas/MyThing/allOf/0" -> "schemas/MyThingX/allOf/0"
-    private static String addSuffixToLastSegment(String componentPath, String suffix) {
+    // Qualify only the component name, retaining its section and any trailing JSON Pointer.
+    // For example, "schemas/ReferenceDataItem/allOf/0" becomes
+    // "schemas/ResultReferenceDataItem/allOf/0" for components declared in Result.yaml.
+    private static String qualifyLastSegment(String componentPath, String prefix) {
         int slash = componentPath.indexOf('/'); // first slash after section
         if (slash < 0) {
             return componentPath; // malformed; don't touch
@@ -156,13 +157,23 @@ public class OpenApiBundler {
         String name = (next == -1) ? rest : rest.substring(0, next);
         String tail = (next == -1) ? "" : rest.substring(next); // includes the '/'
 
-        String suffixedName = maybeSuffix(name, suffix);
-        return section + "/" + suffixedName + tail;
+        String qualifiedName = qualifyComponentName(name, prefix);
+        return section + "/" + qualifiedName + tail;
     }
 
-    // Only add the suffix if it's not already there
-    private static String maybeSuffix(String name, String suffix) {
-        return name.endsWith(suffix) ? name : name + suffix;
+    private static String componentPrefix(String fileName) {
+        return SHARED_COMPONENT_FILES.contains(fileName.toLowerCase()) ? "" : capitalize(fileName);
+    }
+
+    private static String qualifyComponentName(String name, String prefix) {
+        boolean alreadyQualified = !prefix.isEmpty()
+            && name.regionMatches(true, 0, prefix, 0, prefix.length())
+            && (name.length() == prefix.length()
+                || name.length() > prefix.length() && Character.isUpperCase(name.charAt(prefix.length())));
+        if (prefix.isEmpty() || alreadyQualified) {
+            return name;
+        }
+        return prefix + capitalize(name);
     }
 
     private static String stripYaml(String fileName) {

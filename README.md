@@ -146,6 +146,19 @@ See [Database Migrations](docs/DATABASE_MIGRATIONS.md) for ownership, naming, en
 
 ## OpenAPI
 
+Endpoint contracts are stored under `src/main/resources/openapi`. The build bundles those documents and generates
+Spring API interfaces and models before compiling the application:
+
+Resource-specific component names are prefixed with their OpenAPI filename when bundled. For example,
+`ReferenceDataItem` in `Result.yaml` becomes `ResultReferenceDataItem`. Components in `common.yaml` and `types.yaml`
+retain their declared names.
+
+```bash
+./gradlew bundleOpenApi
+./gradlew openApiGenerate
+./gradlew compileJava
+```
+
 When the application is running, its OpenAPI documentation is available at:
 
 - [Swagger UI](http://localhost:4551/swagger-ui/index.html)
