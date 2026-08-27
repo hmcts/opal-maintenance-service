@@ -201,9 +201,19 @@ tasks.withType(Test).configureEach {
   failFast = false
 }
 
+tasks.register('clearIntegrationReports', Delete) {
+  delete(
+    layout.buildDirectory.dir("test-results/integration"),
+    layout.buildDirectory.dir("reports/tests/integration"),
+    file("${rootDir}/target/zephyr-reports/Junit5Report-IntegrationTest.json"),
+    file("${rootDir}/integration-output")
+  )
+}
+
 tasks.register('integration', Test) {
   description = "Runs integration tests"
   group = "Verification"
+  dependsOn 'clearIntegrationReports'
   testClassesDirs = sourceSets.integrationTest.output.classesDirs
   classpath = sourceSets.integrationTest.runtimeClasspath
   finalizedBy 'packageIntegrationOutput'
@@ -232,17 +242,20 @@ tasks.register('copyFunctionalReport', Copy) {
   }
 }
 
-tasks.register('copyIntegrationJunit5Report', Copy) {
+tasks.register('copyIntegrationJunit5Report', Sync) {
   from("target/zephyr-reports/Junit5Report-IntegrationTest.json")
   into("${rootDir}/integration-output/zephyr")
   outputs.upToDateWhen { false }
 }
-tasks.register('packageIntegrationOutput', Copy) {
+
+tasks.named('copyIntegrationJunit5Report') {
+  mustRunAfter tasks.named('integration')
+}
+
+tasks.register('packageIntegrationOutput', Sync) {
   dependsOn 'copyIntegrationJunit5Report'
-  into("${rootDir}/integration-output")
-  from(layout.buildDirectory.dir("reports/tests/integration")) {
-    into("report")
-  }
+  from(layout.buildDirectory.dir("reports/tests/integration"))
+  into("${rootDir}/integration-output/report")
 }
 tasks.register('mergeFunctionalResults', Copy) {
   from layout.buildDirectory.dir("test-results/functional/opal")
