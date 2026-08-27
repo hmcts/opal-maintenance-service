@@ -1,4 +1,4 @@
-package uk.gov.hmcts.reform.opal.openapi;
+package uk.gov.hmcts.opal.openapi;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -6,7 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
-import uk.gov.hmcts.reform.opal.BaseIntegrationTest;
+import uk.gov.hmcts.opal.BaseIntegrationTest;
 
 import java.io.OutputStream;
 import java.nio.file.Files;

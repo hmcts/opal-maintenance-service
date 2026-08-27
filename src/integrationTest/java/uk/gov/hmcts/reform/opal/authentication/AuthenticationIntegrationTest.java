@@ -1,4 +1,4 @@
-package uk.gov.hmcts.reform.opal.authentication;
+package uk.gov.hmcts.opal.authentication;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
@@ -57,7 +57,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
-import uk.gov.hmcts.reform.opal.BaseIntegrationTest;
+import uk.gov.hmcts.opal.BaseIntegrationTest;
 
 @AutoConfigureMockMvc
 @ExtendWith(OutputCaptureExtension.class)

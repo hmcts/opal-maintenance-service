@@ -17,81 +17,168 @@ The repository includes the Gradle wrapper, so a separate Gradle installation is
 
 #### Environment variables
 
-Create the local environment file from the tracked example before using Docker Compose:
+The following environment variables are required to run the service.
 
-```bash
-cp .env.example .env
+```bash / zsh
+AAD_CLIENT_ID= <Ask Team Memebers>
+AAD_CLIENT_SECRET=<Ask Team Memebers>
+AAD_TENANT_ID=<Ask Team Memebers>
+OPAL_TEST_USER_PASSWORD=<Ask Team Memebers>
+
+LAUNCH_DARKLY_SDK_KEY=<Ask Team Memebers>
 ```
 
-The local `.env` file is ignored by Git. The example sets `SERVER_PORT=4551`, which Docker Compose uses for the service port mapping.
+You can also create a shared .env.shred file with these variables you can use the `create_env.sh` script from opal-shared-infrastructure:
+But these will only get picked up when running the application with docker.
+So for local development, you will need to set these environment variables in your IDE run configuration or terminal session.
+```bash / zsh
+../opal-shared-infrastructure/bin/create_env.sh
+```
+#### Caching
 
-Application configuration can be overridden with the following environment variables:
+Redis has been configured as the default caching provider. When running docker-compose with the local configuration a Redis container will be started.
 
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `OPAL_MAINTENANCE_DB_HOST` | `localhost` | PostgreSQL host |
-| `OPAL_MAINTENANCE_DB_PORT` | `5432` | PostgreSQL port |
-| `OPAL_MAINTENANCE_DB_NAME` | `opal-maintenance-db` | Database name |
-| `OPAL_MAINTENANCE_DB_USERNAME` | `opal-maintenance` | Database username |
-| `OPAL_MAINTENANCE_DB_PASSWORD` | `opal-maintenance` | Database password |
-| `OPAL_MAINTENANCE_DB_OPTIONS` | empty | Additional JDBC connection options |
-| `RUN_DB_MIGRATION_ON_STARTUP` | `true` | Run Flyway migrations when the service starts |
-| `FLYWAY_LOCATIONS` | configured migration locations | Select the Flyway migration locations |
-| `AAD_TENANT_ID` | `00000000-0000-0000-0000-000000000000` | Azure Active Directory tenant identifier |
-| `AAD_CLIENT_ID` | `00000000-0000-0000-0000-000000000000` | Azure Active Directory application identifier |
-| `AAD_CLIENT_SECRET` | empty | Azure Active Directory application secret |
-| `OPAL_USER_SERVICE_API_URL` | `http://localhost:4555` | User Service base URL |
-| `REDIS_CONNECTION_STRING` | `redis://localhost:6379` | Redis connection URL |
-| `OPAL_REDIS_ENABLED` | `false` | Enable Redis-backed health and caching support |
-| `TESTING_SUPPORT_ENDPOINTS_ENABLED` | `false` | Enable testing-support diagnostic endpoints |
-| `SERVICEBUS_LOGGING_PDPL_PROTOCOL` | `amqp` | PDPL Service Bus transport protocol |
-| `SERVICEBUS_CONNECTION_STRING` | empty | PDPL Service Bus connection string |
-| `SERVICEBUS_LOGGING_PDPL_QUEUE_NAME` | `logging-pdpl` | PDPL Service Bus queue name |
+If starting the opal-maintenance-service from Intellij or the command line you have the following options:
+Follow instructions under 'Running the application locally'
 
-Do not commit credentials or other secrets. Supply non-local values through environment or platform secret stores.
-
-#### Approach 1: Docker Compose (recommended)
-
-Start the service and PostgreSQL together:
-
-```bash
-docker compose up --build
+In local env by default opal-maintenance-service uses simple cache instead of Redis cache. This can be enabled by setting this env variable:
+```bash / zsh
+OPAL_REDIS_ENABLED=true
 ```
 
-To stop the environment, press `Ctrl+C`, then remove the containers with:
+Alternatively the opal-maintenance-service can be run using a simple in-memory cache by starting the application with the profile in-memory-caching.
+
+To view the cache - when running against local Redis - Intellij has a free plugin called Redis Helper.
+However, if you want to view the cache in staging the plugin doesn't support SSL. Instead, install:
 
 ```bash
-docker compose down
+brew install --cask another-redis-desktop-manager
+sudo xattr -rd com.apple.quarantine /Applications/Another\ Redis\ Desktop\ Manager.app
 ```
 
-`docker compose down` intentionally preserves the named PostgreSQL volume so
-local development data survives normal teardown. This persistence is useful
-for development, but restarting Compose does not prove that migrations work
-against a fresh database.
-
-> **Destructive:** `docker compose down --volumes` deletes the developer-owned
-> named volume and its local database data. It is not a routine migration
-> validation command.
-
-Fresh-database migration validation is a separate, database-owned workflow.
-The intended canonical entry point under DB-01 is `./gradlew dbTest`,
-but that task is not implemented in this checkout. Until it is available,
-record dedicated fresh-database validation as unavailable rather than treating
-Compose or backend integration tests as equivalent evidence.
-
-#### Approach 2: Run the application on the local JVM
-
-Start PostgreSQL in Docker:
-
+You can also run redis container in local docker: (Not required if using Approach 4 as this spins up all your dependencies)
+**Bash**:
 ```bash
-docker compose up -d opal-maintenance-db
+  docker-compose up redis
+```
+**Zsh**:
+```zsh
+  docker compose up redis
 ```
 
-The container's PostgreSQL port is published on host port `5435`. Start the application against it with:
+**WARNING** - As of 10/02/2026 the recommended docker approach is "Approach 4: Docker with external dependencies"
+#### Approach 1: Dev Application (No existing dependencies)
 
+The simplest way to run the application is using the `bootTestRun` Gradle task:
+
+```bash / zsh
+  ./gradlew bootTestRun
+```
+
+This task has no dependencies and starts up a Postgres database in Docker using [Testcontainers](https://testcontainers.com).
+The database is available on `jdbc:postgresql://localhost:5432/opal-maintenance-db` with username and password `opal-maintenance`.
+
+To persist the database between application restarts set the environment variable `TESTCONTAINERS_REUSE_ENABLE` to `true`.
+Note this does **not** persist data if the Docker container is manually stopped, or through laptop restarts).
+
+#### Approach 2: Dev Application (With existing dependencies)
+
+Use the standard Spring Boot `run` Gradle task:
+
+```bash / zsh
+  ./gradlew run
+```
+
+This approach can be used if a database is already running and may be preferred if the lack of long-term data persistence
+from the previous approach is an issue for development.
+
+#### Approach 3: Docker
+
+Create the image of the application by executing the following command:
+
+```bash / zsh
+  ./gradlew assemble
+```
+
+Create docker image:
+
+**Bash**:
 ```bash
-OPAL_MAINTENANCE_DB_PORT=5435 ./gradlew bootRun
+  docker-compose build
 ```
+**Zsh**:
+```zsh
+  docker compose build
+```
+
+Run the distribution (created in `build/install/opal-maintenance-service` directory)
+by executing the following command:
+
+**Bash**:
+```bash
+  docker-compose up
+```
+**Zsh**:
+```zsh
+  docker compose up
+```
+
+To skip all the setting up and building with Docker, just execute the following command:
+
+```bash / zsh
+./bin/run-in-docker.sh
+```
+
+For more information:
+
+```bash / zsh
+./bin/run-in-docker.sh -h
+```
+Script includes bare minimum environment variables necessary to start api instance. Whenever any variable is changed or any other script regarding docker image/container build, the suggested way to ensure all is cleaned up properly is by this command:
+
+**Bash**:
+```bash
+docker-compose rm
+```
+**Zsh**:
+```zsh
+docker compose rm
+```
+
+It clears stopped containers correctly. Might consider removing clutter of images too, especially the ones fiddled with:
+
+```bash / zsh
+docker images
+
+docker image rm <image-id>
+```
+
+There is no need to remove postgres and java or similar core images.
+
+
+#### Approach 4: Docker with external dependencies (e.g. Redis, postgres, azure service bus, user service, logging service, etc) - Recommended approach for development
+
+Ensure you have pulled opal-shared-infrasturcutre as this contains scripts to support docker.
+
+First you will need to ensure you have all repositories downloaded in the same parent direcotry.
+To do this automatically you can run the following command from the opal-shared-infrastructure directory:
+```bash / zsh
+../opal-shared-infrastructure/bin/pull_all_repos.sh
+```
+
+Secondly you will need to ensure you have the required environment variables set up in a .env.shared file in the opal-shared-infrastructure/docker-files/ directory. You can use the following command to create this file with the required variables:
+```bash / zsh
+../opal-shared-infrastructure/bin/create_env.sh
+```
+
+Finally to run the application with all external dependencies using docker you can run the following command from the opal-shared-infrastructure directory:
+```bash / zsh
+../opal-shared-infrastructure/docker-files/scripts/opalBuild.sh -lb
+```
+Full details of this script and the arguments can be found within the opal-shared-infrastructure repository
+
+* [Link to file on Github](https://github.com/hmcts/opal-shared-infrastructure/blob/master/docker-files/scripts/scripts-readme.md)
+* [Link to file locally](../opal-shared-infrastructure/docker-files/scripts/scripts-readme.md)
 
 ### Verifying application startup
 
@@ -99,20 +186,25 @@ Check the health and Prometheus endpoints after starting the application:
 
 ```bash
 curl http://localhost:4551/health
-curl http://localhost:4551/prometheus
 ```
 
-The health response should report an `UP` status.
+
+You should get a response similar to this:
+
+```
+  {"status":"UP","diskSpace":{"status":"UP","total":249644974080,"free":137188298752,"threshold":10485760}}
+```
 
 ### Building the application
 
-Build and run the baseline validation with:
+The project uses [Gradle](https://gradle.org) as a build tool. It already contains
+`./gradlew` wrapper script, so there's no need to install gradle.
+
+To build the project execute the following command:
 
 ```bash
 ./gradlew build
 ```
-
-The build includes unit, integration, static-analysis, and packaging checks configured by the project. Docker is required because the integration tests use Testcontainers PostgreSQL.
 
 ### Test tasks
 

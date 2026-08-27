@@ -1,18 +1,4 @@
 services:
-  opal-maintenance-db:
-    container_name: opal-maintenance-db
-    image: postgres:17
-    restart: always
-    environment:
-      - POSTGRES_DB=opal-maintenance-db
-      - POSTGRES_USER=opal-maintenance
-      - POSTGRES_PASSWORD=opal-maintenance
-      - PGPORT=5432
-    ports:
-      - "5435:5432"
-    volumes:
-      - opal_maintenance_db_data:/var/lib/postgresql/data
-
   opal-maintenance-service:
     container_name: opal-maintenance-service
     build:
@@ -21,33 +7,44 @@ services:
         - http_proxy
         - https_proxy
         - no_proxy
-    image: hmctsprod.azurecr.io/opal/maintenance-service
     environment:
       # these environment variables are used by java-logging library
       - ROOT_APPENDER
-      - JSON_CONSOLE_PRETTY_PRINT
-      - ROOT_LOGGING_LEVEL
-      - REFORM_SERVICE_TYPE
-      - REFORM_SERVICE_NAME
-      - REFORM_TEAM
-      - REFORM_ENVIRONMENT
-      - LOGBACK_DATE_FORMAT
       - LOGBACK_REQUIRE_THREAD
       - LOGBACK_REQUIRE_ALERT_LEVEL=false
       - LOGBACK_REQUIRE_ERROR_CODE=false
       - OPAL_MAINTENANCE_DB_HOST=opal-maintenance-db
-      - AAD_TENANT_ID
-      - AAD_CLIENT_ID
-      - AAD_CLIENT_SECRET
+      - OPAL_LEGACY_GATEWAY_URL=http://host.docker.internal:4553/opal
+      - OPAL_USER_SERVICE_API_URL=http://host.docker.internal:4555/
+      - TESTING_SUPPORT_ENDPOINTS_ENABLED=true
       - OPAL_REDIS_ENABLED=false
-      - REDIS_CONNECTION_STRING
-      - TESTING_SUPPORT_ENDPOINTS_ENABLED=false
-      - OPAL_USER_SERVICE_API_URL
-      - SERVICEBUS_CONNECTION_STRING
-      - SERVICEBUS_LOGGING_PDPL_PROTOCOL
-      - SERVICEBUS_LOGGING_PDPL_QUEUE_NAME
+
     ports:
-      - $SERVER_PORT:$SERVER_PORT
+      - "4551:4551"
+    depends_on:
+      - redis
+
+  opal-maintenance-db:
+    container_name: opal-maintenance-db
+    image: postgres:17
+    restart: always
+    environment:
+      - POSTGRES_DB=opal-maintenance-db
+      - POSTGRES_USER=opal-maintenance
+      - POSTGRES_PASSWORD=opal-maintenance
+    ports:
+      - "5432:5432"
+    volumes:
+      - opal-database-data:/var/lib/postgresql/data
+
+  redis:
+    container_name: redis
+    image: redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
 
 volumes:
-  opal_maintenance_db_data:
+  opal-database-data:
+  redis-data:

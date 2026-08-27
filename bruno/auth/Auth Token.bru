@@ -1,0 +1,39 @@
+meta {
+  name: Auth Token
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{userURL}}/testing-support/token/test-user
+  body: none
+  auth: none
+}
+
+script:post-response {
+  function getTokenExpiresAt(token) {
+    try {
+      const encodedPayload = token.split(".")[1];
+      const base64Payload = encodedPayload.replace(/-/g, "+").replace(/_/g, "/")
+        .padEnd(Math.ceil(encodedPayload.length / 4) * 4, "=");
+      const payload = JSON.parse(atob(base64Payload));
+
+      return typeof payload.exp === "number" ? payload.exp * 1000 : null;
+    } catch {
+      return null;
+    }
+  }
+
+  const json = typeof res.body === "string" ? JSON.parse(res.body) : res.body;
+  const token = json.access_token;
+  const tokenExpiresAt = getTokenExpiresAt(token) ?? Date.now() + (20 * 60 * 1000);
+
+  bru.setEnvVar("BEARER_TOKEN", token, { persist: true });
+  bru.setEnvVar("tokenExpiresAt", String(tokenExpiresAt), { persist: true });
+  console.log(`[auth/Auth Token post-response] Stored newly requested bearer token; expires ${new Date(tokenExpiresAt).toISOString()}`);
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

@@ -1,192 +1,170 @@
 import groovy.transform.Field
 
-configurations {
-  zephyrCucumberReportProcessor
-}
-
-dependencies {
-  zephyrCucumberReportProcessor 'uk.gov.hmcts:zephyr-automation:1.2.2'
-  testImplementation 'uk.gov.hmcts:zephyr-automation:1.2.2'
-}
-
-tasks.register('syncFunctionalArtifactsFromExistingResults') {
-  outputs.upToDateWhen { false }
-  doLast {
-    String outputDir = (project.findProperty("zephyrOutputDir")
-      ?: System.getenv("ZEPHYR_OUTPUT_DIR")
-      ?: "functional-output").toString()
-
-    copy {
-      from("target/cucumber.json")
-      into("${outputDir}/zephyr")
-      rename { "cucumber-functional.json" }
-    }
-  }
-}
-
-tasks.register('syncSmokeArtifactsFromExistingResults') {
-  outputs.upToDateWhen { false }
-  doLast {
-    String outputDir = (project.findProperty("zephyrOutputDir")
-      ?: System.getenv("ZEPHYR_OUTPUT_DIR")
-      ?: "smoke-output").toString()
-
-    copy {
-      from("target/cucumber.json")
-      into("${outputDir}/zephyr")
-      rename { "cucumber-smoke.json" }
-    }
-  }
-}
-
 @Field
 List<String> zephyrBaseArgs = [
-  "jira-base-url=https://tools.hmcts.net/jira/rest/api/latest",
-  "jira-project-id=28500",
-  "jira-default-user=OPAL.Zephyr.automation",
-  "jira-auth-token=${System.getenv('JIRA_AUTH_TOKEN')}",
-  "jira-epic-link-custom-field-id=customfield_10008",
-  "jira-default-components=opal-file-handler-service",
-  "execution-environment=${System.getenv('EXECUTION_ENVIRONMENT') ?: ''}",
-  "execution-build=${System.getenv('EXECUTION_BUILD') ?: ''}",
-  "execution-test-cycle-description=${System.getenv('EXECUTION_CYCLE_DESCRIPTION') ?: ''}"
+        "jira-base-url=https://tools.hmcts.net/jira/rest/api/latest",
+        "jira-project-id=28500",
+        "jira-default-user=OPAL.Zephyr.automation",
+        "jira-auth-token=${System.getenv('JIRA_AUTH_TOKEN')}",
+        "jira-epic-link-custom-field-id=customfield_10008",
+        "jira-default-components=opal-maintenance-service",
+        "execution-environment=${System.getenv('EXECUTION_ENVIRONMENT') ?: ''}",
+        "execution-build=${System.getenv('EXECUTION_BUILD') ?: ''}",
+        "execution-test-cycle-description=${System.getenv('EXECUTION_CYCLE_DESCRIPTION') ?: ''}",
+        "success-status-id=${System.getenv('SUCCESS_STATUS_ID') ?: ''}",
+        "failed-status-id=${System.getenv('FAILED_STATUS_ID') ?: ''}"
 ]
 
 List<String> zephyrArgs(String processType, String actionType, String testFolder, String reportPath) {
-  List<String> args = new ArrayList<>(zephyrBaseArgs)
-  args.add("process-type=${processType}")
-  args.add("action-type=${actionType}")
-  args.add("base-path=${file("src/${testFolder}").absolutePath}")
-  args.add("report-path=${reportPath}")
-  args.add("github-repo-base-src-dir=https://github.com/hmcts/opal-file-handler-service/tree/master/src/${testFolder}")
-  args
+    List<String> args = new ArrayList<>(zephyrBaseArgs)
+    args.add("process-type=${processType}")
+    args.add("action-type=${actionType}")
+    args.add("base-path=${file("src/${testFolder}").absolutePath}")
+    args.add("report-path=${reportPath}")
+    args.add("github-repo-base-src-dir=https://github.com/hmcts/opal-maintenance-service/tree/master/src/${testFolder}")
+    args
 }
 
 @Field
 Map<String, Map<String, Object>> functionalZephyrTargets = [
-  functional: [
-    reportPath: "functional-output/zephyr/cucumber-functional.json",
-    testFolder: "functionalTest/resources",
-    syncTask  : "syncFunctionalArtifactsFromExistingResults",
-  ],
-  smoke: [
-    reportPath: "smoke-output/zephyr/cucumber-smoke.json",
-    testFolder: "functionalTest/resources",
-    syncTask  : "syncSmokeArtifactsFromExistingResults",
-  ],
+        functional: [
+                reportPath: "functional-output/zephyr/cucumber-opal.json",
+                testFolder: "functionalTest/resources",
+                syncTask  : "syncFunctionalArtifactsFromExistingResults",
+        ],
 ]
 
 Map<String, Object> resolveFunctionalZephyrTarget() {
-  String stageKey = (project.findProperty("zephyrFunctionalStage")
-    ?: System.getenv("ZEPHYR_FUNCTIONAL_STAGE"))?.toString()
-  String choices = functionalZephyrTargets.keySet().join(', ')
-  String example = "./gradlew -PzephyrFunctionalStage=functional createJiraExecutionFromFunctionalReport"
+    String stageKey = (project.findProperty("zephyrFunctionalStage")
+            ?: System.getenv("ZEPHYR_FUNCTIONAL_STAGE"))?.toString()
+    String choices = functionalZephyrTargets.keySet().join(', ')
+    String example = "./gradlew -PzephyrFunctionalStage=functional createJiraExecutionFromFunctionalReport"
 
-  if (stageKey == null || stageKey.trim().isEmpty()) {
-    throw new GradleException(
-      "Set -PzephyrFunctionalStage to one of: ${choices}. Example: ${example}"
-    )
-  }
+    if (stageKey == null || stageKey.trim().isEmpty()) {
+        throw new GradleException(
+                "Set -PzephyrFunctionalStage to one of: ${choices}. Example: ${example}"
+        )
+    }
 
-  Map<String, Object> target = functionalZephyrTargets[stageKey]
-  if (target == null) {
-    throw new GradleException(
-      "Unknown zephyrFunctionalStage '${stageKey}'. Expected one of: ${choices}. Example: ${example}"
-    )
-  }
+    Map<String, Object> target = functionalZephyrTargets[stageKey]
+    if (target == null) {
+        throw new GradleException(
+                "Unknown zephyrFunctionalStage '${stageKey}'. Expected one of: ${choices}. Example: ${example}"
+        )
+    }
 
-  String outputDir = (project.findProperty("zephyrOutputDir")
-    ?: System.getenv("ZEPHYR_OUTPUT_DIR"))?.toString()
-  String reportPath = target.reportPath as String
-
-  if (outputDir != null && !outputDir.trim().isEmpty()) {
-    String reportFileName = stageKey == 'smoke' ? 'cucumber-smoke.json' : 'cucumber-functional.json'
-    reportPath = "${outputDir}/zephyr/${reportFileName}"
-  }
-
-  [stageKey: stageKey, reportPath: reportPath] + target
+    [stageKey: stageKey] + target
 }
 
 void configureFunctionalZephyrTask(JavaExec task, String actionType, String description) {
-  task.group = "Zephyr Reporting - Cucumber"
-  task.description = description
-  task.classpath = configurations.zephyrCucumberReportProcessor
-  task.mainClass = "uk.hmcts.zephyr.automation.ZephyrAutomation"
-  task.dependsOn {
-    String syncTask = resolveFunctionalZephyrTarget().syncTask as String
-    [tasks.named(syncTask).get()]
-  }
-
-  task.doFirst {
-    Map<String, Object> target = resolveFunctionalZephyrTarget()
-    File reportFile = file(target.reportPath as String)
-    String testFolder = target.testFolder as String
-
-    if (!reportFile.exists()) {
-      throw new GradleException(
-        "Functional Zephyr report for stage '${target.stageKey}' was not found at ${reportFile}"
-      )
+    task.group = "Zephyr Reporting - Cucumber"
+    task.description = description
+    task.classpath = configurations.zephyrCucumberReportProcessor
+    task.mainClass = "uk.hmcts.zephyr.automation.ZephyrAutomation"
+    task.dependsOn {
+        String syncTask = resolveFunctionalZephyrTarget().syncTask as String
+        [tasks.named(syncTask).get()]
     }
 
-    task.setArgs(zephyrArgs(
-      "CUCUMBER_JSON_REPORT",
-      actionType,
-      testFolder,
-      reportFile.absolutePath
-    ) as List<String>)
-  }
+    task.doFirst {
+        Map<String, Object> target = resolveFunctionalZephyrTarget()
+        File reportFile = file(target.reportPath as String)
+        String testFolder = target.testFolder as String
+
+        if (!reportFile.exists()) {
+            throw new GradleException(
+                    "Functional Zephyr report for stage '${target.stageKey}' was not found at ${reportFile}"
+            )
+        }
+
+        task.setArgs(zephyrArgs(
+                "CUCUMBER_JSON_REPORT",
+                actionType,
+                testFolder,
+                reportFile.absolutePath
+        ) as List<String>)
+    }
 }
 
 void configureIntegrationZephyrTask(JavaExec task, String actionType, String description) {
-  task.group = "Zephyr Reporting - JUnit5"
-  task.description = description
-  task.classpath = configurations.zephyrCucumberReportProcessor
-  task.mainClass = "uk.hmcts.zephyr.automation.ZephyrAutomation"
+    task.group = "Zephyr Reporting - JUnit5"
+    task.description = description
+    task.classpath = configurations.zephyrCucumberReportProcessor
+    task.mainClass = "uk.hmcts.zephyr.automation.ZephyrAutomation"
+    task.dependsOn('copyIntegrationJunit5Report')
 
-  File integrationReport = file("integration-output/zephyr/Junit5Report-IntegrationTest.json")
+    File integrationReport = file("integration-output/zephyr/Junit5Report-IntegrationTest.json")
 
-  task.doFirst {
-    if (!integrationReport.exists()) {
-      throw new GradleException(
-        "Integration Zephyr report was not found at ${integrationReport}"
-      )
+    task.doFirst {
+        if (!integrationReport.exists()) {
+            throw new GradleException(
+                    "Integration Zephyr report was not found at ${integrationReport}"
+            )
+        }
+
+        task.setArgs(zephyrArgs(
+                "JUNIT5_JSON_REPORT",
+                actionType,
+                "integrationTest/java",
+                integrationReport.absolutePath
+        ) as List<String>)
     }
+}
 
-    task.setArgs(zephyrArgs(
-      "JUNIT5_JSON_REPORT",
-      actionType,
-      "integrationTest/java",
-      integrationReport.absolutePath
-    ) as List<String>)
-  }
+void configureReleaseIntegrationZephyrTask(JavaExec task, String release, String actionType, String description) {
+    String releaseName = release.toLowerCase()
+    String reportPath = "integration-output-${releaseName}/zephyr/Junit5Report-Integration${release}.json"
+
+    task.group = "Zephyr Reporting - JUnit5"
+    task.description = description
+    task.classpath = configurations.zephyrCucumberReportProcessor
+    task.mainClass = "uk.hmcts.zephyr.automation.ZephyrAutomation"
+    task.dependsOn("integration${release}")
+
+    File integrationReport = file(reportPath)
+
+    task.doFirst {
+        if (!integrationReport.exists()) {
+            throw new GradleException(
+                    "${release} integration Zephyr report was not found at ${integrationReport}"
+            )
+        }
+
+        task.setArgs(zephyrArgs(
+                "JUNIT5_JSON_REPORT",
+                actionType,
+                "integrationTest/java",
+                integrationReport.absolutePath
+        ) as List<String>)
+    }
 }
 
 tasks.register('createJiraTicketsFromFunctionalReport', JavaExec) { JavaExec task ->
-  configureFunctionalZephyrTask(task, "CREATE_TICKETS",
-    "Creates and links Jira tickets from the selected functional-family Zephyr report. Requires -PzephyrFunctionalStage=functional|smoke")
+    configureFunctionalZephyrTask(task, "CREATE_TICKETS",
+            "Creates and links Jira tickets from the selected functional-family Zephyr report. Requires -PzephyrFunctionalStage=functional")
 }
 
 tasks.register('updateJiraTicketsFromFunctionalReport', JavaExec) { JavaExec task ->
-  configureFunctionalZephyrTask(task, "UPDATE_TICKETS",
-    "Updates Jira tickets from the selected functional-family Zephyr report. Requires -PzephyrFunctionalStage=functional|smoke")
+    configureFunctionalZephyrTask(task, "UPDATE_TICKETS",
+            "Updates Jira tickets from the selected functional-family Zephyr report. Requires -PzephyrFunctionalStage=functional")
 }
 
 tasks.register('createJiraExecutionFromFunctionalReport', JavaExec) { JavaExec task ->
-  configureFunctionalZephyrTask(task, "CREATE_EXECUTION",
-    "Creates a Zephyr execution from the selected functional-family Zephyr report. Requires -PzephyrFunctionalStage=functional|smoke")
+    configureFunctionalZephyrTask(task, "CREATE_EXECUTION",
+            "Creates a Zephyr execution from the selected functional-family Zephyr report. Requires -PzephyrFunctionalStage=functional")
 }
 
-tasks.register('createJiraTicketsFromJUnit5ReportIntegrationTest', JavaExec) { JavaExec task ->
-  configureIntegrationZephyrTask(task, "CREATE_TICKETS",
-    "Processes Junit5Report-IntegrationTest.json to create and link Jira tickets to each test")
+tasks.register('createJiraTicketsFromIntegrationReport', JavaExec) { JavaExec task ->
+    configureIntegrationZephyrTask(task, "CREATE_TICKETS",
+            "Creates and links Jira tickets from the integration JUnit5 Zephyr report")
 }
 
-tasks.register('updateJiraTicketsFromJUnit5ReportIntegrationTest', JavaExec) { JavaExec task ->
-  configureIntegrationZephyrTask(task, "UPDATE_TICKETS",
-    "Processes Junit5Report-IntegrationTest.json to update Jira tickets")
+tasks.register('updateJiraTicketsFromIntegrationReport', JavaExec) { JavaExec task ->
+    configureIntegrationZephyrTask(task, "UPDATE_TICKETS",
+            "Updates Jira tickets from the integration JUnit5 Zephyr report")
 }
 
-tasks.register('createJiraExecutionFromJUnit5ReportIntegrationTest', JavaExec) { JavaExec task ->
-  configureIntegrationZephyrTask(task, "CREATE_EXECUTION",
-    "Processes Junit5Report-IntegrationTest.json to create Zephyr executions")
+tasks.register('createJiraExecutionFromIntegrationReport', JavaExec) { JavaExec task ->
+    configureIntegrationZephyrTask(task, "CREATE_EXECUTION",
+            "Creates a Zephyr execution from the integration JUnit5 Zephyr report")
 }

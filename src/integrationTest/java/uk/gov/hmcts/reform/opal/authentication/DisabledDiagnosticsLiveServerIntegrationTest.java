@@ -1,9 +1,9 @@
-package uk.gov.hmcts.reform.opal.authentication;
+package uk.gov.hmcts.opal.authentication;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.test.context.TestPropertySource;
-import uk.gov.hmcts.reform.opal.BaseIntegrationTest;
+import uk.gov.hmcts.opal.BaseIntegrationTest;
 
 import java.net.URI;
 import java.net.http.HttpClient;

@@ -1,4 +1,4 @@
-package uk.gov.hmcts.reform.opal.operational;
+package uk.gov.hmcts.opal.operational;
 
 import org.junit.jupiter.api.Test;
 
