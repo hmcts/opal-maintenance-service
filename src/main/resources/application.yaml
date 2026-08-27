@@ -159,7 +159,7 @@ be-developer-config:
 
 logging:
   level:
-    root: ${ROOT_LOG_LEVEL:INFO}
+    root: ${ROOT_LOGGING_LEVEL:${ROOT_LOG_LEVEL:INFO}}
     opal: ${OPAL_LOG_LEVEL:INFO}
     opal.UserStateClientService: ERROR
     org:

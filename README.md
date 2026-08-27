@@ -108,8 +108,8 @@ Create docker image:
   docker compose build
 ```
 
-Run the distribution (created in `build/install/opal-maintenance-service` directory)
-by executing the following command:
+The assembled application boot jar is created in `build/libs`. Run it through
+Docker Compose by executing the following command:
 
 **Bash**:
 ```bash
@@ -183,6 +183,7 @@ Check the health and Prometheus endpoints after starting the application:
 
 ```bash
 curl http://localhost:4551/health
+curl http://localhost:4551/prometheus
 ```
 
 

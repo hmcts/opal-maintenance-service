@@ -248,11 +248,18 @@ tasks.register('mergeFunctionalResults', Copy) {
   into layout.buildDirectory.dir("test-results/functional")
   include '*.xml'
 }
+tasks.register('clearFunctionalReports', Delete) {
+  delete(
+    layout.buildDirectory.dir("test-results/functional"),
+    layout.buildDirectory.dir("reports/tests/functionalOpal"),
+    file("${rootDir}/functional-output")
+  )
+}
 tasks.register('functional') {
   description = "Runs functional tests"
   group = "Verification"
-  dependsOn('clearReports', 'functionalOpal', 'copyFunctionalReport', 'mergeFunctionalResults')
-  tasks.functionalOpal.mustRunAfter clearReports
+  dependsOn('clearFunctionalReports', 'functionalOpal', 'copyFunctionalReport', 'mergeFunctionalResults')
+  tasks.functionalOpal.mustRunAfter clearFunctionalReports
   tasks.mergeFunctionalResults.mustRunAfter functionalOpal
   tasks.copyFunctionalReport.mustRunAfter functionalOpal
 }
@@ -268,10 +275,11 @@ tasks.register('smokeOpal', Test) {
   finalizedBy 'packageSmokeOutput'
 }
 tasks.register('copySmokeReport', Copy) {
+  mustRunAfter tasks.named('smokeOpal')
   from(layout.buildDirectory.dir("reports/tests/smokeOpal"))
   into("${rootDir}/smoke-test-report")
   doLast {
-    logPublishedHtmlReport("Smoke Test Report", "${rootDir}/smoke-test-report")
+    logger.quiet("Smoke Test Report available at - file://${rootDir}/smoke-test-report/index.html")
   }
 }
 tasks.register('packageSmokeOutput', Copy) {
@@ -281,33 +289,24 @@ tasks.register('packageSmokeOutput', Copy) {
     into("report")
   }
 }
+tasks.register('clearSmokeReports', Delete) {
+  delete(
+    layout.buildDirectory.dir("test-results/smoke"),
+    layout.buildDirectory.dir("reports/tests/smokeOpal"),
+    file("${rootDir}/smoke-test-report"),
+    file("${rootDir}/smoke-output")
+  )
+}
 
 tasks.register('smoke') {
   description = "Runs Smoke Tests"
   group = "Verification"
-  dependsOn('clearReports', 'smokeOpal', 'aggregate', 'copySmokeReport')
-  tasks.smokeOpal.mustRunAfter clearReports
+  dependsOn('clearSmokeReports', 'smokeOpal', 'aggregate', 'copySmokeReport')
+  tasks.smokeOpal.mustRunAfter clearSmokeReports
   tasks.aggregate.mustRunAfter smokeOpal
   tasks.copySmokeReport.mustRunAfter aggregate
   finalizedBy 'packageSmokeOutput'
 
-}
-
-// Jenkins sometimes invokes Serenity-producing tasks as separate top-level tasks.
-// Keep the execution order deterministic and aggregate against the JUnit XML roots
-// that the functional and smoke suites actually generate.
-tasks.named('clearReports') {
-  doLast {
-    delete(
-      layout.buildDirectory.dir("test-results/functional"),
-      layout.buildDirectory.dir("test-results/smoke"),
-      layout.buildDirectory.dir("reports/tests/functionalOpal"),
-      layout.buildDirectory.dir("reports/tests/smokeOpal"),
-      file("${rootDir}/functional-output"),
-      file("${rootDir}/smoke-test-report"),
-      file("${rootDir}/smoke-output")
-    )
-  }
 }
 
 tasks.named('aggregate') {
