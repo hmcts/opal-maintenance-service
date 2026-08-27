@@ -14,3 +14,8 @@ Feature: Countries Reference Data
     Given I am testing as the "opal-test@dev.platform.hmcts.net" user
     When I request Countries with a malformed active filter
     Then the Country validation Problem Details response is returned
+
+  @JIRA-STORY:PO-10290 @JIRA-EPIC:PO-6506 @PO10290Authentication
+  Scenario: Countries require authentication
+    When I request active Countries without authentication
+    Then the Country unauthorized Problem Details response is returned

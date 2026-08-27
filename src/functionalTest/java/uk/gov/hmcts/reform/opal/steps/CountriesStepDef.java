@@ -87,6 +87,24 @@ public class CountriesStepDef extends BaseStepDef {
         );
     }
 
+    @When("I request active Countries without authentication")
+    public void requestActiveCountriesWithoutAuthentication() {
+        latestResponse = getWithoutBearer("/countries?active=true");
+    }
+
+    @Then("the Country unauthorized Problem Details response is returned")
+    public void assertCountryUnauthorizedProblemDetails() throws IOException {
+        assertProblemDetail(
+            latestResponse(),
+            401,
+            "https://hmcts.gov.uk/problems/unauthorized",
+            "Unauthorized",
+            "You are not authorized to access this resource",
+            "instance",
+            "operation_id"
+        );
+    }
+
     private Map<Long, Boolean> readCountries(Response response) throws IOException {
         assertEquals(200, response.statusCode(), "Country request did not succeed");
         JsonNode root = OBJECT_MAPPER.readTree(response.asString());
