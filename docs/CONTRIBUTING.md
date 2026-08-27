@@ -1,8 +1,10 @@
 # Contributing
 
 This document is the canonical contribution workflow for this repository. Use
-the [Backend Definition of Done](BACKEND_DEFINITION_OF_DONE.md) before handing
-work over for human review.
+the [Common Definition of Done](COMMON_DEFINITION_OF_DONE.md) before handing
+work over for human review, together with each applicable
+[Backend](BACKEND_DEFINITION_OF_DONE.md) and
+[Database](DATABASE_DEFINITION_OF_DONE.md) supplement.
 
 ## Branches
 
