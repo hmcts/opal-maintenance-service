@@ -33,19 +33,27 @@ diagnostic requests. Never place a bearer value in a tracked Bruno file.
 
 Database-contract SQL scripts live under `src/dbUnitTest`. Each script is
 executed by a focused JUnit integration test against the repository's
-disposable PostgreSQL 17 Testcontainer; do not run these scripts against a
+disposable PostgreSQL 17 Testcontainer. Do not run these scripts against a
 shared database.
 
-`src/dbUnitTest/countriesTest/countries_unit_tests.sql` is executed by
-`CountriesDatabaseIntegrationTest` inside a rollback-only JDBC transaction.
-Run it with:
+Database SQL tests should execute inside a rollback-only JDBC transaction so
+test data does not persist. A failed PostgreSQL `ASSERT` or unexpected SQL
+exception must fail the associated integration test.
+
+Run all database integration tests with:
+
+```bash
+./gradlew integration --tests '*DatabaseIntegrationTest'
+```
+
+Run an individual database integration test by its class name, for example:
 
 ```bash
 ./gradlew integration --tests '*CountriesDatabaseIntegrationTest'
 ```
 
-Docker is required. A failed PostgreSQL `ASSERT` or unexpected SQL exception
-fails the integration test.
+Docker is required. The current Countries contract is defined in
+`src/dbUnitTest/countriesTest/countries_unit_tests.sql`.
 
 ## Infrastructure and evidence
 
