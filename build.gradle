@@ -44,30 +44,6 @@ def isPortAvailable = { int port ->
   }
 }
 
-def syncFunctionalArtifacts = { String reportLabel, String rawReportDirectory, String outputDirectory, String cucumberJsonFileName ->
-  delete("${outputDirectory}/report")
-  delete("${outputDirectory}/zephyr")
-
-  if (file(rawReportDirectory).exists()) {
-    copy {
-      from(rawReportDirectory)
-      into("${outputDirectory}/report")
-    }
-  }
-
-  if (cucumberJsonFileName != null) {
-    def cucumberJsonFile = file("${rootDir}/target/zephyr-reports/${cucumberJsonFileName}")
-    if (cucumberJsonFile.exists()) {
-      copy {
-        from(cucumberJsonFile)
-        into("${outputDirectory}/zephyr")
-      }
-    }
-  }
-
-  logPublishedHtmlReport(reportLabel, "${outputDirectory}/report")
-}
-
 group = 'uk.gov.hmcts'
 version = '0.0.1'
 
@@ -243,36 +219,14 @@ tasks.register('functionalOpal', Test) {
   reports.junitXml.getOutputLocation().set(layout.buildDirectory.dir("test-results/functional/opal"))
   testLogging.showStandardStreams = true
   environment("IS_LEGACY_MODE", "false")
-  systemProperty 'cucumber.plugin',
-    "net.serenitybdd.cucumber.core.plugin.SerenityReporterParallel,pretty,json:${rootDir}/target/zephyr-reports/cucumber-opal.json,timeline:${rootDir}/target/test-results/timeline"
-  include '**/OpalTestRunner.class'
-
-  finalizedBy 'copyOpalCucumberJson', 'mergeFunctionalResults', 'aggregate', 'copyFunctionalReport'
-}
-
-tasks.register('copyOpalCucumberJson', Copy) {
-  from("${rootDir}/target/zephyr-reports/cucumber-opal.json")
-  into("${rootDir}/functional-output/zephyr")
-  outputs.upToDateWhen { false }
+  exclude '**/OpalTestRunner.class'
 }
 
 tasks.register('copyFunctionalReport', Copy) {
-  dependsOn 'aggregate'
-  from("${rootDir}/target/site/serenity")
+  from(layout.buildDirectory.dir("reports/tests/functionalOpal"))
   into("${rootDir}/functional-output/report")
   doLast {
-    logPublishedHtmlReport("Functional Test Report", "${rootDir}/functional-output/report")
-  }
-}
-
-tasks.register('syncFunctionalArtifactsFromExistingResults') {
-  doLast {
-    syncFunctionalArtifacts(
-      'Functional Test Report',
-      "${rootDir}/functional-output/report",
-      "${rootDir}/functional-output",
-      'cucumber-opal.json'
-    )
+    logger.quiet("Functional Test Report available at - file://${rootDir}/functional-output/report/index.html")
   }
 }
 
@@ -296,11 +250,10 @@ tasks.register('mergeFunctionalResults', Copy) {
 tasks.register('functional') {
   description = "Runs functional tests"
   group = "Verification"
-  dependsOn('clearReports', 'functionalOpal', 'aggregate', 'copyFunctionalReport', 'mergeFunctionalResults')
+  dependsOn('clearReports', 'functionalOpal', 'copyFunctionalReport', 'mergeFunctionalResults')
   tasks.functionalOpal.mustRunAfter clearReports
   tasks.mergeFunctionalResults.mustRunAfter functionalOpal
-  tasks.aggregate.mustRunAfter functionalOpal
-  tasks.copyFunctionalReport.mustRunAfter aggregate
+  tasks.copyFunctionalReport.mustRunAfter functionalOpal
 }
 
 tasks.register('smokeOpal', Test) {
@@ -351,17 +304,13 @@ tasks.named('clearReports') {
 tasks.named('aggregate') {
   testRoot = layout.buildDirectory.dir("test-results").get().asFile.absolutePath
   mustRunAfter(
-    tasks.named('functionalOpal'),
     tasks.named('smokeOpal'),
-    tasks.named('mergeFunctionalResults'),
   )
 }
 
 tasks.configureEach {
   if (name in ['copyFunctionalReport', 'copySmokeReport']) {
     mustRunAfter tasks.named('aggregate')
-  } else if (name == 'copyOpalCucumberJson') {
-    mustRunAfter tasks.named('functionalOpal')
   }
 }
 

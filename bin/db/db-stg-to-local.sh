@@ -1,5 +1,27 @@
 #!/bin/bash
 set -e
+umask 077
+
+PRIVATE_TEMP_DIR=""
+
+cleanup() {
+  unset PGPASSWORD
+  if [ -n "$PRIVATE_TEMP_DIR" ] && [ -d "$PRIVATE_TEMP_DIR" ]; then
+    rm -rf -- "$PRIVATE_TEMP_DIR"
+  fi
+}
+
+run_with_pgpassword() (
+  trap 'unset PGPASSWORD' EXIT
+  export PGPASSWORD="$1"
+  shift
+  "$@"
+)
+
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 echo "*** WARNING: This script will destroy your local OPAL API database and restore it from staging. ***"
 echo "It requires \"az\" \"pg_dump\" and \"psql\", and you must also be connected to the HMCTS VPN and have a postgres database running locally."
@@ -9,7 +31,7 @@ command -v az >/dev/null 2>&1 || { echo >&2 "I require \"az\" but it's not insta
 command -v pg_dump >/dev/null 2>&1 || { echo >&2 "I require \"pg_dump\" but it's not installed. Aborting."; exit 1; }
 command -v psql >/dev/null 2>&1 || { echo >&2 "I require \"psql\" but it's not installed. Aborting."; exit 1; }
 
-read -p 'Are you sure you want to continue (y/n): ' continue
+read -r -p 'Are you sure you want to continue (y/n): ' continue
 if [ "$continue" != "y" ]
 then
   exit 1
@@ -17,9 +39,10 @@ fi
 
 echo "Fetching secrets from staging key-vault..."
 
-DUMP_FILE="/tmp/opal-api-stg-dump.sql"
-RESTORE_LOG_FILE="/tmp/opal-api-local-restore.log"
-RESTORE_OUTPUT="/tmp/opal-api-local-stdout.log"
+PRIVATE_TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/opal-maintenance-stg-to-local.XXXXXX")"
+DUMP_FILE="$PRIVATE_TEMP_DIR/opal-api-stg-dump.sql"
+RESTORE_LOG_FILE="$PRIVATE_TEMP_DIR/opal-api-local-restore.log"
+RESTORE_OUTPUT="$PRIVATE_TEMP_DIR/opal-api-local-stdout.log"
 
 SCHEMA="public"
 DATABASE="$(az keyvault secret show --vault-name opal-stg --name maintenance-service-POSTGRES-DATABASE | jq .value -r)"
@@ -35,19 +58,19 @@ STG_PORT="$(az keyvault secret show --vault-name opal-stg --name maintenance-ser
 
 echo "Dumping staging database..."
 
-# make the password available for pg_dump
-export PGPASSWORD="$STG_PASSWORD"
-pg_dump -h $STG_HOST -p $STG_PORT -U $STG_USER -n $SCHEMA -d $DATABASE > $DUMP_FILE
+run_with_pgpassword "$STG_PASSWORD" \
+  pg_dump -h "$STG_HOST" -p "$STG_PORT" -U "$STG_USER" -n "$SCHEMA" -d "$DATABASE" > "$DUMP_FILE"
 
 echo "Dump complete, dump file: $DUMP_FILE"
 echo "Restoring local database..."
 
-# make the password available for psql
-export PGPASSWORD="$LOCAL_PASSWORD"
 # drop the darts schema
-psql -h $LOCAL_HOST -U $LOCAL_USER -d $DATABASE -c "DROP SCHEMA IF EXISTS $SCHEMA CASCADE" &> /dev/null
+run_with_pgpassword "$LOCAL_PASSWORD" \
+  psql -h "$LOCAL_HOST" -U "$LOCAL_USER" -d "$DATABASE" -c "DROP SCHEMA IF EXISTS $SCHEMA CASCADE" &> /dev/null
 # restore from the dump file
-psql -h $LOCAL_HOST -U $LOCAL_USER -d $DATABASE -L $RESTORE_LOG_FILE < $DUMP_FILE &> $RESTORE_OUTPUT
+run_with_pgpassword "$LOCAL_PASSWORD" \
+  psql -h "$LOCAL_HOST" -U "$LOCAL_USER" -d "$DATABASE" -L "$RESTORE_LOG_FILE" \
+  < "$DUMP_FILE" &> "$RESTORE_OUTPUT"
 
 echo "Restore complete, stdout: $RESTORE_OUTPUT  log file: $RESTORE_LOG_FILE"
 echo "Output: $RESTORE_OUTPUT"

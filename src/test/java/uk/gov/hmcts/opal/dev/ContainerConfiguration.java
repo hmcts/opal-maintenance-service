@@ -32,9 +32,9 @@ public class ContainerConfiguration {
             .withCreateContainerCmdModifier(cmd ->
                 cmd.withHostConfig(new HostConfig().withPortBindings(DB_PORT_BINDING)))
             .withExposedPorts(DB_EXPOSED_PORT)
-            .withDatabaseName("opal-fines-db")
-            .withUsername("opal-db-user")
-            .withPassword("opal-db-password")
+            .withDatabaseName("opal-maintenance-db")
+            .withUsername("opal-maintenance")
+            .withPassword("opal-maintenance")
             .withReuse(true);
     }
 
