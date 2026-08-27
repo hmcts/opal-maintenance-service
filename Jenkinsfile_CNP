@@ -6,4 +6,8 @@ def type = "java"
 def product = "opal"
 def component = "maintenance-service"
 
-withPipeline(type, product, component) {}
+withPipeline(type, product, component) {
+  if (!env.OPAL_USER_SERVICE_API_URL) {
+    env.OPAL_USER_SERVICE_API_URL = 'https://opal-user-service.staging.platform.hmcts.net'
+  }
+}
