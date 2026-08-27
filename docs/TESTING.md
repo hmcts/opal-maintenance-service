@@ -7,6 +7,26 @@
 - **Functional:** `src/functionalTest/java`; run `./gradlew functional`. External HTTP checks use `TEST_URL`, defaulting to `http://localhost:4551`; they require a suitable running service.
 - **Smoke:** `src/smokeTest/java`; run `./gradlew smoke`. External HTTP checks use the same `TEST_URL` default and require a running service.
 
+## Country API functional tests
+
+The PO-10290 Country scenarios use Cucumber and Serenity against a running
+maintenance service. Set `TEST_URL` when the service is not available at
+`http://localhost:4551`. Authenticated scenarios also require a User Service
+with its testing-support token endpoint enabled; set `OPAL_USER_SERVICE_API_URL`
+when it is not available at `http://localhost:4555`.
+
+The target database must contain at least one active and one inactive Country.
+The scenarios compare the unfiltered, active, and inactive result sets and do
+not depend on fixed Country identifiers, names, ordering, or counts.
+
+Run only PO-10290 with:
+
+```bash
+./gradlew functionalOpal -Dcucumber.filter.tags='@JIRA-STORY:PO-10290'
+```
+
+Never put a bearer token in a tracked file or command-line argument.
+
 ## Baseline and focused commands
 
 `./gradlew build` is the baseline validation for source, build, and runtime
