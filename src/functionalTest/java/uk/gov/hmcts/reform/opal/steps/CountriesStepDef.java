@@ -16,6 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static uk.gov.hmcts.reform.opal.assertions.ProblemDetailAssertions.assertProblemDetail;
 
 public class CountriesStepDef extends BaseStepDef {
 
@@ -62,6 +63,28 @@ public class CountriesStepDef extends BaseStepDef {
         Set<Long> filteredIds = new HashSet<>(activeIds);
         filteredIds.addAll(inactiveIds);
         assertEquals(allCountries.keySet(), filteredIds, "Filtered Countries do not partition all Countries");
+    }
+
+    @When("I request Countries with a malformed active filter")
+    public void requestCountriesWithMalformedActiveFilter() {
+        latestResponse = getWithBearer(
+            "/countries?active=not-a-boolean",
+            BearerTokenStepDef.getToken()
+        );
+    }
+
+    @Then("the Country validation Problem Details response is returned")
+    public void assertCountryValidationProblemDetails() throws IOException {
+        assertProblemDetail(
+            latestResponse(),
+            406,
+            "https://hmcts.gov.uk/problems/type-mismatch",
+            "Not Acceptable",
+            "Invalid parameter value format",
+            "instance",
+            "operation_id",
+            "reason"
+        );
     }
 
     private Map<Long, Boolean> readCountries(Response response) throws IOException {
