@@ -64,6 +64,21 @@ To stop the environment, press `Ctrl+C`, then remove the containers with:
 docker compose down
 ```
 
+`docker compose down` intentionally preserves the named PostgreSQL volume so
+local development data survives normal teardown. This persistence is useful
+for development, but restarting Compose does not prove that migrations work
+against a fresh database.
+
+> **Destructive:** `docker compose down --volumes` deletes the developer-owned
+> named volume and its local database data. It is not a routine migration
+> validation command.
+
+Fresh-database migration validation is a separate, database-owned workflow.
+The intended canonical entry point under DB-01 is `./gradlew dbTest`,
+but that task is not implemented in this checkout. Until it is available,
+record dedicated fresh-database validation as unavailable rather than treating
+Compose or backend integration tests as equivalent evidence.
+
 #### Approach 2: Run the application on the local JVM
 
 Start PostgreSQL in Docker:
