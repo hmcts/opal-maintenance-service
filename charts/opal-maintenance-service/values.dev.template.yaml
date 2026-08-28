@@ -71,6 +71,8 @@ java:
 
 opal-user-service:
   enabled: ${DEV_ENABLE_OPAL_USER_SERVICE}
+  user-role-mapping-refresh:
+    releaseNameOverride: '{{ .Release.Name }}-role-refresh'
   java:
     releaseNameOverride: '{{ .Release.Name }}-user-service'
     image: 'hmctsprod.azurecr.io/opal/user-service:${DEV_OPAL_USER_SERVICE_IMAGE_SUFFIX}'
