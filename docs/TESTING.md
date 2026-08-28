@@ -31,19 +31,42 @@ diagnostic requests. Never place a bearer value in a tracked Bruno file.
 
 ## Database SQL tests
 
-Database-contract SQL scripts live under `src/dbUnitTest`. Each script is
-executed by a focused JUnit integration test against the repository's
-disposable PostgreSQL 17 Testcontainer. Do not run these scripts against a
-shared database.
+Database-contract SQL scripts live under `src/dbUnitTest` and run against the
+repository's disposable PostgreSQL 17 Testcontainer. Do not run these scripts
+against a shared database.
 
-Database SQL tests should execute inside a rollback-only JDBC transaction so
-test data does not persist. A failed PostgreSQL `ASSERT` or unexpected SQL
-exception must fail the associated integration test.
+Two complementary styles are supported:
+
+- Native PL/pgSQL contract suites use PostgreSQL `ASSERT`. A failed assertion
+  or unexpected SQL exception must fail the associated JUnit integration test.
+- Supplementary pgTAP suites use pgTAP assertions and are executed by JUnit
+  through `pg_prove`. A non-zero `pg_prove` exit code must fail the integration
+  test and include TAP diagnostics in the test failure.
+
+Keep both styles inside rollback-only transactions so test rows and test-local
+extension creation do not persist. A pgTAP suite must start a transaction,
+create the `pgtap` extension if required, declare an exact `plan`, call
+`finish()`, and end with `ROLLBACK`.
+
+The integration-test PostgreSQL image contains pgTAP and `pg_prove` solely for
+this disposable test workflow. Do not add pgTAP to production Flyway
+migrations, application dependencies, or shared databases.
+
+Name native suites `<object>_unit_tests.sql` and supplementary pgTAP suites
+`<object>_pgtap_tests.sql` beneath an object-focused directory. Each suite
+must be invoked by a focused `*DatabaseIntegrationTest`; merely adding an SQL
+file does not make it part of Gradle or CI.
 
 Run all database integration tests with:
 
 ```bash
 ./gradlew integration --tests '*DatabaseIntegrationTest'
+```
+
+Run pgTAP infrastructure and database suites with:
+
+```bash
+./gradlew integration --tests '*PgTap*' --tests '*DatabaseIntegrationTest'
 ```
 
 Run an individual database integration test by its class name, for example:
@@ -52,8 +75,9 @@ Run an individual database integration test by its class name, for example:
 ./gradlew integration --tests '*CountriesDatabaseIntegrationTest'
 ```
 
-Docker is required. The current Countries contract is defined in
-`src/dbUnitTest/countriesTest/countries_unit_tests.sql`.
+Docker is required. The current Countries contracts are defined in
+`src/dbUnitTest/countriesTest/countries_unit_tests.sql` and
+`src/dbUnitTest/countriesTest/countries_pgtap_tests.sql`.
 
 ## Infrastructure and evidence
 
