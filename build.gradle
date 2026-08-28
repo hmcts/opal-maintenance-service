@@ -504,33 +504,6 @@ dependencies {
     exclude group: 'com.microsoft.azure', module: 'applicationinsights-spring-boot-starter'
   }
 
-  // MapStruct
-  implementation 'org.mapstruct:mapstruct:1.6.3'
-  annotationProcessor 'org.mapstruct:mapstruct-processor:1.6.3'
-
-  testCompileOnly 'org.projectlombok:lombok:1.18.46'
-  testAnnotationProcessor 'org.projectlombok:lombok:1.18.46'
-
-  integrationTestCompileOnly 'org.projectlombok:lombok:1.18.46'
-  integrationTestAnnotationProcessor 'org.projectlombok:lombok:1.18.46'
-
-  implementation 'org.mapstruct:mapstruct:1.6.3'
-  annotationProcessor 'org.mapstruct:mapstruct-processor:1.6.3'
-
-  implementation 'org.apache.xmlgraphics:fop:2.11'
-  implementation 'org.apache.xmlgraphics:fop-core:2.11'
-  implementation 'org.apache.xmlgraphics:fop-events:2.11'
-  implementation 'org.apache.xmlgraphics:xmlgraphics-commons:2.11'
-  implementation 'org.apache.pdfbox:pdfbox:3.0.8'
-  implementation 'net.sf.saxon:Saxon-HE:13.0'
-
-  testImplementation 'com.github.java-json-tools:json-schema-validator:2.2.14'
-  constraints {
-    testImplementation('org.mozilla:rhino:1.9.1') {
-      because '1.7.7.2 is vulnerable to CVE-2025-66453'
-    }
-  }
-
   testImplementation 'org.wiremock.integrations:wiremock-spring-boot:4.2.2'
 
   testImplementation 'org.springframework.boot:spring-boot-devtools'
