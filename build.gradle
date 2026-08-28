@@ -456,6 +456,7 @@ dependencies {
   implementation 'org.springframework.boot:spring-boot-flyway'
   implementation "org.springframework.boot:spring-boot-starter-web"
   implementation "org.springframework.boot:spring-boot-starter-actuator"
+  runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
   implementation "org.springframework.boot:spring-boot-starter-aspectj"
   implementation "org.springframework.boot:spring-boot-starter-json"
   implementation "org.springframework.boot:spring-boot-starter-data-jpa"
