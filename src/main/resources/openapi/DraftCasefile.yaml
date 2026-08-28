@@ -1,0 +1,197 @@
+openapi: 3.1.1
+
+servers:
+  - url: http://localhost:4551/
+
+info:
+  description: Opal Maintenance Service - Draft Casefile submission
+  version: v0.0.1
+  title: Opal Maintenance Service
+
+paths:
+  /draft-casefiles:
+    post:
+      tags:
+        - Draft Casefile
+      summary: Submits an RM Draft Casefile for review
+      description: >-
+        Validates and persists the complete RM Casefile as a submitted Draft Casefile. The service derives the
+        identifier, submitter, timestamps, Casefile Snapshot, lifecycle status and initial Timeline Data.
+      operationId: createDraftCasefile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRequest'
+            examples:
+              illustrative:
+                summary: Illustrative REMO In submission
+                description: >-
+                  Demonstrates the contract shape. Reference identifiers other than Business Unit 1 must be
+                  replaced with values from the deployed RM reference datasets before use as executable test data.
+                value:
+                  business_unit_id: 1
+                  casefile_type: REMO In
+                  casefile:
+                    respondent_account:
+                      business_unit_id: 1
+                      application_id: 1
+                      originator_name: Example Court
+                      casefile_type: REMO In
+                      respondent:
+                        party_details:
+                          organisation: false
+                          individual_details:
+                            forenames: Alex
+                            surname: Smith
+                          address:
+                            address_line_1: 1 High Street
+                            country: United Kingdom
+                      order_details:
+                        date_ordered: 2026-08-01
+                        date_arrears_last_updated: 2026-08-25
+                        interest_flag: false
+                        indexation: None
+                        payment_arrangement: Court
+                        payment_period: Monthly
+                        order_terms:
+                          - result_id: MAT
+                            creditor_type: Applicant
+                            result_responses:
+                              - parameter_name: Amount
+                                response: '100.00'
+                    applicant:
+                      party_details:
+                        organisation: false
+                        individual_details:
+                          forenames: Sam
+                          surname: Jones
+                        address:
+                          address_line_1: 2 Main Street
+                          country: France
+                      bank_account_details:
+                        bank_account_type: None or not applicable
+      responses:
+        '201':
+          description: Draft Casefile submitted successfully
+          headers:
+            Location:
+              description: Relative URI of the created Draft Casefile.
+              required: true
+              schema:
+                type: string
+                format: uri-reference
+              example: /draft-casefiles/123
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateResponse'
+        '400':
+          description: Request structure, field validation or referenced data is invalid
+          content:
+            application/problem+json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
+        '403':
+          description: The user cannot create Draft Casefiles for the requested Business Unit
+          content:
+            application/problem+json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
+        '500':
+          description: Internal server error
+          content:
+            application/problem+json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
+        '503':
+          description: Service unavailable
+          content:
+            application/problem+json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
+
+components:
+  schemas:
+    CreateRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - business_unit_id
+        - casefile
+        - casefile_type
+      properties:
+        business_unit_id:
+          type: integer
+          format: int16
+          minimum: 1
+          maximum: 32767
+          description: Owning Business Unit. DB Mapping - draft_casefiles.business_unit_id
+        casefile:
+          $ref: './Casefile.yaml#/components/schemas/Casefile'
+        casefile_type:
+          $ref: './Casefile.yaml#/components/schemas/CasefileType'
+
+    CreateResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - draft_casefile_id
+        - business_unit_id
+        - created_date
+        - submitted_by
+        - submitted_by_name
+        - casefile_snapshot
+        - casefile_type
+        - casefile_status
+        - casefile_status_date
+        - timeline_data
+      properties:
+        draft_casefile_id:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Database-generated Draft Casefile identifier. DB Mapping - draft_casefiles.draft_casefile_id
+        business_unit_id:
+          type: integer
+          format: int16
+          minimum: 1
+          maximum: 32767
+          description: Owning Business Unit. DB Mapping - draft_casefiles.business_unit_id
+        created_date:
+          type: string
+          format: date-time
+          description: Backend-generated creation timestamp. DB Mapping - draft_casefiles.created_date
+        submitted_by:
+          type: string
+          maxLength: 20
+          description: Authenticated submitting user identifier. DB Mapping - draft_casefiles.submitted_by
+        submitted_by_name:
+          type: string
+          maxLength: 100
+          description: Authenticated submitting user's display name. DB Mapping - draft_casefiles.submitted_by_name
+        casefile_snapshot:
+          $ref: './Casefile.yaml#/components/schemas/CasefileSnapshot'
+        casefile_type:
+          $ref: './Casefile.yaml#/components/schemas/CasefileType'
+        casefile_status:
+          type: string
+          enum:
+            - SUBMITTED
+          description: Initial Draft Casefile lifecycle status. DB Mapping - draft_casefiles.casefile_status
+        casefile_status_date:
+          type: string
+          format: date-time
+          description: Backend-generated status timestamp. DB Mapping - draft_casefiles.casefile_status_date
+        timeline_data:
+          type: array
+          minItems: 1
+          items:
+            $ref: './Casefile.yaml#/components/schemas/TimelineEntry'

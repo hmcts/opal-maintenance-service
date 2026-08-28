@@ -1,0 +1,330 @@
+openapi: 3.1.1
+
+info:
+  description: Opal Maintenance Service - RM Casefile objects
+  version: v0.0.1
+  title: Opal Maintenance Service
+
+components:
+  schemas:
+    Casefile:
+      type: object
+      additionalProperties: false
+      required:
+        - respondent_account
+        - applicant
+      properties:
+        respondent_account:
+          $ref: '#/components/schemas/RespondentAccount'
+        applicant:
+          $ref: '#/components/schemas/Applicant'
+        central_authority:
+          $ref: '#/components/schemas/CentralAuthority'
+        minor_creditors:
+          type: array
+          minItems: 1
+          description: >-
+            Minor Creditors created within this Casefile and referenced by creditor_sequence from Order Terms.
+            The collection supports a different new Minor Creditor for each Order Term, as described by the FE journey.
+          items:
+            $ref: '#/components/schemas/MinorCreditor'
+      description: >-
+        Complete structured RM Casefile stored in draft_casefiles.casefile. Casefile Snapshot and Timeline Data are
+        deliberately excluded because the backend creates and persists them separately.
+
+    CasefileType:
+      type: string
+      description: RM Casefile type. DB Mapping - draft_casefiles.casefile_type
+      enum:
+        - REMO In
+        - REMO Out
+        - REMO Out (CMS)
+
+    RespondentAccount:
+      type: object
+      additionalProperties: false
+      required:
+        - business_unit_id
+        - application_id
+        - casefile_type
+        - respondent
+        - order_details
+      properties:
+        business_unit_id:
+          type: integer
+          format: int16
+          minimum: 1
+          maximum: 32767
+          description: Must equal the root business_unit_id. Eventual DB Mapping - respondent_accounts.business_unit_id
+        application_id:
+          type: integer
+          format: int16
+          minimum: 1
+          maximum: 32767
+          description: >-
+            Active Maintenance Application for the Create Casefile journey. Eventual DB Mapping -
+            respondent_accounts.application_id
+        originator_name:
+          type: string
+          minLength: 1
+          maxLength: 40
+          description: >-
+            Optional originating court supplied from Order Details. Eventual DB Mapping -
+            respondent_accounts.originator_name
+        casefile_type:
+          allOf:
+            - $ref: '#/components/schemas/CasefileType'
+          description: Must equal the root casefile_type. Eventual DB Mapping - respondent_accounts.casefile_type
+        remo_reference:
+          type: string
+          maxLength: 20
+          description: Eventual DB Mapping - respondent_accounts.remo_reference
+        central_authority_reference:
+          type: string
+          maxLength: 50
+          description: Eventual DB Mapping - respondent_accounts.ca_reference
+        account_comment:
+          type: string
+          maxLength: 250
+          description: Important Casefile comment displayed on the live Respondent Account summary.
+        respondent:
+          $ref: '#/components/schemas/Respondent'
+        order_details:
+          $ref: '#/components/schemas/OrderDetails'
+        notes:
+          $ref: './CommonObjects.yaml#/components/schemas/Note'
+
+    Respondent:
+      type: object
+      additionalProperties: false
+      required:
+        - party_details
+      properties:
+        party_details:
+          $ref: './CommonObjects.yaml#/components/schemas/PartyDetails'
+        debtor_details:
+          $ref: './CommonObjects.yaml#/components/schemas/DebtorDetails'
+        third_party_details:
+          $ref: './CommonObjects.yaml#/components/schemas/ThirdPartyDetails'
+
+    Applicant:
+      type: object
+      additionalProperties: false
+      required:
+        - party_details
+        - bank_account_details
+      properties:
+        party_details:
+          $ref: './CommonObjects.yaml#/components/schemas/PartyDetails'
+        third_party_details:
+          $ref: './CommonObjects.yaml#/components/schemas/ThirdPartyDetails'
+        bank_account_details:
+          $ref: './CommonObjects.yaml#/components/schemas/BankAccount'
+      allOf:
+        - if:
+            properties:
+              party_details:
+                properties:
+                  organisation:
+                    const: true
+                required:
+                  - organisation
+            required:
+              - party_details
+          then:
+            properties:
+              party_details:
+                properties:
+                  organisation_details:
+                    required:
+                      - foreign_authority_reference
+                required:
+                  - organisation_details
+
+    CentralAuthority:
+      type: object
+      additionalProperties: false
+      required:
+        - major_creditor_id
+      properties:
+        major_creditor_id:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Active Major Creditor selected as the Central Authority. DB Mapping - major_creditors.major_creditor_id
+
+    MinorCreditor:
+      type: object
+      additionalProperties: false
+      required:
+        - creditor_sequence
+        - party_details
+        - bank_account_details
+      properties:
+        creditor_sequence:
+          type: integer
+          format: int32
+          minimum: 1
+          description: Casefile-local identifier used by Order Term creditor assignments.
+        party_details:
+          $ref: './CommonObjects.yaml#/components/schemas/PartyDetails'
+        bank_account_details:
+          $ref: './CommonObjects.yaml#/components/schemas/BankAccount'
+
+    OrderDetails:
+      type: object
+      additionalProperties: false
+      required:
+        - date_arrears_last_updated
+        - interest_flag
+        - indexation
+        - payment_arrangement
+        - payment_period
+        - order_terms
+      properties:
+        date_ordered:
+          type: string
+          format: date
+          description: Eventual DB Mapping - respondent_accounts.imposed_hearing_date
+        date_arrears_last_updated:
+          type: string
+          format: date
+        interest_flag:
+          type: boolean
+          description: Eventual DB Mapping - respondent_accounts.interest_flag
+        indexation:
+          type: string
+          enum:
+            - RPI
+            - CPI
+            - Other
+            - None
+        payment_arrangement:
+          type: string
+          enum:
+            - Court
+            - Direct
+        payment_period:
+          type: string
+          description: Eventual DB Mapping - respondent_accounts.payment_period
+          enum:
+            - Weekly
+            - Fortnightly
+            - Monthly
+            - Quarterly
+            - Yearly
+        order_terms:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/OrderTerm'
+
+    OrderTerm:
+      type: object
+      additionalProperties: false
+      required:
+        - result_id
+        - creditor_type
+        - result_responses
+      properties:
+        result_id:
+          type: string
+          minLength: 1
+          maxLength: 6
+          description: Active Order Term Result. DB Mapping - results.result_id
+        creditor_type:
+          type: string
+          enum:
+            - Applicant
+            - Minor Creditor
+            - Major Creditor
+        minor_creditor_sequence:
+          type: integer
+          format: int32
+          minimum: 1
+          description: Required when creditor_type is Minor Creditor; identifies creditor_sequence within this Casefile.
+        major_creditor_id:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Required when creditor_type is Major Creditor; must identify an active record in the owning Business Unit.
+        result_responses:
+          type: array
+          minItems: 1
+          items:
+            $ref: './CommonObjects.yaml#/components/schemas/ResultResponse'
+      allOf:
+        - if:
+            properties:
+              creditor_type:
+                const: Minor Creditor
+          then:
+            required:
+              - minor_creditor_sequence
+        - if:
+            properties:
+              creditor_type:
+                const: Major Creditor
+          then:
+            required:
+              - major_creditor_id
+
+    CasefileSnapshot:
+      type: object
+      additionalProperties: false
+      required:
+        - respondent_name
+        - created_date
+        - casefile_type
+        - submitted_by_name
+        - business_unit_name
+      properties:
+        respondent_name:
+          type: string
+          maxLength: 101
+        date_of_birth:
+          type: string
+          format: date
+        created_date:
+          type: string
+          format: date-time
+        casefile_type:
+          $ref: '#/components/schemas/CasefileType'
+        submitted_by_name:
+          type: string
+          maxLength: 100
+        approved_date:
+          type: string
+          format: date-time
+        business_unit_name:
+          type: string
+          maxLength: 100
+
+    TimelineEntry:
+      type: object
+      additionalProperties: false
+      required:
+        - username
+        - status
+        - status_date
+      properties:
+        username:
+          type: string
+          maxLength: 100
+          description: Display name of the user responsible for the lifecycle event.
+        status:
+          type: string
+          enum:
+            - Submitted
+            - Resubmitted
+            - Rejected
+            - Approved
+            - Deleted
+            - Failed
+        status_date:
+          type: string
+          format: date-time
+          description: Backend-generated lifecycle timestamp, ordered ascending within Timeline Data.
+        reason_text:
+          type: string
+          maxLength: 1000
