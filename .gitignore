@@ -1,12 +1,22 @@
 .gradle
+/.env
 /build/
-/target/
 !gradle/wrapper/gradle-wrapper.jar
 *.class
 bin/main/application.yaml
+smoke-test-report
+smoke-output
+functional-test-report
+functional-output
+functional-output-demo
+functional-output-r1a-only-demo
+functional-output-r1a-off-demo
+integration-output
 
-### Local environment ###
-/.env
+target
+
+### Generated Source ###
+/src/generated
 
 ### STS ###
 .apt_generated
@@ -22,6 +32,7 @@ bin/main/application.yaml
 !.idea/codeStyles/Project.xml
 !.idea/codeStyles/codeStyleConfig.xml
 /out
+/.run
 *.iws
 *.iml
 *.ipr
@@ -30,6 +41,15 @@ bin/main/application.yaml
 
 applicationinsights-agent-*.jar
 *.log
+
+### Bruno ###
+bruno/environments/*.bru
+bruno/environments/*.env
+
+/integration-output/
+
+# codex
+.codex/*
 
 # Local Superpowers planning/assets
 superpowers/
@@ -42,7 +62,3 @@ docs/plans/
 
 # Local linked worktrees
 /.worktrees/
-
-# Bruno local environments
-bruno/environments/*.bru
-!bruno/environments/env.bru.template

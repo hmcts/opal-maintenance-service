@@ -1,3 +1,7 @@
+global:
+  postgresUsername: "javapostgres"
+  postgresPassword: "javapassword"
+  postgresOptions: "?stringtype=unspecified"
 java:
   # Don't modify below here
   image: ${IMAGE_NAME}
@@ -6,35 +10,164 @@ java:
   devcpuRequests: "250m"
   devmemoryLimits: "2Gi"
   devcpuLimits: "2500m"
+  secrets:
+    SERVICEBUS_SHARED_ACCESS_KEY:
+      secretRef: opal-sb-dev
+      key: primaryKey
+    SERVICEBUS_CONNECTION_STRING:
+      secretRef: opal-sb-dev
+      key: connectionString
   keyVaults:
     opal:
       secrets:
         - name: app-insights-connection-string
           alias: app-insights-connection-string
+        - name: launch-darkly-sdk-key
+          alias: LAUNCH_DARKLY_SDK_KEY
         - name: AzureADTenantId
           alias: AAD_TENANT_ID
         - name: AzureADClientId
           alias: AAD_CLIENT_ID
         - name: AzureADClientSecret
           alias: AAD_CLIENT_SECRET
-        - name: servicebus-connection-string
-          alias: SERVICEBUS_CONNECTION_STRING
-        - name: servicebus-logging-pdpl-queue-name
-          alias: SERVICEBUS_LOGGING_PDPL_QUEUE_NAME
-        - name: managed-redis-connection-string
-          alias: REDIS_CONNECTION_STRING
+        - name: OpalTestUserPassword
+          alias: OPAL_TEST_USER_PASSWORD
   environment:
+    OPAL_REDIS_ENABLED: true
+    REDIS_CONNECTION_STRING: redis://${SERVICE_NAME}-hmcts-redis-master:6379
     OPAL_MAINTENANCE_DB_HOST: "{{ .Release.Name }}-postgresql"
-    OPAL_MAINTENANCE_DB_NAME: "{{ .Values.postgresql.auth.database}}"
-    OPAL_MAINTENANCE_DB_USERNAME: "{{ .Values.postgresql.auth.username}}"
-    OPAL_MAINTENANCE_DB_PASSWORD: "{{ .Values.postgresql.auth.password}}"
-    OPAL_MAINTENANCE_DB_OPTIONS: "?stringtype=unspecified"
-    OPAL_MAINTENANCE_DB_PORT: 5432
+    OPAL_MAINTENANCE_DB_NAME: "opal-maintenance-db"
+    OPAL_MAINTENANCE_DB_USERNAME: "{{ .Values.global.postgresUsername}}"
+    OPAL_MAINTENANCE_DB_PASSWORD: "{{ .Values.global.postgresPassword}}"
+    OPAL_MAINTENANCE_DB_OPTIONS: "{{ .Values.global.postgresOptions }}"
     RUN_DB_MIGRATION_ON_STARTUP: true
+    OPAL_RM_FRONTEND_URL: "${OPAL_RM_FRONT_END_URL}"
+    OPAL_USER_SERVICE_API_URL: "${OPAL_USER_SERVICE_API_URL}"
+    TESTING_SUPPORT_ENDPOINTS_ENABLED: true
+    LAUNCH_DARKLY_ENABLED: false
     FLYWAY_LOCATIONS: classpath:db/migration/ddl, classpath:db/migration/data/allEnvs, classpath:db/migration/data/nle, classpath:db/migration/data/dev
-    TESTING_SUPPORT_ENDPOINTS_ENABLED: false
-    OPAL_REDIS_ENABLED: false
-    OPAL_USER_SERVICE_API_URL: https://opal-user-service.staging.platform.hmcts.net
+    RELEASE_1A_ENABLED: true
+    RELEASE_1B_ENABLED: true
+    RELEASE_1C_ENABLED: true
+    RELEASE_1C_PAYMENT_ENABLED: true
+    RELEASE_1C_ENFORCEMENT_OPERATIONAL_REPORTING_ENABLED: true
+    RELEASE_1C_AUTO_ENFORCEMENT_CONFIG_ENABLED: true
+    APPLICATIONINSIGHTS_ROLE_NAME: "opal-maintenance-service-pr-${CHANGE_ID}"
+    SERVICEBUS_LOGGING_PDPL_QUEUE_NAME: "{{ .Release.Name}}-servicebus-logging-pdpl"
     SERVICEBUS_LOGGING_PDPL_PROTOCOL: amqps
+    SERVICEBUS_PROTOCOL: amqps
   postgresql:
     enabled: true
+    primary:
+      initdb:
+        scripts:
+          init.sql: |-
+            CREATE DATABASE "opal-user-db" OWNER javapostgres ENCODING = 'UTF-8' CONNECTION LIMIT = -1;
+            CREATE DATABASE "opal-logging-db" OWNER javapostgres ENCODING = 'UTF-8' CONNECTION LIMIT = -1;
+    auth:
+      username: javapostgres
+      password: javapassword
+      database: opal-maintenance-db
+
+opal-user-service:
+  enabled: ${DEV_ENABLE_OPAL_USER_SERVICE}
+  user-role-mapping-refresh:
+    releaseNameOverride: '{{ .Release.Name }}-role-refresh'
+  java:
+    releaseNameOverride: '{{ .Release.Name }}-user-service'
+    image: 'hmctsprod.azurecr.io/opal/user-service:${DEV_OPAL_USER_SERVICE_IMAGE_SUFFIX}'
+    ingressHost: "opal-maintenance-service-pr-${CHANGE_ID}-user-service.dev.platform.hmcts.net"
+    keyVaults:
+      opal:
+        secrets:
+          - name: app-insights-connection-string
+            alias: app-insights-connection-string
+          - name: launch-darkly-sdk-key
+            alias: LAUNCH_DARKLY_SDK_KEY
+          - name: AzureADTenantId
+            alias: AAD_TENANT_ID
+          - name: AzureADClientId
+            alias: AAD_CLIENT_ID
+          - name: AzureADClientSecret
+            alias: AAD_CLIENT_SECRET
+          - name: OpalTestUserPassword
+            alias: OPAL_TEST_USER_PASSWORD
+    environment:
+      OPAL_USER_DB_HOST: "{{ .Release.Name }}-postgresql"
+      OPAL_USER_DB_NAME: "opal-user-db"
+      OPAL_USER_DB_USERNAME: "{{ .Values.global.postgresUsername }}"
+      OPAL_USER_DB_PASSWORD: "{{ .Values.global.postgresPassword }}"
+      OPAL_USER_DB_OPTIONS: "{{ .Values.global.postgresOptions }}"
+      RUN_DB_MIGRATION_ON_STARTUP: true
+      OPAL_RM_FRONTEND_URL: "${OPAL_RM_FRONT_END_URL}"
+      TESTING_SUPPORT_ENDPOINTS_ENABLED: true
+      LAUNCH_DARKLY_ENABLED: false
+      APPLICATIONINSIGHTS_ROLE_NAME: "opal-maintenance-service-pr-${CHANGE_ID}-user-service"
+      RELEASE_1A_ENABLED: true
+    postgresql:
+      enabled: false
+opal-logging-service:
+  enabled: ${DEV_ENABLE_OPAL_LOGGING_SERVICE}
+  java:
+    releaseNameOverride: '{{ .Release.Name }}-logging-service'
+    image: 'hmctsprod.azurecr.io/opal/logging-service:${DEV_OPAL_LOGGING_SERVICE_IMAGE_SUFFIX}'
+    ingressHost: "opal-maintenance-service-pr-${CHANGE_ID}-logging-service.dev.platform.hmcts.net"
+    secrets:
+      SERVICEBUS_SHARED_ACCESS_KEY:
+        secretRef: opal-sb-dev
+        key: primaryKey
+      SERVICEBUS_CONNECTION_STRING:
+        secretRef: opal-sb-dev
+        key: connectionString
+    keyVaults:
+      opal:
+        secrets:
+          - name: app-insights-connection-string
+            alias: app-insights-connection-string
+          - name: launch-darkly-sdk-key
+            alias: LAUNCH_DARKLY_SDK_KEY
+          - name: AzureADTenantId
+            alias: AAD_TENANT_ID
+          - name: AzureADClientId
+            alias: AAD_CLIENT_ID
+          - name: AzureADClientSecret
+            alias: AAD_CLIENT_SECRET
+          - name: OpalTestUserPassword
+            alias: OPAL_TEST_USER_PASSWORD
+    environment:
+      OPAL_LOGGING_DB_HOST: "{{ .Release.Name }}-postgresql"
+      OPAL_LOGGING_DB_NAME: "opal-logging-db"
+      OPAL_LOGGING_DB_USERNAME: "{{ .Values.global.postgresUsername}}"
+      OPAL_LOGGING_DB_OPTIONS: "{{ .Values.global.postgresOptions}}"
+      OPAL_LOGGING_DB_PASSWORD: "{{ .Values.global.postgresPassword}}"
+      RUN_DB_MIGRATION_ON_STARTUP: true
+      OPAL_LOGGING_TEST_SUPPORT_ENABLED: true
+      APPLICATIONINSIGHTS_ROLE_NAME: "opal-maintenance-service-pr-${CHANGE_ID}-logging-service"
+      SERVICEBUS_LOGGING_PDPL_QUEUE_NAME: "{{ .Release.Name}}-servicebus-logging-pdpl"
+      SERVICEBUS_LOGGING_PDPL_PROTOCOL: amqps
+    postgresql:
+      enabled: false
+servicebus:
+  enabled: ${DEV_ENABLE_OPAL_SERVICE_BUS}
+  releaseNameOverride: ${SERVICE_NAME}-servicebus
+  resourceGroup: "opal-aso-dev-rg"
+  sbNamespace: "opal-servicebus-dev"
+  setup:
+    queues:
+      - name: "logging-pdpl"
+hmcts-redis:
+  enabled: true
+  master:
+    persistence:
+      enabled: false
+  auth:
+    enabled: false
+    sentinel: false
+  image:
+    registry: hmctsprod.azurecr.io
+    repository: imported/redis
+    tag: 8.2.1
+  sentinel:
+    enabled: false
+  metrics:
+    enabled: false
