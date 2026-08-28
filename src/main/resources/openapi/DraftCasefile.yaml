@@ -13,17 +13,17 @@ paths:
     post:
       tags:
         - Draft Casefile
-      summary: Submits an RM Draft Casefile for review
+      summary: Adds an RM Draft Casefile for review
       description: >-
         Validates and persists the complete RM Casefile as a submitted Draft Casefile. The service derives the
         identifier, submitter, timestamps, Casefile Snapshot, lifecycle status and initial Timeline Data.
-      operationId: createDraftCasefile
+      operationId: addDraftCasefile
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CreateRequest'
+              $ref: '#/components/schemas/AddRequest'
             examples:
               illustrative:
                 summary: Illustrative REMO In submission
@@ -86,7 +86,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CreateResponse'
+                $ref: '#/components/schemas/AddResponse'
         '400':
           description: Request structure, field validation or referenced data is invalid
           content:
@@ -120,7 +120,7 @@ paths:
 
 components:
   schemas:
-    CreateRequest:
+    AddRequest:
       type: object
       additionalProperties: false
       required:
@@ -139,7 +139,7 @@ components:
         casefile_type:
           $ref: './Casefile.yaml#/components/schemas/CasefileType'
 
-    CreateResponse:
+    AddResponse:
       type: object
       additionalProperties: false
       required:

@@ -42,8 +42,8 @@ The current Draft Casefile split illustrates the convention:
   `ContactDetails`, and bank details.
 - `Casefile.yaml` owns the `Casefile` aggregate, casefile roles, order objects,
   `CasefileSnapshot`, and `TimelineEntry`.
-- `DraftCasefile.yaml` owns the endpoint and its `CreateRequest` and
-  `CreateResponse` schemas.
+- `DraftCasefile.yaml` owns the endpoint and its `AddRequest` and
+  `AddResponse` schemas.
 
 `CasefileSnapshot` and timeline entries are created by the backend and are not
 part of the Add Draft Casefile request from the frontend. They are nevertheless
@@ -60,7 +60,7 @@ For example:
 
 | Source | Declared schema | Bundled/generated name |
 | --- | --- | --- |
-| `DraftCasefile.yaml` | `CreateRequest` | `DraftCasefileCreateRequest` |
+| `DraftCasefile.yaml` | `AddRequest` | `DraftCasefileAddRequest` |
 | `Casefile.yaml` | `Respondent` | `CasefileRespondent` |
 | `Casefile.yaml` | `CasefileSnapshot` | `CasefileSnapshot` |
 | `CommonObjects.yaml` | `PartyDetails` | `PartyDetails` |
