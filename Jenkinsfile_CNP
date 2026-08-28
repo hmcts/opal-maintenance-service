@@ -11,6 +11,9 @@ def configurePrUserService() {
   env.DEV_OPAL_USER_SERVICE_IMAGE_SUFFIX = 'latest'
   env.OPAL_USER_SERVICE_API_URL =
     "https://opal-maintenance-service-pr-${env.CHANGE_ID}-user-service.dev.platform.hmcts.net"
+  env.DEV_ENABLE_OPAL_LOGGING_SERVICE = true
+  env.DEV_OPAL_LOGGING_SERVICE_IMAGE_SUFFIX = 'latest'
+  env.DEV_ENABLE_OPAL_SERVICE_BUS = true
 }
 
 withPipeline(type, product, component) {
