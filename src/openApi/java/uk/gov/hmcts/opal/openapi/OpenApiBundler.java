@@ -18,7 +18,7 @@ public class OpenApiBundler {
 
     private static final ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
 
-    private static final Set<String> SHARED_COMPONENT_FILES = Set.of("common", "types");
+    private static final Set<String> SHARED_COMPONENT_FILES = Set.of("common", "commonobjects", "types");
 
     private OpenApiBundler() {
 
@@ -110,21 +110,20 @@ public class OpenApiBundler {
 
             Object refVal = map.get("$ref");
             if (refVal instanceof String ref) {
-                // Case 1: external file reference: ./file.yaml#/components/<section>/<name>[...]
-                if (ref.startsWith("./")) {
-                    String[] fileAndPath = ref.split("#", 2);
-                    String fileName = stripYaml(new File(fileAndPath[0]).getName());
-                    String prefix = componentPrefix(fileName);
+                map.put("$ref", rewriteRef(ref, currentPrefix));
+            }
 
-                    if (fileAndPath.length == 2 && fileAndPath[1].startsWith("/components/")) {
-                        String componentPath = fileAndPath[1].replaceFirst("^/components/", "");
-                        map.put("$ref", "#/components/" + qualifyLastSegment(componentPath, prefix));
-                    }
-                    // Case 2: local reference: #/components/<section>/<name>[...]
-                } else if (ref.startsWith("#/components/")) {
-                    String componentPath = ref.replaceFirst("^#/components/", "");
-                    map.put("$ref", "#/components/" + qualifyLastSegment(componentPath, currentPrefix));
+            Object mappingVal = map.get("mapping");
+            if (mappingVal instanceof Map<?, ?> rawMapping) {
+                Map<String, Object> rewrittenMapping = new LinkedHashMap<>();
+                for (Map.Entry<?, ?> entry : rawMapping.entrySet()) {
+                    Object value = entry.getValue();
+                    rewrittenMapping.put(
+                        entry.getKey().toString(),
+                        value instanceof String ref ? rewriteRef(ref, currentPrefix) : value
+                    );
                 }
+                map.put("mapping", rewrittenMapping);
             }
 
             // Recurse
@@ -138,6 +137,25 @@ public class OpenApiBundler {
             return list;
         }
         return node;
+    }
+
+    private static String rewriteRef(String ref, String currentPrefix) {
+        // Case 1: external file reference: ./file.yaml#/components/<section>/<name>[...]
+        if (ref.startsWith("./")) {
+            String[] fileAndPath = ref.split("#", 2);
+            String fileName = stripYaml(new File(fileAndPath[0]).getName());
+            String prefix = componentPrefix(fileName);
+
+            if (fileAndPath.length == 2 && fileAndPath[1].startsWith("/components/")) {
+                String componentPath = fileAndPath[1].replaceFirst("^/components/", "");
+                return "#/components/" + qualifyLastSegment(componentPath, prefix);
+            }
+        // Case 2: local reference: #/components/<section>/<name>[...]
+        } else if (ref.startsWith("#/components/")) {
+            String componentPath = ref.replaceFirst("^#/components/", "");
+            return "#/components/" + qualifyLastSegment(componentPath, currentPrefix);
+        }
+        return ref;
     }
 
     // Qualify only the component name, retaining its section and any trailing JSON Pointer.

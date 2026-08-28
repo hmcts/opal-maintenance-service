@@ -85,6 +85,9 @@ command that did not exercise changed behaviour as sufficient validation.
 
 ## HTTP and OpenAPI
 
+- Follow [OpenAPI Guidelines](OPENAPI_GUIDELINES.md) for source-file ownership,
+  shared and resource-specific component naming, cross-file references,
+  generated artefacts, and verification.
 - Preserve the root `GET /` endpoint unless deployment configuration changes
   with it; Azure App Service uses it for Always On requests.
 - Keep `/`, `/health`, `/prometheus`, Swagger UI, and OpenAPI endpoints public.
