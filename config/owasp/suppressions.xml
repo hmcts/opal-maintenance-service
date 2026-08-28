@@ -16,6 +16,23 @@
     <cve>CVE-2025-21199</cve>
   </suppress>
 
+  <suppress until="2026-11-30Z">
+    <notes><![CDATA[
+    Reviewed 2026-08-28.
+    CVE-2026-42154 applies to the Go Prometheus server's remote-read endpoint,
+    where a crafted snappy request can trigger excessive memory allocation.
+    This repo uses the Java io.micrometer:micrometer-registry-prometheus artifact
+    only to render application metrics through the Spring Boot Actuator scrape
+    endpoint. It does not embed the Go Prometheus server, its /api/v1/read
+    endpoint, or the vulnerable remote-read implementation. Dependency-Check is
+    mapping Micrometer 1.17.1 to cpe:2.3:a:prometheus:prometheus:1.17.1 because
+    the product name and version overlap. Keep this suppression only for that
+    exact false-positive Maven package and version.
+    ]]></notes>
+    <packageUrl regex="true">^pkg:maven/io\.micrometer/micrometer\-registry\-prometheus@1\.17\.1$</packageUrl>
+    <cve>CVE-2026-42154</cve>
+  </suppress>
+
   <!--End of false positives section -->
 
   <!--Please add Temporary suppression here-->

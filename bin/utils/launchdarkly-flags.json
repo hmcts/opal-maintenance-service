@@ -1,0 +1,79 @@
+{
+  "segments": {},
+  "flags": {
+    "release-1a": {
+      "key": "release-1a",
+      "on": true,
+      "variations": [
+        true,
+        false
+      ],
+      "fallthrough": {
+        "variation": 1
+      },
+      "offVariation": 1
+    },
+    "release-1b": {
+      "key": "release-1b",
+      "on": true,
+      "variations": [
+        true,
+        false
+      ],
+      "fallthrough": {
+        "variation": 1
+      },
+      "offVariation": 1
+    },
+    "release-1c": {
+      "key": "release-1c",
+      "on": true,
+      "variations": [
+        true,
+        false
+      ],
+      "fallthrough": {
+        "variation": 1
+      },
+      "offVariation": 1
+    },
+    "release-1c-enforcement-operational-reporting": {
+      "key": "release-1c-enforcement-operational-reporting",
+      "on": true,
+      "variations": [
+        true,
+        false
+      ],
+      "fallthrough": {
+        "variation": 1
+      },
+      "offVariation": 1
+    },
+    "is-legacy-mode": {
+      "key": "is-legacy-mode",
+      "on": false,
+      "variations": [
+        true,
+        false
+      ],
+      "rules": [],
+      "fallthrough": {
+        "variation": 0
+      },
+      "offVariation": 1,
+      "prerequisites": [],
+      "targets": [],
+      "clientSideAvailability": {
+        "usingMobileKey": true,
+        "usingEnvironmentId": false
+      },
+      "clientSide": false,
+      "salt": "d1a9d794232b464aa9648385517260cb",
+      "trackEvents": false,
+      "trackEventsFallthrough": false,
+      "debugEventsUntilDate": null,
+      "version": 2,
+      "deleted": false
+    }
+  }
+}

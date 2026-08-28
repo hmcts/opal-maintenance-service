@@ -1,31 +1,77 @@
 # Bruno API Collection
 
-This directory contains optional requests for manually proving local maintenance
-diagnostics and User Service integration. It does not contain credentials,
-bearer values, or secrets.
+This directory contains the Bruno collections and environments used to explore, document,
+and test the project’s REST APIs.
+Bruno is a fast, Git-friendly API client designed for teams that prefer version-controlled,
+text-based API collections.
 
-## Run locally
+```text
+bruno/
+├── environments/
+│   ├── env.bru.template    # Safe template, committed
+│   └── local.bru           # Local values and tokens, ignored
+└── config.json
+```
 
-1. Install [Bruno](https://www.usebruno.com/).
-2. Start the maintenance service with diagnostics enabled. This enables the
-   otherwise-disabled testing-support endpoints:
+## Getting Started
 
-   ```bash
-   TESTING_SUPPORT_ENDPOINTS_ENABLED=true ./gradlew bootRun
-   ```
+1. Install Bruno
 
-3. In another terminal, create a local Bruno environment from the template:
+```bash
+   brew install --cask bruno
+```
 
-   ```bash
-   cd bruno
-   cp environments/env.bru.template environments/local.bru
-   ```
+2. Create your environment file
 
-4. Open the repository-relative `bruno` directory as a collection. Adjust the
-   local URLs only if your services use different ports.
-5. Run `health` and `Maintenance/ping`. To exercise `Maintenance/auth-check`,
-   obtain a test-user access token from `User Service/Get test user token` and
-   store it only in the local `BEARER_TOKEN` secret.
+Copy the template:
 
-The User Service and AAD-backed requests are optional manual checks. Local
-environment files are ignored and must never be committed.
+```bash
+cp environments/env.bru.template environments/local.bru
+```
+
+Edit local.bru and fill in values such as:
+
+```bash
+baseURL: http://localhost:4551
+userURL: http://localhost:4555
+BEARER_TOKEN: <your-token-here>
+```
+
+⚠️ Never commit local.bru, .env files, or files containing tokens.
+
+## Running Requests
+
+Each .bru file represents a request.
+
+You can:
+
+- Run individual requests
+- Run an entire folder as a suite
+- Pass environment variables using {{VAR_NAME}} syntax
+
+Example:
+
+```text
+GET {{baseURL}}/health
+Authorization: Bearer {{BEARER_TOKEN}}
+```
+
+## Git & Security Guidelines
+
+✔ Commit:
+
+- collections/
+- config.json
+- env.bru.template
+
+❌ Do not commit:
+
+- Any *.env file with real values
+- Sensitive tokens in request headers
+
+## Tips for Contributors
+
+- Keep requests small and focused.
+- Group related requests into folders (users/, auth/, orders/, etc.).
+- Update collections when API endpoints change.
+- Include sample payloads (JSON) in the request body to help others test faster.
