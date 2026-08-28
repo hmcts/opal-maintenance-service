@@ -30,16 +30,23 @@ class CountriesDatabaseIntegrationTest extends BaseIntegrationTest {
         Path.of("src/dbUnitTest/countriesTest/countries_pgtap_tests.sql");
     private static final LocalDate DEV_APPLICABILITY_DATE = LocalDate.of(2025, 1, 1);
     private static final List<CountryFixture> EXPECTED_DEV_COUNTRIES = List.of(
-        fixture((short) 32001, "GBR", "United Kingdom"),
-        fixture((short) 32002, "IRL", "Ireland"),
-        fixture((short) 32003, "FRA", "France"),
-        fixture((short) 32004, "DEU", "Germany"),
-        fixture((short) 32005, "ESP", "Spain"),
-        fixture((short) 32006, "ITA", "Italy"),
-        fixture((short) 32007, "POL", "Poland"),
-        fixture((short) 32008, "USA", "United States"),
-        fixture((short) 32009, "IND", "India"),
-        fixture((short) 32010, "PAK", "Pakistan")
+        fixture((short) 32001, "GBR", "United Kingdom", null, true),
+        fixture((short) 32002, "IRL", "Ireland", null, true),
+        fixture((short) 32003, "FRA", "France", null, true),
+        fixture((short) 32004, "DEU", "Germany", null, true),
+        fixture((short) 32005, "ESP", "Spain", null, true),
+        fixture((short) 32006, "ITA", "Italy", null, true),
+        fixture((short) 32007, "POL", "Poland", null, true),
+        fixture((short) 32008, "USA", "United States", null, true),
+        fixture((short) 32009, "IND", "India", null, true),
+        fixture((short) 32010, "PAK", "Pakistan", null, true),
+        fixture(
+            (short) 32011,
+            "XIC",
+            "Inactive Test Country",
+            LocalDate.of(2025, 1, 2),
+            false
+        )
     );
 
     @Autowired
@@ -75,6 +82,7 @@ class CountriesDatabaseIntegrationTest extends BaseIntegrationTest {
     @Test
     void devCountryFixturesAreAvailable() throws SQLException {
         assertMigrationApplied("insert countries dev data");
+        assertMigrationApplied("insert inactive country dev data");
 
         assertThat(readDevCountries()).containsExactlyElementsOf(EXPECTED_DEV_COUNTRIES);
     }
@@ -97,9 +105,9 @@ class CountriesDatabaseIntegrationTest extends BaseIntegrationTest {
 
         DataSource dataSource = flyway.getConfiguration().getDataSource();
         try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
+            PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setShort(1, (short) 32001);
-            statement.setShort(2, (short) 32010);
+            statement.setShort(2, (short) 32011);
             try (ResultSet resultSet = statement.executeQuery()) {
                 while (resultSet.next()) {
                     fixtures.add(new CountryFixture(
@@ -138,7 +146,13 @@ class CountriesDatabaseIntegrationTest extends BaseIntegrationTest {
         }
     }
 
-    private static CountryFixture fixture(short cjsCode, String internationalCode, String countryName) {
+    private static CountryFixture fixture(
+        short cjsCode,
+        String internationalCode,
+        String countryName,
+        LocalDate dateUsedTo,
+        boolean active
+    ) {
         return new CountryFixture(
             cjsCode,
             internationalCode,
@@ -146,8 +160,8 @@ class CountriesDatabaseIntegrationTest extends BaseIntegrationTest {
             countryName,
             null,
             DEV_APPLICABILITY_DATE,
-            null,
-            true
+            dateUsedTo,
+            active
         );
     }
 
