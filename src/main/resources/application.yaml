@@ -71,7 +71,6 @@ spring:
     open-in-view: false
     properties:
       hibernate:
-        enable_lazy_load_no_trans: true
         # If 'spring.jpa.show-sql' above is 'true' or 'logging.level.org.hibernate.SQL' below is 'DEBUG',
         # then this option formats the sql in the console or logs (respectively) for easier human parsing.
         format_sql: true
