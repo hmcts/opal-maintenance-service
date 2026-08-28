@@ -1,3 +1,8 @@
+import org.gradle.api.tasks.PathSensitivity
+import org.flywaydb.gradle.task.FlywayMigrateTask
+import java.util.concurrent.TimeUnit
+import groovy.io.FileType
+
 buildscript {
   dependencies {
     classpath("org.flywaydb:flyway-database-postgresql:13.3.0")
@@ -17,7 +22,30 @@ plugins {
   id "org.openapi.generator" version "7.24.0"
 }
 
-group = 'uk.gov.hmcts.reform'
+ext {
+  log4JVersion = "2.26.1"
+  cucumberVersion = "7.23.0"
+  serenityVersion = "5.3.11"
+}
+
+def ciEnvironmentVariables = ['CI', 'GITHUB_ACTIONS', 'JENKINS_HOME', 'BUILD_ID']
+
+def isLocalIntegrationEnvironment = {
+  ciEnvironmentVariables.every { !System.getenv(it) }
+}
+
+def isPortAvailable = { int port ->
+  try {
+    def socket = new ServerSocket(port)
+    socket.reuseAddress = true
+    socket.close()
+    true
+  } catch (Exception ignored) {
+    false
+  }
+}
+
+group = 'uk.gov.hmcts'
 version = '0.0.1'
 
 java {
@@ -38,6 +66,7 @@ sourceSets {
       srcDir "$buildDir/generated/openapi/src/main/java"
     }
   }
+
   functionalTest {
     java {
       compileClasspath += main.output
@@ -78,6 +107,16 @@ configurations {
 
   smokeTestImplementation.extendsFrom testImplementation
   smokeTestRuntimeOnly.extendsFrom runtimeOnly
+
+  zephyrCucumberReportProcessor
+}
+
+configurations.configureEach {
+  resolutionStrategy {
+    force "io.cucumber:cucumber-core:${cucumberVersion}"
+    force "io.cucumber:cucumber-java:${cucumberVersion}"
+    force "io.cucumber:cucumber-junit:${cucumberVersion}"
+  }
 }
 
 tasks.register("bundleOpenApi", JavaExec) {
@@ -96,7 +135,13 @@ openApiGenerate {
   apiPackage = "uk.gov.hmcts.opal.generated.".toString() + "http.api"
   modelPackage = "uk.gov.hmcts.opal.generated.".toString() + "model"
   importMappings = [
-          Nullable: "org.jspecify.annotations.Nullable"
+    Nullable: "org.jspecify.annotations.Nullable",
+    Short: "java.lang.Short",
+    BigInteger: "java.math.BigInteger"
+  ]
+  typeMappings = [
+    "integer+int16": "short",
+    "integer+bigint": "BigInteger"
   ]
   // Point to your customized mustache templates
   templateDir = "$rootDir/openapi/templates".toString()
@@ -104,21 +149,413 @@ openApiGenerate {
   generateModelTests = false
   skipOperationExample = true
   openapiNormalizer = [
-          REF_AS_PARENT_IN_ALLOF: "true"
+    REF_AS_PARENT_IN_ALLOF: "true"
   ]
   configOptions = [
-          dateLibrary                         : "java8-localdatetime",
-          interfaceOnly                       : "true",
-          useTags                             : "true",
-          useSpringBoot4                      : "true",
-          containerDefaultToNull              : "true",
-          generatedConstructorWithRequiredArgs: "false",
-          useBeanValidation                   : "true",
-          useLombokAnnotations                : "true",
-          generateBuilders                    : "true",
-          configPackage                       : "uk.gov.hmcts.opal.generated.configuration"
+    dateLibrary                         : "java8-localdatetime",
+    interfaceOnly                       : "true",
+    useTags                             : "true",
+    useSpringBoot4                      : "true",
+    containerDefaultToNull              : "true",
+    generatedConstructorWithRequiredArgs: "false",
+    useBeanValidation                   : "true",
+    useLombokAnnotations                : "true",
+    generateBuilders                    : "true"
   ]
 }
+
+// (Temp?) Fix to solve the issue:
+// Toolchain from `executable` property does not match toolchain from `javaLauncher` property.
+gradle.taskGraph.whenReady { taskGraph ->
+  def task = taskGraph.allTasks.find { it.name.endsWith(".main()") }
+  if (task instanceof JavaExec) {
+    task.executable = task.javaLauncher.get().executablePath.asFile.absolutePath
+  }
+}
+
+tasks.withType(JavaCompile).configureEach {
+  options.compilerArgs << "-Xlint:unchecked"
+//  Enable the following to stop the build on any warning messages (not just error messages)
+  options.compilerArgs << "-Werror"
+//  Change the maximum number of reported compiler errors (default 100)
+  options.compilerArgs.addAll("-Xmaxerrs", "200")
+}
+
+// https://github.com/gradle/gradle/issues/16791
+tasks.withType(JavaExec).configureEach {
+  javaLauncher.set(javaToolchains.launcherFor(java.toolchain))
+}
+
+tasks.named('sonarResolver') {
+  dependsOn(processResources)
+}
+
+tasks.withType(Test).configureEach {
+  useJUnitPlatform()
+
+  systemProperty 'spring.test.context.cache.maxSize', 4
+
+  testLogging {
+    exceptionFormat = 'full'
+  }
+  maxHeapSize = "2g"
+  failFast = false
+}
+
+tasks.register('clearIntegrationReports', Delete) {
+  delete(
+    layout.buildDirectory.dir("test-results/integration"),
+    layout.buildDirectory.dir("reports/tests/integration"),
+    file("${rootDir}/target/zephyr-reports/Junit5Report-IntegrationTest.json"),
+    file("${rootDir}/integration-output")
+  )
+}
+
+tasks.register('integration', Test) {
+  description = "Runs integration tests"
+  group = "Verification"
+  dependsOn 'clearIntegrationReports'
+  testClassesDirs = sourceSets.integrationTest.output.classesDirs
+  classpath = sourceSets.integrationTest.runtimeClasspath
+  inputs.files(fileTree('src/dbUnitTest')).withPathSensitivity(PathSensitivity.RELATIVE)
+  inputs.file('docker/postgres-pgtap.Dockerfile').withPathSensitivity(PathSensitivity.RELATIVE)
+  finalizedBy 'packageIntegrationOutput'
+}
+
+tasks.register('functionalOpal', Test) {
+
+  description = "Runs functional tests against Opal mode"
+  group = "Verification"
+  dependsOn 'clearFunctionalReports'
+  testClassesDirs = sourceSets.functionalTest.output.classesDirs
+  classpath = sourceSets.functionalTest.runtimeClasspath
+  outputs.upToDateWhen { false }
+  reports.junitXml.getOutputLocation().set(layout.buildDirectory.dir("test-results/functional/opal"))
+  testLogging.showStandardStreams = true
+  environment("IS_LEGACY_MODE", "false")
+  exclude '**/OpalTestRunner.class'
+  finalizedBy 'mergeFunctionalResults', 'copyFunctionalReport'
+}
+
+tasks.register('copyFunctionalReport', Copy) {
+  from(layout.buildDirectory.dir("reports/tests/functionalOpal"))
+  into("${rootDir}/functional-output/report")
+  doLast {
+    logger.quiet("Functional Test Report available at - file://${rootDir}/functional-output/report/index.html")
+  }
+}
+
+tasks.register('copyIntegrationJunit5Report', Sync) {
+  from("target/zephyr-reports/Junit5Report-IntegrationTest.json")
+  into("${rootDir}/integration-output/zephyr")
+  outputs.upToDateWhen { false }
+}
+
+tasks.named('copyIntegrationJunit5Report') {
+  mustRunAfter tasks.named('integration')
+}
+
+tasks.register('packageIntegrationOutput', Sync) {
+  dependsOn 'copyIntegrationJunit5Report'
+  from(layout.buildDirectory.dir("reports/tests/integration"))
+  into("${rootDir}/integration-output/report")
+}
+tasks.register('mergeFunctionalResults', Copy) {
+  from layout.buildDirectory.dir("test-results/functional/opal")
+  into layout.buildDirectory.dir("test-results/functional")
+  include '*.xml'
+}
+tasks.register('clearFunctionalReports', Delete) {
+  delete(
+    layout.buildDirectory.dir("test-results/functional"),
+    layout.buildDirectory.dir("reports/tests/functionalOpal"),
+    file("${rootDir}/functional-output")
+  )
+}
+tasks.register('functional') {
+  description = "Runs functional tests"
+  group = "Verification"
+  dependsOn('clearFunctionalReports', 'functionalOpal', 'copyFunctionalReport', 'mergeFunctionalResults')
+  tasks.functionalOpal.mustRunAfter clearFunctionalReports
+  tasks.mergeFunctionalResults.mustRunAfter functionalOpal
+  tasks.copyFunctionalReport.mustRunAfter functionalOpal
+}
+
+tasks.register('smokeOpal', Test) {
+  description = "Runs Smoke Tests"
+  group = "Verification"
+  dependsOn 'clearSmokeReports'
+  testClassesDirs = sourceSets.smokeTest.output.classesDirs
+  classpath = sourceSets.smokeTest.runtimeClasspath
+  reports.junitXml.getOutputLocation().set(layout.buildDirectory.dir("test-results/smoke"))
+  testLogging.showStandardStreams = true
+  outputs.upToDateWhen { false }
+  finalizedBy 'packageSmokeOutput'
+}
+tasks.register('copySmokeReport', Copy) {
+  mustRunAfter tasks.named('smokeOpal')
+  from(layout.buildDirectory.dir("reports/tests/smokeOpal"))
+  into("${rootDir}/smoke-test-report")
+  doLast {
+    logger.quiet("Smoke Test Report available at - file://${rootDir}/smoke-test-report/index.html")
+  }
+}
+tasks.register('packageSmokeOutput', Copy) {
+  dependsOn 'copySmokeReport'
+  into("${rootDir}/smoke-output")
+  from("${rootDir}/smoke-test-report") {
+    into("report")
+  }
+}
+tasks.register('clearSmokeReports', Delete) {
+  delete(
+    layout.buildDirectory.dir("test-results/smoke"),
+    layout.buildDirectory.dir("reports/tests/smokeOpal"),
+    file("${rootDir}/smoke-test-report"),
+    file("${rootDir}/smoke-output")
+  )
+}
+
+tasks.register('smoke') {
+  description = "Runs Smoke Tests"
+  group = "Verification"
+  dependsOn('clearSmokeReports', 'smokeOpal', 'aggregate', 'copySmokeReport')
+  tasks.smokeOpal.mustRunAfter clearSmokeReports
+  tasks.aggregate.mustRunAfter smokeOpal
+  tasks.copySmokeReport.mustRunAfter aggregate
+  finalizedBy 'packageSmokeOutput'
+
+}
+
+tasks.named('aggregate') {
+  testRoot = layout.buildDirectory.dir("test-results").get().asFile.absolutePath
+  mustRunAfter(
+    tasks.named('smokeOpal'),
+  )
+}
+
+tasks.configureEach {
+  if (name in ['copyFunctionalReport', 'copySmokeReport']) {
+    mustRunAfter tasks.named('aggregate')
+  }
+}
+
+def coverageExclusions = [
+  '**/uk/gov/hmcts/opal/**/model/**',
+  '**/uk/gov/hmcts/opal/**/config/**',
+  '**/uk/gov/hmcts/opal/authentication/client/**',
+  '**/uk/gov/hmcts/opal/**/exception/**',
+]
+
+jacocoTestReport {
+  executionData(test, integration)
+  reports {
+    xml.required = true
+    html.required = true
+    csv.required = false
+    html.outputLocation.set(layout.buildDirectory.dir("jacocoHtml"))
+  }
+  afterEvaluate {
+    classDirectories.setFrom(files(classDirectories.files.collect {
+      fileTree(dir: it, exclude: jacocoExclusionArray(coverageExclusions)
+      )
+    }))
+  }
+}
+
+static String[] jacocoExclusionArray(ArrayList<String> exclusions) {
+  final def lst = new ArrayList<String>()
+
+  exclusions.stream().forEach { it.endsWith(".java") ? lst.add(it.replace(".java", ".class")) : lst.add(it) }
+
+  return lst.toArray()
+}
+
+tasks.named("sonarqube") {
+  dependsOn(tasks.named("jacocoTestReport"))
+}
+tasks.named("check") {
+  dependsOn(tasks.named("integration"))
+}
+
+jacocoTestReport.dependsOn check
+jacocoTestCoverageVerification.dependsOn jacocoTestReport
+
+sonarqube {
+  properties {
+    property "sonar.projectName", "HMCTS :: opal-maintenance-service"
+    property "sonar.projectKey", "uk.gov.hmcts:opal-maintenance-service-v2"
+    property "sonar.gradle.skipCompile", "true"
+    property "sonar.exclusions", coverageExclusions.join(', ')
+    property 'sonar.coverage.exclusions', "**/entity/**,**/model/*,**/exception/*,**/config/**,**/repository/jpa/*,**/opal/dto/*"
+    property 'sonar.cpd.exclusions', "**/entity/**,**/opal/dto/**"
+  }
+}
+
+// before committing a change, make sure task still works
+dependencyUpdates {
+  def isNonStable = { String version ->
+    def stableKeyword = ['RELEASE', 'FINAL', 'GA'].any { qualifier -> version.toUpperCase().contains(qualifier) }
+    def regex = /^[0-9,.v-]+$/
+    return !stableKeyword && !(version ==~ regex)
+  }
+  rejectVersionIf { selection -> // <---- notice how the closure argument is named
+    return isNonStable(selection.candidate.version) && !isNonStable(selection.currentVersion)
+  }
+}
+
+dependencyManagement {
+  imports {
+    mavenBom 'org.springframework.cloud:spring-cloud-dependencies:2025.1.3'
+    mavenBom "org.springframework.integration:spring-integration-bom:7.1.1"
+    mavenBom "io.netty:netty-bom:4.2.17.Final"
+    mavenBom "com.fasterxml.jackson:jackson-bom:2.22.2"
+  }
+
+  dependencies {
+    dependency group: 'com.google.guava', name: 'guava', version: '33.7.1-jre'
+  }
+}
+
+dependencyCheck {
+  suppressionFile = 'config/owasp/suppressions.xml'
+  def nvdApiKey = providers.gradleProperty('nvdApiKey')
+    .orElse(providers.environmentVariable('NVD_API_KEY'))
+    .orNull
+  if (nvdApiKey) {
+    nvd.apiKey = nvdApiKey
+  }
+}
+
+repositories {
+  mavenLocal()
+  mavenCentral()
+  maven {
+    url = 'https://pkgs.dev.azure.com/hmcts/Artifacts/_packaging/hmcts-lib/maven/v1'
+  }
+}
+
+
+ext['snakeyaml.version'] = '2.0'
+ext['tomcat.version'] = '10.1.42'
+ext['postgresql.version'] = '42.7.13'
+
+
+dependencies {
+
+  implementation 'uk.gov.hmcts:opal-common-lib:0.3.26'
+
+  zephyrCucumberReportProcessor 'uk.gov.hmcts:zephyr-automation:1.2.2'
+  testImplementation 'uk.gov.hmcts:zephyr-automation:1.2.2'
+  testImplementation 'com.launchdarkly:launchdarkly-java-server-sdk:7.15.0'
+
+  openapiImplementation "io.swagger.parser.v3:swagger-parser:2.1.47"
+  openapiImplementation "io.swagger.core.v3:swagger-models:2.2.54"
+  openapiImplementation "io.swagger.core.v3:swagger-core:2.2.54"
+  openapiImplementation "tools.jackson.dataformat:jackson-dataformat-yaml"
+
+  implementation 'com.microsoft.azure:applicationinsights-web:3.7.9'
+  implementation 'com.azure:azure-storage-blob:12.35.0'
+  implementation 'org.springframework.boot:spring-boot-flyway'
+  implementation "org.springframework.boot:spring-boot-starter-web"
+  implementation "org.springframework.boot:spring-boot-starter-actuator"
+  runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
+  implementation "org.springframework.boot:spring-boot-starter-aspectj"
+  implementation "org.springframework.boot:spring-boot-starter-json"
+  implementation "org.springframework.boot:spring-boot-starter-data-jpa"
+  implementation "org.springframework.boot:spring-boot-starter-security"
+  implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
+  implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+  implementation 'org.springframework.boot:spring-boot-starter-cache'
+  implementation "org.springframework.boot:spring-boot-starter-security"
+  implementation 'org.springframework.boot:spring-boot-starter-integration'
+  implementation 'org.springframework.integration:spring-integration-sftp'
+  implementation 'org.springframework.integration:spring-integration-file'
+
+  implementation 'org.springframework:spring-aspects'
+  implementation 'org.springframework:spring-jms'
+  implementation 'commons-fileupload:commons-fileupload:1.6.0'
+  implementation 'org.springframework.cloud:spring-cloud-starter-openfeign', {
+    exclude group: 'commons-fileupload', module: 'commons-fileupload'
+  }
+
+  implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.2'
+
+  implementation 'com.github.hmcts.java-logging:logging:8.0.0'
+
+  implementation "org.apache.logging.log4j:log4j-api:${log4JVersion}"
+  implementation "org.apache.logging.log4j:log4j-to-slf4j:${log4JVersion}"
+  implementation 'org.apache.qpid:qpid-jms-client:2.11.0'
+  implementation 'com.google.guava:guava:33.7.1-jre'
+
+  implementation 'com.networknt:json-schema-validator:1.5.9'
+  implementation 'com.jayway.jsonpath:json-path:3.0.0'
+
+  implementation 'org.openapitools:jackson-databind-nullable:0.2.11'
+  implementation 'org.flywaydb:flyway-core:13.3.0'
+  runtimeOnly 'org.flywaydb:flyway-database-postgresql:13.3.0', {
+    exclude group: 'org.flywaydb', module: 'flyway-core'
+  }
+  implementation 'org.postgresql:postgresql'
+
+  implementation 'tools.jackson.core:jackson-databind'
+  compileOnly 'org.projectlombok:lombok:1.18.46'
+  annotationProcessor 'org.projectlombok:lombok:1.18.46'
+  annotationProcessor 'org.hibernate.orm:hibernate-processor:7.4.6.Final'
+
+  implementation('uk.gov.hmcts:spring-exception-handler:1.0.3') {
+    exclude group: 'com.microsoft.azure', module: 'applicationinsights-spring-boot-starter'
+  }
+
+  testImplementation 'org.wiremock.integrations:wiremock-spring-boot:4.2.2'
+
+  testImplementation 'org.springframework.boot:spring-boot-devtools'
+  testImplementation 'org.springframework.boot:spring-boot-test'
+  testImplementation 'org.springframework.security:spring-security-test'
+  testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+  testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
+  testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+  testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
+  testImplementation 'org.testcontainers:testcontainers-postgresql'
+  testImplementation 'com.redis:testcontainers-redis'
+  testImplementation 'io.rest-assured:rest-assured:6.0.1'
+  integrationTestImplementation 'com.launchdarkly:launchdarkly-java-server-sdk:7.15.0'
+  testImplementation 'junit:junit:4.13.2'
+  testImplementation(platform('org.junit:junit-bom:6.1.3'))
+  testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine'
+  testImplementation 'org.springframework.boot:spring-boot-starter-test', {
+    exclude group: 'junit', module: 'junit'
+    exclude group: 'org.junit.vintage', module: 'junit-vintage-engine'
+  }
+  testImplementation 'org.junit.platform:junit-platform-suite:6.1.3'
+  testImplementation "io.cucumber:cucumber-junit-platform-engine:${cucumberVersion}"
+
+  testImplementation "net.serenity-bdd:serenity-core:${serenityVersion}"
+  testImplementation "net.serenity-bdd:serenity-rest-assured:${serenityVersion}"
+  testImplementation "net.serenity-bdd:serenity-report-resources:${serenityVersion}"
+
+  testImplementation "net.serenity-bdd:serenity-cucumber:${serenityVersion}"
+  testImplementation "net.serenity-bdd:serenity-ensure:${serenityVersion}"
+  testImplementation 'com.azure:azure-messaging-servicebus:7.17.19'
+
+  implementation('uk.gov.hmcts:opal-logging-service-integration-lib:0.0.10') {
+    exclude group: 'com.microsoft.azure', module: 'applicationinsights-spring-boot-starter'
+    exclude group: 'org.springframework.boot'
+  }
+
+
+  //Added to override dependency version to resolve vulnerability
+  implementation 'org.apache.tomcat.embed:tomcat-embed-core:11.0.25'
+  implementation 'org.apache.tomcat.embed:tomcat-embed-websocket:11.0.25'
+  implementation 'org.apache.commons:commons-lang3:3.20.0'
+
+
+}
+
+application {
+  mainClass.set('uk.gov.hmcts.opal.Application')
+}
+
 tasks.named("openApiGenerate") {
   dependsOn 'bundleOpenApi'
   doFirst {
@@ -149,99 +586,17 @@ tasks.withType(JavaExec).configureEach {
   javaLauncher.set(javaToolchains.launcherFor(java.toolchain))
 }
 
-tasks.withType(Test) {
+tasks.withType(Test).configureEach {
   useJUnitPlatform()
+
+  systemProperty 'spring.test.context.cache.maxSize', 4
 
   testLogging {
     exceptionFormat = 'full'
   }
-}
-
-test {
+  maxHeapSize = "2g"
   failFast = false
 }
-
-task integration(type: Test) {
-  description = "Runs integration tests"
-  group = "Verification"
-  testClassesDirs = sourceSets.integrationTest.output.classesDirs
-  classpath = sourceSets.integrationTest.runtimeClasspath
-  failFast = false
-}
-
-task functionalOpal(type: Test) {
-
-  description = "Runs functional tests against Opal mode"
-  group = "Verification"
-  testClassesDirs = sourceSets.functionalTest.output.classesDirs
-  classpath = sourceSets.functionalTest.runtimeClasspath
-  reports.junitXml.getOutputLocation().set(layout.buildDirectory.dir("test-results/functional"))
-  testLogging.showStandardStreams = true
-  gradle.startParameter.continueOnFailure = true
-  systemProperty "cucumber.filter.tags", "@Opal and not @Smoke and not @Ignore"
-  systemProperty "test.mode", "opal"
-}
-task functionalLegacy(type: Test) {
-  description = "Runs functional tests against Legacy mode"
-  group = "Verification"
-  testClassesDirs = sourceSets.functionalTest.output.classesDirs
-  classpath = sourceSets.functionalTest.runtimeClasspath
-  reports.junitXml.getOutputLocation().set(layout.buildDirectory.dir("test-results/functional"))
-  gradle.startParameter.continueOnFailure = true
-  testLogging.showStandardStreams = true
-  systemProperty "cucumber.filter.tags", "@Legacy and not @Smoke and not @Ignore"
-  systemProperty "test.mode", "legacy"
-}
-task copyFunctionalReport(type: Copy) {
-  from("${rootDir}/target/site/serenity")
-  into("${rootDir}/functional-test-report")
-  logger.quiet("Functional Test Report available at - file://${rootDir}/functional-test-report/index.html")
-}
-
-task functional() {
-  description = "Runs functional tests"
-  group = "Verification"
-  gradle.startParameter.continueOnFailure = true
-  dependsOn('clearReports', 'functionalOpal', 'functionalLegacy', 'aggregate', 'copyFunctionalReport')
-  tasks.functionalOpal.mustRunAfter clearReports
-  tasks.functionalLegacy.mustRunAfter functionalOpal
-  tasks.aggregate.mustRunAfter functionalLegacy
-  tasks.copyFunctionalReport.mustRunAfter aggregate
-
-}
-task smokeOpal(type: Test) {
-  description = "Runs Smoke Tests"
-  group = "Verification"
-  testClassesDirs = sourceSets.smokeTest.output.classesDirs
-  classpath = sourceSets.smokeTest.runtimeClasspath
-  reports.junitXml.getOutputLocation().set(layout.buildDirectory.dir("test-results/smoke"))
-  testLogging.showStandardStreams = true
-  gradle.startParameter.continueOnFailure = true
-  systemProperty "cucumber.filter.tags", "@Smoke and not @Ignore"
-}
-task copySmokeReport(type: Copy) {
-  from("${rootDir}/target/site/serenity")
-  into("${rootDir}/smoke-test-report")
-  logger.quiet("Smoke Test Report available at - file://${rootDir}/smoke-test-report/index.html")
-}
-
-task smoke() {
-  description = "Runs Smoke Tests"
-  group = "Verification"
-  gradle.startParameter.continueOnFailure = true
-  dependsOn('clearReports', 'smokeOpal', 'aggregate', 'copySmokeReport')
-  tasks.smokeOpal.mustRunAfter clearReports
-  tasks.aggregate.mustRunAfter smokeOpal
-  tasks.copySmokeReport.mustRunAfter aggregate
-
-}
-
-def coverageExclusions = [
-  '**/uk/gov/hmcts/reform/opal/model/**',
-  '**/uk/gov/hmcts/reform/opal/config/**',
-  '**/uk/gov/hmcts/reform/opal/exception/**',
-  '**/uk/gov/hmcts/reform/opal/repository/**'
-]
 
 jacocoTestReport {
   executionData(test, integration)
@@ -260,8 +615,8 @@ project.tasks['check'].dependsOn integration
 
 sonarqube {
   properties {
-    property "sonar.projectName", "Reform :: opal-maintenance-service"
-    property "sonar.projectKey", "uk.gov.hmcts.reform:opal-maintenance-service"
+    property "sonar.projectName", "HMCTS :: opal-maintenance-service"
+    property "sonar.projectKey", "uk.gov.hmcts:opal-maintenance-service-v2"
     property "sonar.organization", "hmcts"
     property "sonar.gradle.skipCompile", "true"
     property "sonar.exclusions", coverageExclusions.join(', ')
@@ -286,14 +641,6 @@ dependencyCheck {
   suppressionFile = 'config/owasp/suppressions.xml'
 }
 
-repositories {
-  mavenLocal()
-  mavenCentral()
-  maven {
-    url = 'https://pkgs.dev.azure.com/hmcts/Artifacts/_packaging/hmcts-lib/maven/v1'
-  }
-}
-
 ext {
   log4JVersion = "2.26.1"
   logbackVersion = "1.6.3"
@@ -310,68 +657,6 @@ dependencyManagement {
   }
 }
 
-dependencies {
-  implementation 'org.springframework.boot:spring-boot-starter-web'
-  implementation 'org.springframework.boot:spring-boot-starter-actuator'
-  implementation 'org.springframework.boot:spring-boot-starter-aspectj'
-  implementation 'org.springframework.boot:spring-boot-flyway'
-  implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
-  implementation 'org.springframework.boot:spring-boot-starter-security'
-  implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
-  implementation 'org.springframework.boot:spring-boot-starter-data-redis'
-  implementation 'org.springframework.boot:spring-boot-starter-cache'
-  implementation 'org.springframework.cloud:spring-cloud-starter-openfeign'
-  implementation 'uk.gov.hmcts:opal-common-lib:0.3.28'
-  implementation('uk.gov.hmcts:opal-logging-service-integration-lib:0.0.14')
-  implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.1.0'
-
-  implementation 'com.github.hmcts.java-logging:logging:8.0.0'
-
-  implementation "org.apache.logging.log4j:log4j-api:${log4JVersion}"
-  implementation "org.apache.logging.log4j:log4j-to-slf4j:${log4JVersion}"
-  implementation "ch.qos.logback:logback-classic:${logbackVersion}"
-  implementation "ch.qos.logback:logback-core:${logbackVersion}"
-
-  implementation 'org.flywaydb:flyway-core:13.3.0'
-  implementation 'org.postgresql:postgresql:42.7.13'
-  runtimeOnly 'org.flywaydb:flyway-database-postgresql:13.3.0'
-
-  compileOnly 'org.projectlombok:lombok:1.18.46'
-  annotationProcessor 'org.projectlombok:lombok:1.18.46'
-
-  testImplementation platform('org.testcontainers:testcontainers-bom:2.0.5')
-  testImplementation 'org.springframework.boot:spring-boot-testcontainers'
-  testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
-  testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
-  testImplementation 'org.testcontainers:testcontainers-postgresql'
-  testImplementation 'org.springframework.security:spring-security-test'
-  testImplementation 'org.wiremock.integrations:wiremock-spring-boot:4.2.1'
-
-  implementation 'com.microsoft.azure:applicationinsights-web:3.7.9'
-
-  testImplementation(platform('org.junit:junit-bom:6.1.3'))
-  testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine'
-  testImplementation('org.springframework.boot:spring-boot-starter-test') {
-    exclude group: 'junit', module: 'junit'
-    exclude group: 'org.junit.vintage', module: 'junit-vintage-engine'
-  }
-  //OpenAPI
-  openapiImplementation "io.swagger.parser.v3:swagger-parser:2.1.46"
-  openapiImplementation "io.swagger.core.v3:swagger-models:2.2.53"
-  openapiImplementation "io.swagger.core.v3:swagger-core:2.2.53"
-  openapiImplementation "tools.jackson.dataformat:jackson-dataformat-yaml"
-
-
-  //Added to override dependency version to resolve vulnerability
-  implementation 'org.apache.tomcat.embed:tomcat-embed-core:11.0.25'
-  implementation 'org.apache.tomcat.embed:tomcat-embed-websocket:11.0.25'
-  implementation 'org.apache.commons:commons-lang3:3.20.0'
-}
-
-application {
-  mainClass = 'uk.gov.hmcts.reform.opal.Application'
-}
-
 bootJar {
   archiveFileName = "opal-maintenance-service.jar"
 
@@ -379,14 +664,21 @@ bootJar {
     attributes('Implementation-Version': project.version.toString())
   }
 }
-
 // Gradle 7.x issue, workaround from: https://github.com/gradle/gradle/issues/17236#issuecomment-894768083
-// rootProject.tasks.named("processSmokeTestResources") {
-//  duplicatesStrategy = 'include'
-// }
+rootProject.tasks.named("processFunctionalTestResources") {
+  duplicatesStrategy = 'include'
+}
+
+rootProject.tasks.named("processIntegrationTestResources") {
+  duplicatesStrategy = 'include'
+}
+
+tasks.named("bootTestRun") {
+  mainClass = 'uk.gov.hmcts.opal.dev.DevApplication'
+}
 
 wrapper {
-    distributionType = Wrapper.DistributionType.ALL
+  distributionType = Wrapper.DistributionType.ALL
 }
 
 flyway {
@@ -396,9 +688,13 @@ flyway {
   locations = System.getenv('FLYWAY_LOCATIONS')
   baselineOnMigrate = true
   baselineVersion = '000'
-}
 
-tasks.register('migratePostgresDatabase', org.flywaydb.gradle.task.FlywayMigrateTask) {
+}
+checkstyle {
+  checkstyleMain.exclude '**uk/gov/hmcts/opal/generated/**'
+  checkstyleMain.exclude '**org/openapitools/configuration/**'
+}
+tasks.register('migratePostgresDatabase', FlywayMigrateTask) {
   baselineOnMigrate = true
   def taskUrl = providers.gradleProperty("dburl")
       .map { dbUrl -> "jdbc:postgresql://${dbUrl}" }
@@ -407,11 +703,7 @@ tasks.register('migratePostgresDatabase', org.flywaydb.gradle.task.FlywayMigrate
   if (taskUrl) {
     url = taskUrl
   }
-  println "Flyway jbdc property 'url' is: ${taskUrl}"
-}
-
-checkstyle {
-  checkstyleMain.exclude '**/generated/**'
+  println "Flyway jdbc property 'url' is: ${taskUrl}"
 }
 
 tasks.register('runAllStyleChecks') {
@@ -421,3 +713,23 @@ tasks.register('runAllStyleChecks') {
   dependsOn 'checkstyleFunctionalTest'
   dependsOn 'checkstyleOpenapi'
 }
+tasks.named("openApiGenerate") {
+  dependsOn 'bundleOpenApi'
+  doLast {
+    def generatedJavaDir = layout.buildDirectory.dir("generated/openapi/src/main/java").get().asFile
+    fileTree(generatedJavaDir).matching {
+      include '**/*.java'
+    }.each { generatedFile ->
+      generatedFile.text = generatedFile.text.replace(
+        'import org.springframework.lang.Nullable;',
+        'import org.jspecify.annotations.Nullable;'
+      )
+    }
+  }
+}
+
+tasks.named("compileJava") {
+  dependsOn 'openApiGenerate'
+}
+
+apply from: "$rootDir/gradle/zephyr.gradle"
