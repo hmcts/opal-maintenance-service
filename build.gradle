@@ -1,3 +1,5 @@
+import org.gradle.api.tasks.PathSensitivity
+
 buildscript {
   dependencies {
     classpath("org.flywaydb:flyway-database-postgresql:13.3.0")
@@ -53,7 +55,7 @@ sourceSets {
       runtimeClasspath += main.output
       srcDir file('src/integrationTest/java')
     }
-    resources.srcDir file('src/integrationTest/resources')
+    resources.setSrcDirs([file('src/integrationTest/resources')])
   }
 
   smokeTest {
@@ -166,6 +168,8 @@ task integration(type: Test) {
   group = "Verification"
   testClassesDirs = sourceSets.integrationTest.output.classesDirs
   classpath = sourceSets.integrationTest.runtimeClasspath
+  inputs.files(fileTree('src/dbUnitTest')).withPathSensitivity(PathSensitivity.RELATIVE)
+  inputs.file('docker/postgres-pgtap.Dockerfile').withPathSensitivity(PathSensitivity.RELATIVE)
   failFast = false
 }
 
