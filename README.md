@@ -17,81 +17,163 @@ The repository includes the Gradle wrapper, so a separate Gradle installation is
 
 #### Environment variables
 
-Create the local environment file from the tracked example before using Docker Compose:
+The service starts locally with safe defaults. Export integration values only
+for the flow you intend to exercise; never place real credentials in tracked
+files.
 
-```bash
-cp .env.example .env
+Authentication flows require approved Azure AD application values:
+
+```bash / zsh
+export AAD_CLIENT_ID='<application-client-id>'
+export AAD_CLIENT_SECRET='<application-client-secret>'
+export AAD_TENANT_ID='<tenant-id>'
 ```
 
-The local `.env` file is ignored by Git. The example sets `SERVER_PORT=4551`, which Docker Compose uses for the service port mapping.
+Online LaunchDarkly evaluation requires the SDK key and both settings below.
+Otherwise, standalone Docker Compose keeps LaunchDarkly disabled and offline:
 
-Application configuration can be overridden with the following environment variables:
-
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `OPAL_MAINTENANCE_DB_HOST` | `localhost` | PostgreSQL host |
-| `OPAL_MAINTENANCE_DB_PORT` | `5432` | PostgreSQL port |
-| `OPAL_MAINTENANCE_DB_NAME` | `opal-maintenance-db` | Database name |
-| `OPAL_MAINTENANCE_DB_USERNAME` | `opal-maintenance` | Database username |
-| `OPAL_MAINTENANCE_DB_PASSWORD` | `opal-maintenance` | Database password |
-| `OPAL_MAINTENANCE_DB_OPTIONS` | empty | Additional JDBC connection options |
-| `RUN_DB_MIGRATION_ON_STARTUP` | `true` | Run Flyway migrations when the service starts |
-| `FLYWAY_LOCATIONS` | configured migration locations | Select the Flyway migration locations |
-| `AAD_TENANT_ID` | `00000000-0000-0000-0000-000000000000` | Azure Active Directory tenant identifier |
-| `AAD_CLIENT_ID` | `00000000-0000-0000-0000-000000000000` | Azure Active Directory application identifier |
-| `AAD_CLIENT_SECRET` | empty | Azure Active Directory application secret |
-| `OPAL_USER_SERVICE_API_URL` | `http://localhost:4555` | User Service base URL |
-| `REDIS_CONNECTION_STRING` | `redis://localhost:6379` | Redis connection URL |
-| `OPAL_REDIS_ENABLED` | `false` | Enable Redis-backed health and caching support |
-| `TESTING_SUPPORT_ENDPOINTS_ENABLED` | `false` | Enable testing-support diagnostic endpoints |
-| `SERVICEBUS_LOGGING_PDPL_PROTOCOL` | `amqp` | PDPL Service Bus transport protocol |
-| `SERVICEBUS_CONNECTION_STRING` | empty | PDPL Service Bus connection string |
-| `SERVICEBUS_LOGGING_PDPL_QUEUE_NAME` | `logging-pdpl` | PDPL Service Bus queue name |
-
-Do not commit credentials or other secrets. Supply non-local values through environment or platform secret stores.
-
-#### Approach 1: Docker Compose (recommended)
-
-Start the service and PostgreSQL together:
-
-```bash
-docker compose up --build
+```bash / zsh
+export LAUNCH_DARKLY_ENABLED=true
+export LAUNCH_DARKLY_OFFLINE_MODE=false
+export LAUNCH_DARKLY_SDK_KEY='<sdk-key-from-approved-secret-store>'
 ```
 
-To stop the environment, press `Ctrl+C`, then remove the containers with:
+The test user is needed only for optional authenticated diagnostic flows. Those
+flows must also explicitly enable the testing-support endpoints:
 
-```bash
-docker compose down
+```bash / zsh
+export TESTING_SUPPORT_ENDPOINTS_ENABLED=true
+export OPAL_TEST_USER_EMAIL='<test-account-email>'
+export OPAL_TEST_USER_PASSWORD='<test-account-password>'
 ```
 
-`docker compose down` intentionally preserves the named PostgreSQL volume so
-local development data survives normal teardown. This persistence is useful
-for development, but restarting Compose does not prove that migrations work
-against a fresh database.
+The shared-infrastructure Docker workflow can create its own ignored
+`.env.shared` file. From the `opal-shared-infrastructure` directory, run
+`./bin/create_env.sh`. Direct Gradle or IDE runs instead use values exported in
+the current terminal or set in the IDE run configuration.
 
-> **Destructive:** `docker compose down --volumes` deletes the developer-owned
-> named volume and its local database data. It is not a routine migration
-> validation command.
+#### Caching
 
-Fresh-database migration validation is a separate, database-owned workflow.
-The intended canonical entry point under DB-01 is `./gradlew dbTest`,
-but that task is not implemented in this checkout. Until it is available,
-record dedicated fresh-database validation as unavailable rather than treating
-Compose or backend integration tests as equivalent evidence.
+When the service runs directly on the JVM from IntelliJ or Gradle, Redis-backed caching is disabled by default and the service uses a no-op cache manager. To use a Redis instance available on the host, set:
 
-#### Approach 2: Run the application on the local JVM
-
-Start PostgreSQL in Docker:
-
-```bash
-docker compose up -d opal-maintenance-db
+```bash / zsh
+export OPAL_REDIS_ENABLED=true
+export REDIS_CONNECTION_STRING=redis://localhost:6379
 ```
 
-The container's PostgreSQL port is published on host port `5435`. Start the application against it with:
+The standalone `docker-compose.yml` starts Redis, explicitly enables Redis-backed caching, and configures the service to use `redis://redis:6379` on the Compose network. Start the complete environment with:
+
+```bash / zsh
+./gradlew assemble && docker compose up --build
+```
+
+To view the cache - when running against local Redis - Intellij has a free plugin called Redis Helper.
+However, if you want to view the cache in staging the plugin doesn't support SSL. Instead, install:
 
 ```bash
-OPAL_MAINTENANCE_DB_PORT=5435 ./gradlew bootRun
+brew install --cask another-redis-desktop-manager
+sudo xattr -rd com.apple.quarantine /Applications/Another\ Redis\ Desktop\ Manager.app
 ```
+
+To run only the standalone Redis container:
+
+```bash / zsh
+docker compose up redis
+```
+
+**WARNING** - As of 10/02/2026 the recommended docker approach is "Approach 4: Docker with external dependencies"
+#### Approach 1: Dev Application (No existing dependencies)
+
+The simplest way to run the application is using the `bootTestRun` Gradle task:
+
+```bash / zsh
+  ./gradlew bootTestRun
+```
+
+This task has no dependencies and starts up a Postgres database in Docker using [Testcontainers](https://testcontainers.com).
+The database is available on `jdbc:postgresql://localhost:5432/opal-maintenance-db` with username and password `opal-maintenance`.
+
+To persist the database between application restarts set the environment variable `TESTCONTAINERS_REUSE_ENABLE` to `true`.
+Note this does **not** persist data if the Docker container is manually stopped, or through laptop restarts).
+
+#### Approach 2: Dev Application (With existing dependencies)
+
+Use the standard Spring Boot `run` Gradle task:
+
+```bash / zsh
+  ./gradlew run
+```
+
+This approach can be used if a database is already running and may be preferred if the lack of long-term data persistence
+from the previous approach is an issue for development.
+
+#### Approach 3: Docker
+
+The Dockerfile copies the assembled boot jar from `build/libs`; Docker Compose
+does not build the Java artifact. From a fresh checkout, assemble the jar,
+rebuild the image, and start the services with:
+
+```bash / zsh
+./gradlew assemble && docker compose up --build
+```
+
+To assemble the current application jar, rebuild the image, and start Docker Compose in one command, run:
+
+```bash / zsh
+./bin/run-in-docker.sh
+```
+
+For more information:
+
+```bash / zsh
+./bin/run-in-docker.sh -h
+```
+The script always assembles the current jar and invokes `docker compose up --build`, avoiding stale application artifacts. Use `--clean` when a clean Gradle build is required. Whenever any variable is changed or any other script regarding docker image/container build, the suggested way to ensure all is cleaned up properly is by this command:
+
+**Bash**:
+```bash
+docker-compose rm
+```
+**Zsh**:
+```zsh
+docker compose rm
+```
+
+It clears stopped containers correctly. Might consider removing clutter of images too, especially the ones fiddled with:
+
+```bash / zsh
+docker images
+
+docker image rm <image-id>
+```
+
+There is no need to remove postgres and java or similar core images.
+
+
+#### Approach 4: Docker with external dependencies (e.g. Redis, postgres, azure service bus, user service, logging service, etc) - Recommended approach for development
+
+Ensure you have pulled `opal-shared-infrastructure`, which contains the scripts
+that support the shared Docker environment.
+
+First ensure all repositories are downloaded in the same parent directory.
+To do this automatically you can run the following command from the opal-shared-infrastructure directory:
+```bash / zsh
+./bin/pull_all_repos.sh
+```
+
+Secondly you will need to ensure you have the required environment variables set up in a .env.shared file in the opal-shared-infrastructure/docker-files/ directory. You can use the following command to create this file with the required variables:
+```bash / zsh
+./bin/create_env.sh
+```
+
+Finally to run the application with all external dependencies using docker you can run the following command from the opal-shared-infrastructure directory:
+```bash / zsh
+./docker-files/scripts/opalBuild.sh -lb
+```
+Full details of this script and the arguments can be found within the opal-shared-infrastructure repository
+
+* [Link to file on Github](https://github.com/hmcts/opal-shared-infrastructure/blob/master/docker-files/scripts/scripts-readme.md)
+* [Link to file locally](../opal-shared-infrastructure/docker-files/scripts/scripts-readme.md)
 
 ### Verifying application startup
 
@@ -102,17 +184,23 @@ curl http://localhost:4551/health
 curl http://localhost:4551/prometheus
 ```
 
-The health response should report an `UP` status.
+
+You should get a response similar to this:
+
+```
+  {"status":"UP","diskSpace":{"status":"UP","total":249644974080,"free":137188298752,"threshold":10485760}}
+```
 
 ### Building the application
 
-Build and run the baseline validation with:
+The project uses [Gradle](https://gradle.org) as a build tool. It already contains
+`./gradlew` wrapper script, so there's no need to install gradle.
+
+To build the project execute the following command:
 
 ```bash
 ./gradlew build
 ```
-
-The build includes unit, integration, static-analysis, and packaging checks configured by the project. Docker is required because the integration tests use Testcontainers PostgreSQL.
 
 ### Test tasks
 
@@ -135,7 +223,8 @@ endpoints are disabled by default. To enable them for a local manual check,
 start the service with:
 
 ```bash
-TESTING_SUPPORT_ENDPOINTS_ENABLED=true ./gradlew bootRun
+export TESTING_SUPPORT_ENDPOINTS_ENABLED=true
+./gradlew bootRun
 ```
 
 Then create a local Bruno environment using repository-relative paths:
