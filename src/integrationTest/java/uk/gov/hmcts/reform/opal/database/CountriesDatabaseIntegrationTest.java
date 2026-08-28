@@ -26,6 +26,8 @@ class CountriesDatabaseIntegrationTest extends BaseIntegrationTest {
 
     private static final Path COUNTRIES_SQL_TEST =
         Path.of("src/dbUnitTest/countriesTest/countries_unit_tests.sql");
+    private static final Path COUNTRIES_PGTAP_TEST =
+        Path.of("src/dbUnitTest/countriesTest/countries_pgtap_tests.sql");
     private static final LocalDate DEV_APPLICABILITY_DATE = LocalDate.of(2025, 1, 1);
     private static final List<CountryFixture> EXPECTED_DEV_COUNTRIES = List.of(
         fixture((short) 32001, "GBR", "United Kingdom"),
@@ -61,6 +63,13 @@ class CountriesDatabaseIntegrationTest extends BaseIntegrationTest {
                 connection.rollback();
             }
         }
+    }
+
+    @Test
+    void countriesPgTapContractIsValid() throws Exception {
+        assertMigrationApplied("create countries table");
+
+        PgTapTestRunner.run(databaseContainer, COUNTRIES_PGTAP_TEST);
     }
 
     @Test
