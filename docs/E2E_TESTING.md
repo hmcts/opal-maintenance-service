@@ -6,7 +6,7 @@ The general naming, coverage, security, and evidence rules in
 
 ## Suite boundary
 
-Both suites call a running service over HTTP:
+The intended boundary for both suites is a running service over HTTP:
 
 - **Functional tests** prove endpoint behaviour or a meaningful business
   journey across the deployed application boundary.
@@ -26,7 +26,7 @@ controller.
 
 | Suite | Java tests | Command | Packaged report path |
 | --- | --- | --- | --- |
-| Functional | `src/functionalTest/java` | `./gradlew functional` | `functional-test-report/index.html` |
+| Functional | `src/functionalTest/java` | `./gradlew functional` | `functional-output/report/index.html` |
 | Smoke | `src/smokeTest/java` | `./gradlew smoke` | `smoke-test-report/index.html` |
 
 Set `TEST_URL` to the target service base URL. It defaults to
@@ -97,11 +97,15 @@ should cover the smaller set of risks that lower levels cannot prove.
 
 ## Current runner model
 
-Unlike `opal-fines-service`, the current maintenance functional and smoke tests
-are plain JUnit classes rather than Serenity/Cucumber feature files with suite
-runners. The Gradle tasks contain mode and Cucumber tag properties, but the
-current JUnit tests do not consume `@Opal`, `@Legacy`, `@Smoke`, or `@Ignore`
-tags. Do not rely on those tags to select maintenance scenarios.
+The functional source set currently contains plain JUnit tests and an
+`OpalTestRunner` that selects Cucumber features from `features/opalMode`.
+However, the `functionalOpal` Gradle task excludes that runner and there is no
+corresponding feature directory, so `./gradlew functional` currently executes
+the plain JUnit classes. The smoke source set also contains a plain JUnit test.
+
+There is no `functionalLegacy` task or active Cucumber tag filtering. Do not
+rely on `@Opal`, `@Legacy`, `@Smoke`, or `@Ignore` tags to select maintenance
+scenarios in the current build.
 
 If this repository deliberately adopts the Fines Serenity/Cucumber model in
 future, make the runner, folder, and tag semantics agree:
@@ -118,16 +122,12 @@ feature files alone does not create reliable suite selection.
 
 ## Known current gaps
 
-- `src/functionalTest/java/uk/gov/hmcts/reform/opal/controllers/GetWelcomeTest.java`
+- `src/functionalTest/java/uk/gov/hmcts/opal/controllers/GetWelcomeTest.java`
   is a `@WebMvcTest`, so it does not exercise a running service and should move
   to the unit or integration source set when that test area is next changed.
-- The `functionalOpal` and `functionalLegacy` tasks set Cucumber filters and
-  modes that the current plain JUnit tests do not consume. Until runners or
-  another selection mechanism are implemented, the task names do not prove
-  mode-specific coverage.
-- The Gradle tasks copy Serenity report directories, but the current tests are
-  not Serenity/Cucumber scenarios. Treat the JUnit task result as the execution
-  evidence if no populated Serenity report is generated.
+- `OpalTestRunner` is excluded from `functionalOpal`, and its selected
+  `features/opalMode` directory does not exist. Until the runner, feature files,
+  and Gradle task are enabled together, it provides no Cucumber coverage.
 
 ## Evidence
 
