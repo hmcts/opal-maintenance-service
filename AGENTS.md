@@ -9,13 +9,8 @@ The default local port is `4551`; configured endpoints are `/health` and `/prome
 - Read the ticket and Acceptance Criteria when present.
 - Inspect `git status` and preserve unrelated work.
 - When branch creation is part of the workflow, use a dedicated branch as described in [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md).
-- Route implementation to
-  [docs/REPO_GUIDELINES.md](docs/REPO_GUIDELINES.md), testing to
-  [docs/TESTING.md](docs/TESTING.md), external functional and smoke testing to
-  [docs/E2E_TESTING.md](docs/E2E_TESTING.md), database and Flyway work to
-  [docs/DATABASE_MIGRATIONS.md](docs/DATABASE_MIGRATIONS.md), contribution work
-  to [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md), and review work to
-  [docs/CODE_REVIEW_GUIDELINES.md](docs/CODE_REVIEW_GUIDELINES.md).
+- Route implementation to [docs/REPO_GUIDELINES.md](docs/REPO_GUIDELINES.md), testing to [docs/TESTING.md](docs/TESTING.md), database and Flyway work to [docs/DATABASE_MIGRATIONS.md](docs/DATABASE_MIGRATIONS.md), contribution work to [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md), and review work to [docs/CODE_REVIEW_GUIDELINES.md](docs/CODE_REVIEW_GUIDELINES.md).
+- For OpenAPI work, read [docs/OPENAPI_GUIDELINES.md](docs/OPENAPI_GUIDELINES.md) before adding or moving schemas. Preserve its ownership and generated-name conventions, and verify both bundled and generated output.
 
 ## Always
 

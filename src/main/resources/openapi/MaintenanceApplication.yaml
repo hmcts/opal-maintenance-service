@@ -100,7 +100,7 @@ components:
       properties:
         application_id:
           type: integer
-          format: int32
+          format: int16
           minimum: 1
           maximum: 32767
           description: Database-generated Maintenance Application identifier. DB Mapping - maintenance_applications.application_id

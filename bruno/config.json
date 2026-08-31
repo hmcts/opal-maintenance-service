@@ -5,12 +5,8 @@
   "settings": {
     "requestTimeout": 30000,
     "followRedirects": true,
-    "prettyPrintResponse": true
-  },
-  "request": {
-    "ssl": {
-      "validateSSL": true
-    }
+    "prettyPrintResponse": true,
+    "validateSSL": false
   },
   "envs": {
     "default": "local",
