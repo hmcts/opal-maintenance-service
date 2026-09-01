@@ -70,6 +70,64 @@ paths:
             application/problem+json:
               schema:
                 $ref: './common.yaml#/components/schemas/ProblemDetail'
+  /results/{result_id}:
+    get:
+      tags:
+        - Result
+      summary: Returns an active Result and its dynamic parameter metadata
+      operationId: getResult
+      parameters:
+        - in: path
+          name: result_id
+          description: Result code. DB Mapping - results.result_id
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 6
+      responses:
+        '200':
+          description: Result returned successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailResponse'
+        '400':
+          description: Bad request
+          content:
+            application/problem+json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
+        '404':
+          description: Result not found or not active
+          content:
+            application/problem+json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
+        '500':
+          description: Internal server error
+          content:
+            application/problem+json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
+        '503':
+          description: Service unavailable
+          content:
+            application/problem+json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
 
 components:
   schemas:
@@ -105,3 +163,23 @@ components:
           type: string
           maxLength: 60
           description: Result title presented for selection. DB Mapping - results.result_title
+    DetailResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - result_id
+        - result_title
+      properties:
+        result_id:
+          type: string
+          minLength: 1
+          maxLength: 6
+          description: Unique Result code. DB Mapping - results.result_id
+        result_title:
+          type: string
+          maxLength: 60
+          description: Result title presented for the selected Order Term. DB Mapping - results.result_title
+        result_parameters:
+          type: string
+          description: JSON-encoded array containing the dynamic parameter metadata for this Result. DB Mapping - results.result_parameters
+          example: '[{"name":"reason","prompt":"Reason","type":"text","min":1,"max":24,"language_dependent":"false"}]'

@@ -1,0 +1,362 @@
+openapi: 3.1.1
+
+info:
+  description: Opal Maintenance Service - RM common business objects
+  version: v0.0.1
+  title: Opal Maintenance Service
+
+components:
+  schemas:
+    PartyDetails:
+      type: object
+      additionalProperties: false
+      required:
+        - organisation
+        - address
+      properties:
+        organisation:
+          type: boolean
+          description: False for an individual; true for an organisation. Eventual DB Mapping - parties.organisation
+        individual_details:
+          $ref: '#/components/schemas/IndividualDetails'
+        organisation_details:
+          $ref: '#/components/schemas/OrganisationDetails'
+        address:
+          $ref: '#/components/schemas/Address'
+        contact_details:
+          $ref: '#/components/schemas/ContactDetails'
+        aliases:
+          type: array
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/Alias'
+      allOf:
+        - if:
+            properties:
+              organisation:
+                const: false
+          then:
+            required:
+              - individual_details
+        - if:
+            properties:
+              organisation:
+                const: true
+          then:
+            required:
+              - organisation_details
+
+    IndividualDetails:
+      type: object
+      additionalProperties: false
+      required:
+        - forenames
+        - surname
+      properties:
+        title:
+          type: string
+          maxLength: 20
+        forenames:
+          type: string
+          minLength: 1
+          maxLength: 50
+        surname:
+          type: string
+          minLength: 1
+          maxLength: 50
+        date_of_birth:
+          type: string
+          format: date
+        national_insurance_number:
+          type: string
+          maxLength: 9
+          description: UK National Insurance number; applicable to a Respondent.
+        other_personal_information:
+          type: string
+          maxLength: 200
+          description: Additional personal information; applicable to a Respondent.
+        restrict_personal_information:
+          type: boolean
+          default: false
+        restriction_reason:
+          type: string
+          maxLength: 250
+          description: Required by business validation when restrict_personal_information is true.
+
+    OrganisationDetails:
+      type: object
+      additionalProperties: false
+      required:
+        - organisation_name
+      properties:
+        organisation_name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        foreign_authority_reference:
+          type: string
+          maxLength: 40
+          description: Foreign Authority reference used for an organisation Applicant, when applicable.
+
+    Alias:
+      type: object
+      additionalProperties: false
+      required:
+        - sequence_number
+      properties:
+        sequence_number:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 5
+        forenames:
+          type: string
+          minLength: 1
+          maxLength: 40
+        surname:
+          type: string
+          minLength: 1
+          maxLength: 40
+        organisation_name:
+          type: string
+          minLength: 1
+          maxLength: 80
+      oneOf:
+        - title: Individual alias
+          required:
+            - forenames
+            - surname
+          not:
+            required:
+              - organisation_name
+        - title: Organisation alias
+          required:
+            - organisation_name
+          not:
+            anyOf:
+              - required:
+                  - forenames
+              - required:
+                  - surname
+
+    Address:
+      type: object
+      additionalProperties: false
+      required:
+        - address_line_1
+        - country
+      properties:
+        address_line_1:
+          type: string
+          minLength: 1
+          maxLength: 40
+        address_line_2:
+          type: string
+          maxLength: 40
+        address_line_3:
+          type: string
+          maxLength: 40
+        address_line_4:
+          type: string
+          maxLength: 40
+        address_line_5:
+          type: string
+          maxLength: 40
+        postcode:
+          type: string
+          maxLength: 10
+        country:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: >-
+            Active Country display name selected from RM reference data. Eventual DB Mapping - parties.country,
+            debtor_detail.employer_country or third_party_contact.country as applicable.
+
+    ContactDetails:
+      type: object
+      additionalProperties: false
+      properties:
+        primary_email_address:
+          type: string
+          format: email
+          maxLength: 76
+        secondary_email_address:
+          type: string
+          format: email
+          maxLength: 76
+        main_telephone_number:
+          type: string
+          maxLength: 35
+        other_telephone_number:
+          type: string
+          maxLength: 35
+
+    DebtorDetails:
+      type: object
+      additionalProperties: false
+      required:
+        - employer_name
+        - employer_address
+      properties:
+        employer_name:
+          type: string
+          minLength: 1
+          maxLength: 50
+        employee_reference:
+          type: string
+          maxLength: 20
+        employer_email_address:
+          type: string
+          format: email
+          maxLength: 76
+        employer_telephone_number:
+          type: string
+          maxLength: 35
+        employer_address:
+          $ref: '#/components/schemas/Address'
+
+    ThirdPartyDetails:
+      type: object
+      additionalProperties: false
+      required:
+        - name_or_organisation
+        - relationship
+        - address
+      properties:
+        name_or_organisation:
+          type: string
+          minLength: 1
+          maxLength: 40
+        relationship:
+          type: string
+          minLength: 1
+          maxLength: 40
+        reference:
+          type: string
+          maxLength: 40
+        address:
+          $ref: '#/components/schemas/Address'
+
+    BankAccount:
+      type: object
+      additionalProperties: false
+      required:
+        - bank_account_type
+      properties:
+        bank_account_type:
+          type: string
+          enum:
+            - UK Bank
+            - Non-UK Bank
+            - None or not applicable
+        uk_bank_details:
+          $ref: '#/components/schemas/UkBankDetails'
+        non_uk_bank_details:
+          $ref: '#/components/schemas/NonUkBankDetails'
+      allOf:
+        - if:
+            properties:
+              bank_account_type:
+                const: UK Bank
+          then:
+            required:
+              - uk_bank_details
+        - if:
+            properties:
+              bank_account_type:
+                const: Non-UK Bank
+          then:
+            required:
+              - non_uk_bank_details
+
+    UkBankDetails:
+      type: object
+      additionalProperties: false
+      required:
+        - account_name
+        - sort_code
+        - account_number
+        - payment_reference
+      properties:
+        account_name:
+          type: string
+          minLength: 1
+          maxLength: 18
+        sort_code:
+          type: string
+          pattern: '^(?:[0-9]{6}|[0-9]{2}-[0-9]{2}-[0-9]{2})$'
+        account_number:
+          type: string
+          pattern: '^[0-9]{6,8}$'
+        payment_reference:
+          type: string
+          minLength: 1
+          maxLength: 18
+
+    NonUkBankDetails:
+      type: object
+      additionalProperties: false
+      required:
+        - account_name
+        - payment_reference
+      properties:
+        account_name:
+          type: string
+          minLength: 1
+          maxLength: 18
+        bic_or_swift_code:
+          type: string
+          minLength: 8
+          maxLength: 11
+        iban:
+          type: string
+          maxLength: 34
+        payment_reference:
+          type: string
+          minLength: 1
+          maxLength: 18
+        bank_name:
+          type: string
+          maxLength: 100
+        branch_code_or_sort_code:
+          type: string
+          pattern: '^[0-9]{1,12}$'
+        account_number:
+          type: string
+          maxLength: 20
+      description: >-
+        The FE requires either bic_or_swift_code or iban when Non-UK Bank is selected. Bank name, branch or sort
+        code and account number are additional optional details.
+
+    ResultResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - parameter_name
+        - response
+      properties:
+        parameter_name:
+          type: string
+          minLength: 1
+          maxLength: 50
+        response:
+          type: string
+          description: Consumer response encoded as text according to the selected Result's result_parameters metadata.
+
+    Note:
+      type: object
+      additionalProperties: false
+      required:
+        - note_text
+        - note_type
+      properties:
+        note_text:
+          type: string
+          minLength: 1
+          maxLength: 1000
+        note_type:
+          type: string
+          enum:
+            - AA
+          description: Account Activity note.
