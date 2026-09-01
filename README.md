@@ -208,6 +208,7 @@ Run individual suites when focused feedback is more useful:
 
 ```bash
 ./gradlew test
+./gradlew dbUnitTest
 ./gradlew integration
 ./gradlew functional
 ./gradlew smoke
