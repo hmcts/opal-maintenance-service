@@ -1,7 +1,7 @@
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap;
 
-SELECT plan(42);
+SELECT plan(55);
 
 SELECT has_table('public', 'countries', 'public.countries exists');
 SELECT has_sequence('public', 'country_id_seq', 'public.country_id_seq exists');
@@ -62,6 +62,26 @@ SELECT col_is_unique(
     'public', 'countries', 'international_code',
     'international_code has a unique constraint'
 );
+SELECT ok(
+    EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conrelid = 'public.countries'::regclass
+          AND conname = 'countries_pk'
+          AND contype = 'p'
+    ),
+    'the primary key is named countries_pk'
+);
+SELECT ok(
+    EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conrelid = 'public.countries'::regclass
+          AND conname = 'countries_international_code_uk'
+          AND contype = 'u'
+    ),
+    'the international code constraint is named countries_international_code_uk'
+);
 SELECT has_index(
     'public',
     'countries',
@@ -75,6 +95,29 @@ SELECT index_is_type(
     'countries_active_country_name_idx',
     'btree',
     'countries_active_country_name_idx is a btree index'
+);
+SELECT is(
+    (
+        SELECT index_definition.indisunique
+        FROM pg_index index_definition
+        JOIN pg_class index_relation ON index_relation.oid = index_definition.indexrelid
+        JOIN pg_namespace index_namespace ON index_namespace.oid = index_relation.relnamespace
+        WHERE index_namespace.nspname = 'public'
+          AND index_relation.relname = 'countries_active_country_name_idx'
+    ),
+    FALSE,
+    'countries_active_country_name_idx is not unique'
+);
+
+SELECT ok(
+    (
+        SELECT column_default LIKE 'nextval(%country_id_seq%regclass)%'
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'countries'
+          AND column_name = 'country_id'
+    ),
+    'country_id defaults to the country_id_seq next value'
 );
 
 SELECT ok(
@@ -118,6 +161,56 @@ SELECT ok(
     ),
     'country_id_seq is owned by countries.country_id'
 );
+SELECT is(
+    (
+        SELECT data_type::text
+        FROM pg_sequences
+        WHERE schemaname = 'public'
+          AND sequencename = 'country_id_seq'
+    ),
+    'bigint'::text,
+    'country_id_seq generates bigint values'
+);
+SELECT is(
+    (
+        SELECT start_value
+        FROM pg_sequences
+        WHERE schemaname = 'public'
+          AND sequencename = 'country_id_seq'
+    ),
+    1::bigint,
+    'country_id_seq starts at one'
+);
+SELECT is(
+    (
+        SELECT increment_by
+        FROM pg_sequences
+        WHERE schemaname = 'public'
+          AND sequencename = 'country_id_seq'
+    ),
+    1::bigint,
+    'country_id_seq increments by one'
+);
+SELECT is(
+    (
+        SELECT cycle
+        FROM pg_sequences
+        WHERE schemaname = 'public'
+          AND sequencename = 'country_id_seq'
+    ),
+    FALSE,
+    'country_id_seq does not cycle'
+);
+SELECT is(
+    (
+        SELECT cache_size
+        FROM pg_sequences
+        WHERE schemaname = 'public'
+          AND sequencename = 'country_id_seq'
+    ),
+    1::bigint,
+    'country_id_seq caches one value'
+);
 
 SELECT lives_ok(
     $sql$
@@ -143,6 +236,14 @@ SELECT lives_ok(
     $sql$,
     'a complete valid country can be inserted with a generated identifier'
 );
+SELECT ok(
+    (
+        SELECT country_id IS NOT NULL
+        FROM public.countries
+        WHERE cjs_code = 30001
+    ),
+    'a valid country receives a generated country_id'
+);
 SELECT lives_ok(
     $sql$
     INSERT INTO public.countries (cjs_code, country_name, date_used_from, active)
@@ -151,6 +252,67 @@ SELECT lives_ok(
         (30003, 'pgTAP Nullable Country Two', DATE '2025-01-01', TRUE)
     $sql$,
     'optional country fields can be omitted from multiple rows'
+);
+SELECT lives_ok(
+    $sql$
+    INSERT INTO public.countries (
+        cjs_code, international_code, country_name, date_used_from, date_used_to, active
+    ) VALUES (
+        30004, 'END', 'pgTAP Inactive Country', DATE '2020-01-01', DATE '2024-12-31', FALSE
+    )
+    $sql$,
+    'an inactive country with an end date can be inserted'
+);
+
+SELECT results_eq(
+    $sql$
+    SELECT
+        cjs_code,
+        international_code,
+        gov_code,
+        country_name,
+        demonym,
+        date_used_from,
+        date_used_to,
+        active
+    FROM public.countries
+    WHERE cjs_code BETWEEN 32001 AND 32010
+    ORDER BY cjs_code
+    $sql$,
+    $values$
+    VALUES
+        (32001::smallint, 'GBR'::varchar(3), NULL::varchar(2), 'United Kingdom'::varchar(100),
+            NULL::varchar(100), DATE '2025-01-01', NULL::date, TRUE),
+        (32002::smallint, 'IRL'::varchar(3), NULL::varchar(2), 'Ireland'::varchar(100),
+            NULL::varchar(100), DATE '2025-01-01', NULL::date, TRUE),
+        (32003::smallint, 'FRA'::varchar(3), NULL::varchar(2), 'France'::varchar(100),
+            NULL::varchar(100), DATE '2025-01-01', NULL::date, TRUE),
+        (32004::smallint, 'DEU'::varchar(3), NULL::varchar(2), 'Germany'::varchar(100),
+            NULL::varchar(100), DATE '2025-01-01', NULL::date, TRUE),
+        (32005::smallint, 'ESP'::varchar(3), NULL::varchar(2), 'Spain'::varchar(100),
+            NULL::varchar(100), DATE '2025-01-01', NULL::date, TRUE),
+        (32006::smallint, 'ITA'::varchar(3), NULL::varchar(2), 'Italy'::varchar(100),
+            NULL::varchar(100), DATE '2025-01-01', NULL::date, TRUE),
+        (32007::smallint, 'POL'::varchar(3), NULL::varchar(2), 'Poland'::varchar(100),
+            NULL::varchar(100), DATE '2025-01-01', NULL::date, TRUE),
+        (32008::smallint, 'USA'::varchar(3), NULL::varchar(2), 'United States'::varchar(100),
+            NULL::varchar(100), DATE '2025-01-01', NULL::date, TRUE),
+        (32009::smallint, 'IND'::varchar(3), NULL::varchar(2), 'India'::varchar(100),
+            NULL::varchar(100), DATE '2025-01-01', NULL::date, TRUE),
+        (32010::smallint, 'PAK'::varchar(3), NULL::varchar(2), 'Pakistan'::varchar(100),
+            NULL::varchar(100), DATE '2025-01-01', NULL::date, TRUE)
+    $values$,
+    'the exact development country fixtures are available'
+);
+SELECT ok(
+    (
+        SELECT count(*) = 10
+           AND count(DISTINCT country_id) = 10
+           AND bool_and(country_id > 0)
+        FROM public.countries
+        WHERE cjs_code BETWEEN 32001 AND 32010
+    ),
+    'development country fixtures have generated identifiers'
 );
 
 INSERT INTO public.countries (

@@ -208,6 +208,7 @@ Run individual suites when focused feedback is more useful:
 
 ```bash
 ./gradlew test
+./gradlew dbUnitTest
 ./gradlew integration
 ./gradlew functional
 ./gradlew smoke
@@ -251,11 +252,17 @@ See [Database Migrations](docs/DATABASE_MIGRATIONS.md) for ownership, naming, en
 ## OpenAPI
 
 Endpoint contracts are stored under `src/main/resources/openapi`. The build bundles those documents and generates
-Spring API interfaces and models before compiling the application:
+Spring API interfaces and models before compiling the application.
 
 Resource-specific component names are prefixed with their OpenAPI filename when bundled. For example,
-`ReferenceDataItem` in `Result.yaml` becomes `ResultReferenceDataItem`. Components in `common.yaml` and `types.yaml`
-retain their declared names.
+`ReferenceDataItem` in `Result.yaml` becomes `ResultReferenceDataItem`. Components in `common.yaml`,
+`CommonObjects.yaml`, and `types.yaml` retain their declared names.
+
+Use `common.yaml` for shared technical API components, `types.yaml` for reusable value types,
+`CommonObjects.yaml` for canonical RM business objects, resource files such as `Casefile.yaml` for resource-owned
+aggregates and lifecycle objects, and endpoint files such as `DraftCasefile.yaml` for paths and operation-specific
+request and response schemas. See [OpenAPI Guidelines](docs/OPENAPI_GUIDELINES.md) for ownership, naming, references,
+request/response boundaries, and verification rules.
 
 ```bash
 ./gradlew bundleOpenApi
