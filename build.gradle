@@ -730,3 +730,4 @@ tasks.named("compileJava") {
 }
 
 apply from: "$rootDir/gradle/zephyr.gradle"
+apply from: "$rootDir/gradle/db-unit-test.gradle"

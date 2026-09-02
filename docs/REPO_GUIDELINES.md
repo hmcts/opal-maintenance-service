@@ -20,6 +20,8 @@ the same change.
 - Use `src/test/java` for unit tests, `src/integrationTest/java` for
   Spring/database integration tests, `src/functionalTest/java` for functional
   HTTP tests, and `src/smokeTest/java` for smoke tests.
+- Keep database-owned pgTAP suites under `src/dbUnitTest`, grouped by the
+  database object or object area they verify and named `*_pgtap_tests.sql`.
 - Keep Helm deployment configuration under `charts/`, quality and security-tool
   configuration under `config/`, supporting assets under `lib/`, and local or
   container helpers under `bin/`.
@@ -33,6 +35,7 @@ Use Java 21 and the checked-in Gradle wrapper. Treat `build.gradle` and the
 wrapper configuration as authoritative for tool and dependency versions.
 
 - Run unit tests: `./gradlew test`
+- Run database-owned pgTAP tests: `./gradlew dbUnitTest`
 - Run integration tests: `./gradlew integration`
 - Run baseline validation: `./gradlew build`
 - Run functional tests: `./gradlew functional`
@@ -41,12 +44,14 @@ wrapper configuration as authoritative for tool and dependency versions.
 - Run focused static analysis: `./gradlew checkstyleMain` and `./gradlew pmdMain`
 - Start the local service and PostgreSQL: `docker compose up --build`
 
-`build` includes the configured unit, integration, static-analysis, and
-packaging checks; Docker must be available for Testcontainers-backed integration
-tests. Functional and smoke tests require a suitable running service. Follow
-[Testing](TESTING.md) for suite semantics, prerequisites, focused commands, and
-evidence requirements. Do not treat compilation, task configuration, or a
-command that did not exercise changed behaviour as sufficient validation.
+`build` includes the configured unit, database-owned pgTAP, integration,
+static-analysis, and packaging checks; Docker must be available for
+Testcontainers-backed integration tests and the disposable PostgreSQL pgTAP
+environment. Functional and smoke tests require a suitable running service.
+Follow [Testing](TESTING.md) for suite semantics, prerequisites, focused
+commands, and evidence requirements. Do not treat compilation, task
+configuration, or a command that did not exercise changed behaviour as
+sufficient validation.
 
 ## Formatting and naming
 
@@ -159,6 +164,11 @@ command that did not exercise changed behaviour as sufficient validation.
 - Keep unit tests independent of Docker, PostgreSQL, and external services.
 - Use the existing PostgreSQL 17 Testcontainers setup for database-backed
   integration behaviour; do not assume a developer-owned database state.
+- For each migration or SQL change that creates or changes an observable
+  database contract, create or update a `*_pgtap_tests.sql` suite, identify an
+  unchanged suite demonstrated to remain sufficient, or record a reviewed DB-04
+  no-assertion exception. Run `./gradlew dbUnitTest` and record its non-sensitive
+  evidence for applicable database changes.
 - Functional and smoke tests use `TEST_URL`, defaulting to
   `http://localhost:4551`, and require a suitable running service.
 - Assert observable behaviour rather than implementation details. Use real DTOs,

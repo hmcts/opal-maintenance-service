@@ -15,5 +15,5 @@ public class BaseIntegrationTest {
 
     @ServiceConnection
     @Container
-    static PostgreSQLContainer databaseContainer = new PostgreSQLContainer("postgres:17");
+    protected static PostgreSQLContainer databaseContainer = new PostgreSQLContainer("postgres:17");
 }

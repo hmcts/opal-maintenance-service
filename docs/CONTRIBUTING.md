@@ -85,6 +85,9 @@ Describe the security assessment and any CVE suppressions with their rationale.
 - [ ] Commits follow the contribution convention.
 - [ ] Documentation is updated where needed.
 - [ ] Tests cover the affected behaviour where needed.
+- [ ] Applicable database changes identify created, updated, or sufficient
+  unchanged pgTAP coverage, or a justified DB-04 no-assertion decision, and
+  include `./gradlew dbUnitTest` evidence.
 - [ ] Testing evidence is complete, including relevant checks not run.
 - [ ] Human-only verification, limitations, assumptions, and follow-up work are disclosed.
 - [ ] Agent review is complete, blocking findings are resolved, and affected checks were repeated.

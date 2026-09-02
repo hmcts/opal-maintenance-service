@@ -25,6 +25,7 @@ The default local port is `4551`; configured endpoints are `/health` and `/prome
 ## Commands
 
 - `./gradlew test`
+- `./gradlew dbUnitTest`
 - `./gradlew integration`
 - `./gradlew build`
 - `./gradlew functional`

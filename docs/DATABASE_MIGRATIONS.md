@@ -156,31 +156,31 @@ after `docker compose down`. This preserves local development data, but neither
 restarting that database nor running the backend integration suite is evidence
 of a dedicated fresh-database migration check.
 
-The planned fresh and disposable path is the
-[DB-01 contract below](#planned-db-01-fresh-database-contract); Testing owns its
+The fresh and disposable path is the
+[DB-01 contract below](#db-01-fresh-database-contract); Testing owns its
 suite entry point and availability status. The direct Flyway tasks above
 operate against a configured target and do not create or clean up a disposable
 database. Do not substitute persistent Compose, backend tests, or a configured
-database target for the planned workflow.
+database target for this workflow.
 
 > **Destructive:** `docker compose down --volumes` deletes the developer-owned
 > named volume and its local database data. It is not part of routine migration
 > validation.
 
-### Planned DB-01 fresh-database contract
+### DB-01 fresh-database contract
 
-DB-01 defines the migration-safety and database-outcome contract for the future
-`dbTest` task. Its suite ownership, lifecycle integration, reporting,
-and current availability are documented in
-[Testing](TESTING.md#planned-db-01-suite-semantics).
+DB-01 defines the migration-safety and database-outcome contract for the
+database-owned `dbUnitTest` task. Its suite ownership, lifecycle integration,
+reporting, and availability are documented in
+[Testing](TESTING.md#db-01-suite-semantics).
 
 The fresh-database workflow must:
 
-1. Start a disposable PostgreSQL 17 Testcontainer and create a test-owned
+1. Start a disposable PostgreSQL 17 container and create a test-owned
    logical database with test-owned connection details.
 2. Confirm the logical database has the expected empty start state and no
    Flyway history or application-owned objects.
-3. Configure Flyway programmatically with an explicit list of repository
+3. Configure Flyway with an explicit list of repository
    migration locations. Do not inherit application or environment location
    defaults. Each required location must exist.
 4. Configure baseline behaviour explicitly. Automatic baselining is disabled
@@ -204,13 +204,13 @@ connection details.
 
 Representative predecessor-based upgrades remain owned by the
 [DB-03 guidance below](#planned-db-03-upgrade-path-validation). The
-[DB-04 contract below](#planned-db-04-migration-specific-boundary-contract)
+[DB-04 contract below](#db-04-migration-specific-boundary-contract)
 owns migration-specific boundary assertions; DB-01 requires their relevant
 outcomes without redefining that contract here.
 
 ### Planned DB-03 upgrade-path validation
 
-DB-03 extends the planned DB-01 database-owned `dbTest` framework. It
+DB-03 extends the DB-01 database-owned `dbUnitTest` framework. It
 does not create a second framework and must not use Spring or backend
 integration-test fixtures. Testing owns the suite's availability status; the
 following requirements describe the planned workflow only.
@@ -247,12 +247,12 @@ If the approved data-scenario contract is absent or ambiguous, the
 implementation agent must fail closed: do not invent or extract non-reference
 data, and pause until an approved scenario is provided.
 
-### Planned DB-04 migration-specific boundary contract
+### DB-04 migration-specific boundary contract
 
 Every migration must declare the database contract it affects and the direct
 PostgreSQL assertions needed to prove that contract. The declaration belongs
 with the migration-focused test or specification described in
-[Testing](TESTING.md#planned-db-04-test-placement).
+[Testing](TESTING.md#db-04-pgtap-test-placement).
 
 Select only the categories relevant to the actual migration:
 
@@ -278,10 +278,11 @@ the DB-03 upgrade path, or both. A non-applicable path requires a documented
 reason. Execute assertions directly against PostgreSQL rather than through
 Spring, backend repositories, or backend integration-test fixtures.
 
-Future DB-10 guidance will own reusable assertion mechanics and patterns, how
-assertion failures surface in command output, and the common evidence format.
-DB-04 defines the required migration-specific contract and outcomes without
-duplicating those future mechanics.
+Use the current
+[DB-10 pgTAP execution contract](TESTING.md#db-10-pgtap-execution) for reusable
+assertion mechanics and patterns, command-failing output, and the common
+evidence format. DB-04 defines the required migration-specific contract and
+outcomes without duplicating those mechanics.
 
 ### Planned DB-06 stored-procedure responsibility contract
 
@@ -308,7 +309,7 @@ contract and map it to the applicable DB-04 migration-specific assertions.
 Planned direct PostgreSQL checks for the procedure-side outcomes are described
 in [Testing](TESTING.md#planned-db-06-procedure-side-testing). DB-01 owns that
 suite's lifecycle, DB-03 owns approved predecessor and row-dependent scenarios,
-and DB-10 will own reusable assertion mechanics and evidence formatting.
+and DB-10 owns reusable assertion mechanics and evidence formatting.
 
 Collect evidence proportionate to the change:
 
@@ -333,4 +334,9 @@ Distinguish rolling back application code from recovering database state. After 
 - Confirm no applied migration was modified.
 - Confirm compatibility, locking, duration, data volume, and sensitive-data concerns were assessed.
 - Confirm fresh-database and upgrade-path validation were considered.
+- Confirm each changed database contract maps to a created or updated
+  `*_pgtap_tests.sql` suite, an identified unchanged suite with sufficient
+  coverage, or a justified DB-04 no-assertion exception.
+- Confirm `./gradlew dbUnitTest` passes and its non-sensitive evidence is
+  recorded for every applicable pgTAP change.
 - Confirm exact evidence, skipped checks, and recovery implications were recorded.
