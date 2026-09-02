@@ -59,9 +59,9 @@ and final state, migrations applied, assertions executed, timings, and
 confirmed cleanup. Evidence must not contain production data, PII, secrets,
 credentials, or reusable connection details.
 
-### Planned DB-04 test placement
+### DB-04 pgTAP test placement
 
-DB-04 migration-specific checks will live under `src/dbUnitTest`, grouped by
+DB-04 migration-specific checks live under `src/dbUnitTest`, grouped by
 the maintained database object or feature and run by the
 [DB-01 database-owned suite](#db-01-suite-semantics). Keep the
 migration and ticket association in the test metadata or handoff rather than
@@ -70,21 +70,29 @@ boundary evidence rather than Spring, backend repositories, or backend
 integration-test fixtures. Existing backend integration tests and their
 ownership remain unchanged.
 
-Each migration-focused specification must state whether its assertions run on
-the fresh DB-01 path, the DB-03 upgrade path, or both. Run every applicable
-path; when a path is not applicable, record the reason. Representative upgrade
-setup and synthetic data rules remain owned by the
+Every migration that creates or changes an observable database contract must
+create or update a pgTAP suite named `<object>_pgtap_tests.sql`. If an existing
+suite already covers the changed contract without modification, identify that
+suite and explain why its assertions remain sufficient. If no direct boundary
+assertion is required, use the DB-04 exception wording and record its reason.
+
+Each migration-focused specification must state whether its assertions apply
+to the fresh DB-01 path, the DB-03 upgrade path, or both. The current
+`dbUnitTest` task executes the fresh DB-01 path. Until DB-03 is implemented, an
+applicable upgrade-path requirement remains unmet and must be reported rather
+than claimed as verified. Representative upgrade setup and synthetic data
+rules remain owned by the
 [planned DB-03 guidance](DATABASE_MIGRATIONS.md#planned-db-03-upgrade-path-validation).
 
 Select assertions from the migration-specific categories in the
-[DB-04 database contract](DATABASE_MIGRATIONS.md#planned-db-04-migration-specific-boundary-contract)
-without copying that catalogue here. Future DB-10 guidance will own reusable
-assertion mechanics and patterns, command-failing output, and the common
-evidence format; DB-04 does not define those mechanics.
+[DB-04 database contract](DATABASE_MIGRATIONS.md#db-04-migration-specific-boundary-contract)
+without copying that catalogue here. Follow the current
+[DB-10 pgTAP execution contract](#db-10-pgtap-execution) for reusable assertion
+mechanics and patterns, command-failing output, and the common evidence format.
 
 ### Planned DB-06 procedure-side testing
 
-Stored-procedure checks will live under `src/dbUnitTest`, grouped by the
+Stored-procedure checks live under `src/dbUnitTest`, grouped by the
 maintained procedure or feature and run by the
 [DB-01 database-owned suite](#db-01-suite-semantics). Keep the
 migration and ticket association in the test metadata or handoff. Call the
@@ -109,7 +117,7 @@ The database procedure/backend ownership contract is defined in
 [Database Migrations](DATABASE_MIGRATIONS.md#planned-db-06-stored-procedure-responsibility-contract).
 Backend transaction and run-status orchestration tests remain outside
 `dbUnitTest` and must be tracked separately when required; backend test
-ownership is unchanged. DB-10 will own reusable assertion mechanics,
+ownership is unchanged. DB-10 owns reusable assertion mechanics,
 command-failing output, and evidence formatting rather than DB-06 duplicating
 them here.
 
@@ -136,7 +144,7 @@ real AAD/User Service setup; enable testing-support endpoints explicitly with
 `TESTING_SUPPORT_ENDPOINTS_ENABLED=true` before using its ping or authenticated
 diagnostic requests. Never place a bearer value in a tracked Bruno file.
 
-## Current database SQL test execution
+## DB-10 pgTAP execution
 
 Database contracts live under `src/dbUnitTest` as pgTAP suites named
 `<object>_pgtap_tests.sql`. `dbUnitTest` discovers those files recursively and
