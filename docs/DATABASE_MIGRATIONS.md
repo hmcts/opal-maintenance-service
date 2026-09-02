@@ -124,7 +124,7 @@ connection details.
 
 Representative predecessor-based upgrades remain owned by the
 [DB-03 guidance below](#planned-db-03-upgrade-path-validation). The
-[DB-04 contract below](#planned-db-04-migration-specific-boundary-contract)
+[DB-04 contract below](#db-04-migration-specific-boundary-contract)
 owns migration-specific boundary assertions; DB-01 requires their relevant
 outcomes without redefining that contract here.
 
@@ -167,12 +167,12 @@ If the approved data-scenario contract is absent or ambiguous, the
 implementation agent must fail closed: do not invent or extract non-reference
 data, and pause until an approved scenario is provided.
 
-### Planned DB-04 migration-specific boundary contract
+### DB-04 migration-specific boundary contract
 
 Every migration must declare the database contract it affects and the direct
 PostgreSQL assertions needed to prove that contract. The declaration belongs
 with the migration-focused test or specification described in
-[Testing](TESTING.md#planned-db-04-test-placement).
+[Testing](TESTING.md#db-04-pgtap-test-placement).
 
 Select only the categories relevant to the actual migration:
 
@@ -198,10 +198,11 @@ the DB-03 upgrade path, or both. A non-applicable path requires a documented
 reason. Execute assertions directly against PostgreSQL rather than through
 Spring, backend repositories, or backend integration-test fixtures.
 
-Future DB-10 guidance will own reusable assertion mechanics and patterns, how
-assertion failures surface in command output, and the common evidence format.
-DB-04 defines the required migration-specific contract and outcomes without
-duplicating those future mechanics.
+Use the current
+[DB-10 pgTAP execution contract](TESTING.md#db-10-pgtap-execution) for reusable
+assertion mechanics and patterns, command-failing output, and the common
+evidence format. DB-04 defines the required migration-specific contract and
+outcomes without duplicating those mechanics.
 
 ### Planned DB-06 stored-procedure responsibility contract
 
@@ -228,7 +229,7 @@ contract and map it to the applicable DB-04 migration-specific assertions.
 Planned direct PostgreSQL checks for the procedure-side outcomes are described
 in [Testing](TESTING.md#planned-db-06-procedure-side-testing). DB-01 owns that
 suite's lifecycle, DB-03 owns approved predecessor and row-dependent scenarios,
-and DB-10 will own reusable assertion mechanics and evidence formatting.
+and DB-10 owns reusable assertion mechanics and evidence formatting.
 
 Collect evidence proportionate to the change:
 
@@ -253,4 +254,9 @@ Distinguish rolling back application code from recovering database state. After 
 - Confirm no applied migration was modified.
 - Confirm compatibility, locking, duration, data volume, and sensitive-data concerns were assessed.
 - Confirm fresh-database and upgrade-path validation were considered.
+- Confirm each changed database contract maps to a created or updated
+  `*_pgtap_tests.sql` suite, an identified unchanged suite with sufficient
+  coverage, or a justified DB-04 no-assertion exception.
+- Confirm `./gradlew dbUnitTest` passes and its non-sensitive evidence is
+  recorded for every applicable pgTAP change.
 - Confirm exact evidence, skipped checks, and recovery implications were recorded.

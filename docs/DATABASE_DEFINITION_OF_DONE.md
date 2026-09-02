@@ -69,14 +69,18 @@ and [Testing](TESTING.md#infrastructure-and-evidence).
 - [ ] Migration and SQL validation uses a disposable PostgreSQL environment,
   never a shared environment, and the disposable environment is destroyed
   afterwards.
-- [ ] Applicable SQL unit-test harnesses explain their scenarios and are stored
-  under `src/dbUnitTest` or the repository's designated database-test folder
-  for reference and reuse.
+- [ ] Every migration or SQL change that creates or changes an observable
+  database contract maps to a created or updated `*_pgtap_tests.sql` suite, an
+  identified unchanged suite demonstrated to remain sufficient, or a reviewed
+  DB-04 no-assertion exception with its reason recorded.
+- [ ] Database-owned pgTAP suites explain their scenarios, are stored under
+  `src/dbUnitTest`, and are discoverable by the `dbUnitTest` task.
 - [ ] SQL tests cover applicable success, empty, validation, failure, boundary,
   repeat, concurrency, and row-scope outcomes.
-- [ ] SQL harness timings are enabled and captured, and a failed assertion makes
-  the validation command fail; printed `Passed` or `Failed` messages alone are
-  not accepted as evidence.
+- [ ] For changes requiring database-owned assertions, `./gradlew dbUnitTest`
+  passes, timings and non-sensitive evidence from `build/reports/dbUnitTest`
+  are recorded, and a failed pgTAP assertion makes the command fail; printed
+  `Passed` or `Failed` messages alone are not accepted as evidence.
 - [ ] Test setup and cleanup are deterministic, order-independent, and limited
   to the test-owned records.
 
@@ -94,7 +98,7 @@ and [Testing](TESTING.md#infrastructure-and-evidence).
 
 ## Review readiness
 
-- [ ] The review covers every changed migration and SQL unit-test harness,
+- [ ] The review covers every changed migration and database-owned pgTAP suite,
   including Flyway ordering, environment scope, data integrity, transaction
   ownership, locking, performance, and failure behaviour.
 - [ ] Required human SQL peer review and QA review are identified as pending
