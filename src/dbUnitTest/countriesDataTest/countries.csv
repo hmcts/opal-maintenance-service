@@ -1,0 +1,354 @@
+country_id,cjs_code,international_code,gov_code,country_name,demonym,date_used_from,date_used_to,active
+,0,,,Unknown,Unknown,2026-08-26,,false
+,1,GBR,GB,United Kingdom,British,2026-08-26,,true
+,2,,,England,,1900-01-01,2017-12-31,false
+,3,,,Northern Ireland,,1900-01-01,2017-12-31,false
+,4,,,Scotland,,1900-01-01,2017-12-31,false
+,5,,,Wales,,1900-01-01,2017-12-31,false
+,6,,,Channel Islands,,1900-01-01,2017-12-31,false
+,7,,,Isle Of Man,,1900-01-01,2017-12-31,false
+,10,AFG,AF,Afghanistan,Afghan,2026-08-26,,true
+,12,ALB,AL,Albania,Albanian,2026-08-26,,true
+,14,DZA,DZ,Algeria,Algerian,2026-08-26,,true
+,16,,,American Samoa,,1900-01-01,2017-12-31,false
+,18,AND,AD,Andorra,Andorran,2026-08-26,,true
+,20,AGO,AO,Angola,Angolan,2026-08-26,,true
+,22,,,Anguilla,,1900-01-01,2017-12-31,false
+,24,,,Antarctica,,1900-01-01,2017-12-31,false
+,26,ATG,AG,Antigua and Barbuda,Citizen of Antigua and Barbuda,2026-08-26,,true
+,28,ARG,AR,Argentina,Argentinian,2026-08-26,,true
+,30,ARM,AM,Armenia,Armenian,2026-08-26,,true
+,32,,,Aruba,,1900-01-01,2017-12-31,false
+,34,AUS,AU,Australia,Australian,2026-08-26,,true
+,36,AUT,AT,Austria,Austrian,2026-08-26,,true
+,38,AZE,AZ,Azerbaijan,Azerbaijani,2026-08-26,,true
+,40,BHS,BS,Bahamas,Bahamian,2026-08-26,,true
+,42,BHR,BH,Bahrain,Bahraini,2026-08-26,,true
+,44,BGD,BD,Bangladesh,Bangladeshi,2026-08-26,,true
+,46,BRB,BB,Barbados,Barbadian,2026-08-26,,true
+,48,BEL,BE,Belgium,Belgian,2026-08-26,,true
+,50,BLZ,BZ,Belize,Citizen of Belize,2026-08-26,,true
+,52,BEN,BJ,Benin,Beninese,2026-08-26,,true
+,54,,,Bermuda,,1900-01-01,2017-12-31,false
+,56,BTN,BT,Bhutan,Bhutanese,2026-08-26,,true
+,58,BOL,BO,Bolivia,Bolivian,2026-08-26,,true
+,60,BIH,BA,Bosnia and Herzegovina,Citizen of Bosnia and Herzegovina,2026-08-26,,true
+,62,BWA,BW,Botswana,Citizen of Botswana,2026-08-26,,true
+,64,,,Bouvet Island,,1900-01-01,2017-12-31,false
+,66,BRA,BR,Brazil,Brazilian,2026-08-26,,true
+,68,,,British Indian Ocean Territory,,1900-01-01,2017-12-31,false
+,70,BRN,BN,Brunei,Citizen of Brunei,2026-08-26,,true
+,72,BGR,BG,Bulgaria,Bulgarian,2026-08-26,,true
+,74,BFA,BF,Burkina Faso,Burkinabe;Burkinan,2026-08-26,,true
+,78,BDI,BI,Burundi,Citizen of Burundi,2026-08-26,,true
+,80,BLR,BY,Belarus,Belarusian,2026-08-26,,true
+,82,KHM,KH,Cambodia,Cambodian,2026-08-26,,true
+,84,CMR,CM,Cameroon,Cameroonian,2026-08-26,,true
+,86,CAN,CA,Canada,Canadian,2026-08-26,,true
+,88,CPV,CV,Cape Verde,Cape Verdean,2026-08-26,,true
+,90,,,Cayman Islands,,1900-01-01,2017-12-31,false
+,92,CAF,CF,Central African Republic,Citizen of the Central African Republic,2026-08-26,,true
+,94,TCD,TD,Chad,Chadian,2026-08-26,,true
+,96,CHL,CL,Chile,Chilean,2026-08-26,,true
+,98,CHN,CN,China,Chinese,2026-08-26,,true
+,100,,,Christmas Island,,1900-01-01,2017-12-31,false
+,102,,,Cocos (Keeling) Islands,,1900-01-01,2017-12-31,false
+,104,COL,CO,Colombia,Colombian,2026-08-26,,true
+,106,COM,KM,Comoros,Comoran,2026-08-26,,true
+,107,COD,CD,Congo (Democratic Republic),Citizen of the Democratic Republic of the Congo,2026-08-26,,true
+,108,COG,CG,Congo,Citizen of the Republic of the Congo,2026-08-26,,true
+,110,,,Cook Islands,,1900-01-01,2017-12-31,false
+,112,CRI,CR,Costa Rica,Costa Rican,2026-08-26,,true
+,114,,,Cote D'Ivoire (Ivory Coast),,1900-01-01,2017-12-31,false
+,115,HRV,HR,Croatia,Croatian,2026-08-26,,true
+,116,CUB,CU,Cuba,Cuban,2026-08-26,,true
+,118,CYP,CY,Cyprus,Cypriot,2026-08-26,,true
+,120,,CS,Czechoslovakia,Czechoslovak,1900-01-01,1992-12-31,false
+,121,CZE,CZ,Czech Republic,Czech,2026-08-26,,true
+,122,DNK,DK,Denmark,Dane,2026-08-26,,true
+,124,DJI,DJ,Djibouti,Djiboutian,2026-08-26,,true
+,126,DMA,DM,Dominica,Dominican,2026-08-26,,true
+,128,DOM,DO,Dominican Republic,Citizen of the Dominican Republic,2026-08-26,,true
+,130,TLS,TL,East Timor,East Timorese,2026-08-26,,true
+,132,ECU,EC,Ecuador,Ecuadorean,2026-08-26,,true
+,134,EGY,EG,Egypt,Egyptian,2026-08-26,,true
+,136,SLV,SV,El Salvador,Salvadorean,2026-08-26,,true
+,138,GNQ,GQ,Equatorial Guinea,Equatorial Guinean,2026-08-26,,true
+,139,ERI,ER,Eritrea,Eritrean,2026-08-26,,true
+,140,EST,EE,Estonia,Estonian,2026-08-26,,true
+,142,ETH,ET,Ethiopia,Ethiopian,2026-08-26,,true
+,144,,,Falkland Islands,,1900-01-01,2017-12-31,false
+,146,,,Faroe Islands,,1900-01-01,2017-12-31,false
+,148,FJI,FJ,Fiji,Citizen of Fiji,2026-08-26,,true
+,150,FIN,FI,Finland,Finn,2026-08-26,,true
+,152,FRA,FR,France,French citizen;Frenchman;Frenchwoman,2026-08-26,,true
+,154,,,French Guiana,,1900-01-01,2017-12-31,false
+,156,,,French Polynesia,,1900-01-01,2017-12-31,false
+,158,,,French Southern Territories,,1900-01-01,2017-12-31,false
+,160,GAB,GA,Gabon,Gabonese,2026-08-26,,true
+,162,GMB,GM,Gambia,Gambian,2026-08-26,,true
+,164,GEO,GE,Georgia,Georgian,2026-08-26,,true
+,166,DEU,DE,Germany,German,2026-08-26,,true
+,168,GHA,GH,Ghana,Ghanaian,2026-08-26,,true
+,170,,,Gibraltar,,1900-01-01,2017-12-31,false
+,172,GRC,GR,Greece,Greek,2026-08-26,,true
+,174,,,Greenland,,1900-01-01,2017-12-31,false
+,176,GRD,GD,Grenada,Grenadian,2026-08-26,,true
+,178,,,Guadeloupe,,1900-01-01,2017-12-31,false
+,180,,,Guam,,1900-01-01,2017-12-31,false
+,182,GTM,GT,Guatemala,Guatemalan,2026-08-26,,true
+,184,GIN,GN,Guinea,Guinean,2026-08-26,,true
+,186,GNB,GW,Guinea-Bissau,Citizen of Guinea-Bissau,2026-08-26,,true
+,188,GUY,GY,Guyana,Guyanese,2026-08-26,,true
+,190,HTI,HT,Haiti,Haitian,2026-08-26,,true
+,192,,,Heard And Mcdonald Islands,,1900-01-01,2017-12-31,false
+,194,HND,HN,Honduras,Honduran,2026-08-26,,true
+,196,,,Hong Kong,,1900-01-01,2017-12-31,false
+,198,HUN,HU,Hungary,Hungarian,2026-08-26,,true
+,200,ISL,IS,Iceland,Icelander,2026-08-26,,true
+,202,IND,IN,India,Indian,2026-08-26,,true
+,204,IDN,ID,Indonesia,Indonesian,2026-08-26,,true
+,206,IRN,IR,Iran,Iranian,2026-08-26,,true
+,208,IRQ,IQ,Iraq,Iraqi,2026-08-26,,true
+,210,IRL,IE,Ireland,Irish,2026-08-26,,true
+,212,ISR,IL,Israel,Israeli,2026-08-26,,true
+,214,ITA,IT,Italy,Italian,2026-08-26,,true
+,218,JAM,JM,Jamaica,Jamaican,2026-08-26,,true
+,220,JPN,JP,Japan,Japanese,2026-08-26,,true
+,222,JOR,JO,Jordan,Jordanian,2026-08-26,,true
+,224,KAZ,KZ,Kazakhstan,Kazakh,2026-08-26,,true
+,226,KEN,KE,Kenya,Kenyan,2026-08-26,,true
+,228,KIR,KI,Kiribati,Citizen of Kiribati,2026-08-26,,true
+,230,PRK,KP,North Korea,North Korean,2026-08-26,,true
+,234,KWT,KW,Kuwait,Kuwaiti,2026-08-26,,true
+,236,KGZ,KG,Kyrgyzstan,Kyrgyz,2026-08-26,,true
+,238,LAO,LA,Laos,Lao,2026-08-26,,true
+,240,LVA,LV,Latvia,Latvian,2026-08-26,,true
+,242,LBN,LB,Lebanon,Lebanese,2026-08-26,,true
+,244,LSO,LS,Lesotho,Citizen of Lesotho,2026-08-26,,true
+,246,LBR,LR,Liberia,Liberian,2026-08-26,,true
+,248,LBY,LY,Libya,Libyan,2026-08-26,,true
+,250,LIE,LI,Liechtenstein,Liechtenstein citizen,2026-08-26,,true
+,252,LTU,LT,Lithuania,Lithuanian,2026-08-26,,true
+,254,LUX,LU,Luxembourg,Luxembourger,2026-08-26,,true
+,256,,,Macau,,1900-01-01,2017-12-31,false
+,258,MKD,MK,Macedonia,Macedonian,2026-08-26,,true
+,260,MDG,MG,Madagascar,Citizen of Madagascar,2026-08-26,,true
+,262,MWI,MW,Malawi,Malawian,2026-08-26,,true
+,264,MYS,MY,Malaysia,Citizen of Malaysia,2026-08-26,,true
+,266,MDV,MV,Maldives,Maldivian,2026-08-26,,true
+,268,MLI,ML,Mali,Malian,2026-08-26,,true
+,270,MLT,MT,Malta,Maltese,2026-08-26,,true
+,272,MHL,MH,Marshall Islands,Marshallese,2026-08-26,,true
+,274,,,Martinique,,1900-01-01,2017-12-31,false
+,276,MRT,MR,Mauritania,Mauritanian,2026-08-26,,true
+,278,MUS,MU,Mauritius,Mauritian,2026-08-26,,true
+,280,,,Mayotte,,1900-01-01,2017-12-31,false
+,282,MEX,MX,Mexico,Mexican,2026-08-26,,true
+,284,FSM,FM,Micronesia,Micronesian,2026-08-26,,true
+,286,MDA,MD,Moldova,Moldovan,2026-08-26,,true
+,288,MCO,MC,Monaco,Monegasque,2026-08-26,,true
+,290,MNG,MN,Mongolia,Mongolian,2026-08-26,,true
+,292,MNE,ME,Montenegro,Montenegrin,2026-08-26,,true
+,294,,,Montserrat,,1900-01-01,2017-12-31,false
+,296,MAR,MA,Morocco,Moroccan,2026-08-26,,true
+,298,MOZ,MZ,Mozambique,Mozambican,2026-08-26,,true
+,302,NAM,NA,Namibia,Namibian,2026-08-26,,true
+,304,NRU,NR,Nauru,Nauruan,2026-08-26,,true
+,306,NPL,NP,Nepal,Nepalese,2026-08-26,,true
+,308,NLD,NL,Netherlands,Dutch citizen;Dutchman;Dutchwoman,2026-08-26,,true
+,310,,,Netherlands Antilles,,1900-01-01,2017-12-31,false
+,312,,,Neutral Zone,,1900-01-01,2017-12-31,false
+,314,,,New Caledonia,,1900-01-01,2017-12-31,false
+,316,NZL,NZ,New Zealand,New Zealander,2026-08-26,,true
+,318,NIC,NI,Nicaragua,Nicaraguan,2026-08-26,,true
+,320,NER,NE,Niger,Citizen of Niger,2026-08-26,,true
+,322,NGA,NG,Nigeria,Nigerian,2026-08-26,,true
+,324,,,Niue,,1900-01-01,2017-12-31,false
+,326,,,Norfolk Island,,1900-01-01,2017-12-31,false
+,328,,,Northern Mariana Islands,,1900-01-01,2017-12-31,false
+,330,NOR,NO,Norway,Norwegian,2026-08-26,,true
+,332,OMN,OM,Oman,Omani,2026-08-26,,true
+,334,PAK,PK,Pakistan,Pakistani,2026-08-26,,true
+,336,PLW,PW,Palau,Palauan,2026-08-26,,true
+,337,,,Palestine,,1900-01-01,2017-12-31,false
+,338,PAN,PA,Panama,Panamanian,2026-08-26,,true
+,340,PNG,PG,Papua New Guinea,Papua New Guinean,2026-08-26,,true
+,342,PRY,PY,Paraguay,Paraguayan,2026-08-26,,true
+,344,PER,PE,Peru,Peruvian,2026-08-26,,true
+,346,PHL,PH,Philippines,Filipino;Filipina,2026-08-26,,true
+,348,,,Pitcairn,,1900-01-01,2017-12-31,false
+,350,POL,PL,Poland,Pole,2026-08-26,,true
+,352,PRT,PT,Portugal,Portuguese,2026-08-26,,true
+,354,,,Puerto Rico,,1900-01-01,2017-12-31,false
+,356,QAT,QA,Qatar,Qatari,2026-08-26,,true
+,358,,,Reunion,,1900-01-01,2017-12-31,false
+,360,ROU,RO,Romania,Romanian,2026-08-26,,true
+,362,,,Ross Dependency,,1900-01-01,2017-12-31,false
+,364,RUS,RU,Russia,Russian,2026-08-26,,true
+,366,RWA,RW,Rwanda,Rwandan,2026-08-26,,true
+,368,,,St. Helena,,1900-01-01,2017-12-31,false
+,370,,,St. Kitts And Nevis,,1900-01-01,2017-12-31,false
+,372,,,St. Lucia,,1900-01-01,2017-12-31,false
+,374,,,St. Pierre And Miquelon,,1900-01-01,2017-12-31,false
+,376,,,St. Vincent And The Grenadines,,1900-01-01,2017-12-31,false
+,378,WSM,WS,Samoa,Samoan,2026-08-26,,true
+,380,SMR,SM,San Marino,Citizen of San Marino,2026-08-26,,true
+,382,STP,ST,Sao Tome and Principe,Citizen of Sao Tome and Principe,2026-08-26,,true
+,384,SAU,SA,Saudi Arabia,Saudi Arabian,2026-08-26,,true
+,386,SEN,SN,Senegal,Senegalese,2026-08-26,,true
+,388,SRB,RS,Serbia,Serbian,2026-08-26,,true
+,390,SYC,SC,Seychelles,Citizen of Seychelles,2026-08-26,,true
+,392,SLE,SL,Sierra Leone,Sierra Leonean,2026-08-26,,true
+,394,SGP,SG,Singapore,Singaporean,2026-08-26,,true
+,395,,,Slovak Republic,,1900-01-01,2017-12-31,false
+,396,SVN,SI,Slovenia,Slovene,2026-08-26,,true
+,398,SLB,SB,Solomon Islands,Solomon Islander,2026-08-26,,true
+,400,SOM,SO,Somalia,Somali,2026-08-26,,true
+,402,ZAF,ZA,South Africa,South African,2026-08-26,,true
+,404,,,South Georgia,,1900-01-01,2017-12-31,false
+,406,ESP,ES,Spain,Spaniard;Spanish citizen,2026-08-26,,true
+,408,LKA,LK,Sri Lanka,Citizen of Sri Lanka,2026-08-26,,true
+,410,SDN,SD,Sudan,Sudanese,2026-08-26,,true
+,412,,,Surinam,,1900-01-01,2017-12-31,false
+,414,,,Svalbard And Jan Mayen Islands,,1900-01-01,2017-12-31,false
+,416,SWZ,SZ,Swaziland,Swazi,2026-08-26,,true
+,418,SWE,SE,Sweden,Swede,2026-08-26,,true
+,420,CHE,CH,Switzerland,Swiss,2026-08-26,,true
+,422,SYR,SY,Syria,Syrian,2026-08-26,,true
+,424,,,Taiwan,,1900-01-01,2017-12-31,false
+,426,TJK,TJ,Tajikistan,Tajik,2026-08-26,,true
+,428,TZA,TZ,Tanzania,Tanzanian,2026-08-26,,true
+,430,THA,TH,Thailand,Thai,2026-08-26,,true
+,432,TGO,TG,Togo,Togolese,2026-08-26,,true
+,434,,,Tokelau,,1900-01-01,2017-12-31,false
+,436,TON,TO,Tonga,Tongan,2026-08-26,,true
+,438,TTO,TT,Trinidad and Tobago,Trinidad and Tobago citizen,2026-08-26,,true
+,440,TUN,TN,Tunisia,Tunisian,2026-08-26,,true
+,442,TUR,TR,Turkey,Turk,2026-08-26,,true
+,444,TKM,TM,Turkmenistan,Turkmen,2026-08-26,,true
+,446,,,Turks And Caicos Islands,,1900-01-01,2017-12-31,false
+,448,TUV,TV,Tuvalu,Tuvaluan,2026-08-26,,true
+,450,UGA,UG,Uganda,Ugandan,2026-08-26,,true
+,452,UKR,UA,Ukraine,Ukrainian,2026-08-26,,true
+,454,ARE,AE,United Arab Emirates,Citizen of the United Arab Emirates,2026-08-26,,true
+,456,USA,US,United States,United States citizen,2026-08-26,,true
+,458,,,Usa Minor Outlying Islands,,1900-01-01,2017-12-31,false
+,460,URY,UY,Uruguay,Uruguayan,2026-08-26,,true
+,462,,SU,USSR,Soviet citizen,1900-01-01,1991-12-25,false
+,464,UZB,UZ,Uzbekistan,Uzbek,2026-08-26,,true
+,466,VUT,VU,Vanuatu,Citizen of Vanuatu,2026-08-26,,true
+,468,VAT,VA,Vatican City,Vatican citizen,2026-08-26,,true
+,470,VEN,VE,Venezuela,Venezuelan,2026-08-26,,true
+,472,VNM,VN,Vietnam,Vietnamese,2026-08-26,,true
+,474,,,Virgin Islands (British),,1900-01-01,2017-12-31,false
+,476,,,Virgin Islands (Us),,1900-01-01,2017-12-31,false
+,478,,,Wallis And Futuna Islands,,1900-01-01,2017-12-31,false
+,480,,,Western Sahara,,1900-01-01,2017-12-31,false
+,482,,,Yemen (Arab Republic),,1900-01-01,2017-12-31,false
+,484,YEM,YE,Yemen,Yemeni,1900-01-01,2017-12-31,false
+,486,,,Zaire,,1900-01-01,2017-12-31,false
+,488,ZMB,ZM,Zambia,Zambian,2026-08-26,,true
+,490,ZWE,ZW,Zimbabwe,Zimbabwean,2026-08-26,,true
+,500,,,Abyssinia,,1900-01-01,2017-12-31,false
+,502,,,Aden,,1900-01-01,2017-12-31,false
+,504,,AM,Armenia (B),Armenian,2026-08-26,,true
+,506,,,Basutoland,,1900-01-01,2017-12-31,false
+,508,,,Bechuanaland,,1900-01-01,2017-12-31,false
+,510,,,Belgian Congo,,1900-01-01,2017-12-31,false
+,512,,,Bohemia,,1900-01-01,2017-12-31,false
+,514,,,British Central Africa,,1900-01-01,2017-12-31,false
+,516,,,British East Africa,,1900-01-01,2017-12-31,false
+,518,,,British Guiana,,1900-01-01,2017-12-31,false
+,520,,,British Honduras,,1900-01-01,2017-12-31,false
+,522,,,British North Borneo,,1900-01-01,2017-12-31,false
+,524,,,British Subject Without Citizenship,,1900-01-01,2017-12-31,false
+,525,MMR,MM,Myanmar,Citizen of Myanmar,2026-08-26,,true
+,526,,,Canton And Enderbury Islands,,1900-01-01,2017-12-31,false
+,528,,,Central African Empire,,1900-01-01,2017-12-31,false
+,530,,,Ceylon,,1900-01-01,2017-12-31,false
+,532,,,Chandernagore,,1900-01-01,2017-12-31,false
+,534,,,Citizen Of The Uk. And Colonies,,1900-01-01,2017-12-31,false
+,536,,,Congo (Brazzaville),,1900-01-01,2017-12-31,false
+,538,,,Dahomey,,1900-01-01,2017-12-31,false
+,540,,,Daman,,1900-01-01,2017-12-31,false
+,542,,,Daora,,1900-01-01,2017-12-31,false
+,544,,,Diu,,1900-01-01,2017-12-31,false
+,546,,,Dronning Maud Land,,1900-01-01,2017-12-31,false
+,548,,,Dutch East Indies,,1900-01-01,2017-12-31,false
+,550,,,Dutch Guiana,,1900-01-01,2017-12-31,false
+,552,,DD,East Germany,East German,1900-01-01,1990-10-02,false
+,554,,,East Pakistan,,1900-01-01,2017-12-31,false
+,556,,,East Prussia,,1900-01-01,2017-12-31,false
+,558,,,Eire,,1900-01-01,2017-12-31,false
+,560,,,Fed. Of Rhodesia And Nyasaland,,1900-01-01,2017-12-31,false
+,562,,,French Guinea,,1900-01-01,2017-12-31,false
+,564,,,French Sudan,,1900-01-01,2017-12-31,false
+,566,,,French Togoland,,1900-01-01,2017-12-31,false
+,568,,,German Democratic Republic,,1900-01-01,2017-12-31,false
+,570,,,German East Africa,,1900-01-01,2017-12-31,false
+,572,,,German Southwest Africa,,1900-01-01,2017-12-31,false
+,574,,,"Germany, Rederal Republic Of",,1900-01-01,2017-12-31,false
+,576,,,Gilbert Islands,,1900-01-01,2017-12-31,false
+,578,,,Goa,,1900-01-01,2017-12-31,false
+,580,,,Gold Coast,,1900-01-01,2017-12-31,false
+,582,,,Hawaiian Islands,,1900-01-01,2017-12-31,false
+,584,,,Indochina,,1900-01-01,2017-12-31,false
+,586,,,Irish Free State,,1900-01-01,2017-12-31,false
+,587,CIV,CI,Ivory Coast,Citizen of the Ivory Coast,2026-08-26,,true
+,588,,,Java,,1900-01-01,2017-12-31,false
+,590,,,Johnston Island,,1900-01-01,2017-12-31,false
+,592,,,Kampuchea,,1900-01-01,2017-12-31,false
+,594,,,Karikal,,1900-01-01,2017-12-31,false
+,596,KOR,KR,South Korea,South Korean,2026-08-26,,true
+,598,,,Mahe,,1900-01-01,2017-12-31,false
+,600,,,Malagasy Republic,,1900-01-01,2017-12-31,false
+,602,,,Malaya,,1900-01-01,2017-12-31,false
+,604,,,Middle Congo,,1900-01-01,2017-12-31,false
+,606,,,Midway Islands,,1900-01-01,2017-12-31,false
+,608,,,Nagar Haveli,,1900-01-01,2017-12-31,false
+,610,,,Netherlands East Indies,,1900-01-01,2017-12-31,false
+,612,,,Newfoundland,,1900-01-01,2017-12-31,false
+,614,,,North Vietnam,,1900-01-01,2017-12-31,false
+,616,,,Northern Rhodesia,,1900-01-01,2017-12-31,false
+,618,,,Nupe,,1900-01-01,2017-12-31,false
+,620,,,Nyasaland,,1900-01-01,2017-12-31,false
+,622,,,Pacific Islands,,1900-01-01,2017-12-31,false
+,624,,,Palestine,,1900-01-01,2017-12-31,false
+,626,,,Persia,,1900-01-01,2017-12-31,false
+,628,,,Pondicherry,,1900-01-01,2017-12-31,false
+,630,,,Portuguese East Africa,,1900-01-01,2017-12-31,false
+,632,,,Portuguese Guinea,,1900-01-01,2017-12-31,false
+,634,,,Portuguese West Africa,,1900-01-01,2017-12-31,false
+,636,,,Rhodesia,,1900-01-01,2017-12-31,false
+,638,,,Ruanda,,1900-01-01,2017-12-31,false
+,640,,,Senegambia And Niger Territories,,1900-01-01,2017-12-31,false
+,642,,RS,Serbia (B),Serbian,2026-08-26,,true
+,644,,,Siam,,1900-01-01,2017-12-31,false
+,646,SVK,SK,Slovakia,Slovak,2026-08-26,,true
+,647,,,Somaliland,,1900-01-01,2017-12-31,false
+,648,,,South Vietnam,,1900-01-01,2017-12-31,false
+,650,,,South West Africa,,1900-01-01,2017-12-31,false
+,652,,,Southern Rhodesia,,1900-01-01,2017-12-31,false
+,654,,,Southern Yemen,,1900-01-01,2017-12-31,false
+,656,,,Spanish Guiana,,1900-01-01,2017-12-31,false
+,658,,,Spanish Sahara,,1900-01-01,2017-12-31,false
+,660,,,St. Kitts - Nevis - Anguilla,,1900-01-01,2017-12-31,false
+,662,,,Tanganyika (And Zanzibar),,1900-01-01,2017-12-31,false
+,664,,,Tibet,,1900-01-01,2017-12-31,false
+,666,,,Togoland,,1900-01-01,2017-12-31,false
+,668,,,Transjordan,,1900-01-01,2017-12-31,false
+,670,,,Trucial States,,1900-01-01,2017-12-31,false
+,672,,,United Arab Republics,,1900-01-01,2017-12-31,false
+,674,,,Upper Senegal And Niger,,1900-01-01,2017-12-31,false
+,676,,,Upper Volta,,1900-01-01,2017-12-31,false
+,678,,,Urundi,,1900-01-01,2017-12-31,false
+,680,,,Wake Island,,1900-01-01,2017-12-31,false
+,682,,,West Germany,,1900-01-01,2017-12-31,false
+,684,,,West Pakistan,,1900-01-01,2017-12-31,false
+,686,,,Yanam,,1900-01-01,2017-12-31,false
+,688,,YU,Yugoslavia,Yugoslavian,1900-01-01,1992-04-28,false
+,690,,,Zanzibar,,1900-01-01,2017-12-31,false
+,691,,XK,Kosovo,Kosovan,2026-08-26,,true
+,692,SSD,SS,South Sudan,South Sudanese,2026-08-26,,true
+,999,,,Stateless/ No Country,Stateless/ No Country,2026-08-26,,false

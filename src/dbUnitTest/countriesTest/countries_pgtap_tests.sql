@@ -1,7 +1,7 @@
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap;
 
-SELECT plan(55);
+SELECT plan(53);
 
 SELECT has_table('public', 'countries', 'public.countries exists');
 SELECT has_sequence('public', 'country_id_seq', 'public.country_id_seq exists');
@@ -262,59 +262,6 @@ SELECT lives_ok(
     )
     $sql$,
     'an inactive country with an end date can be inserted'
-);
-
-SELECT results_eq(
-    $sql$
-    SELECT
-        cjs_code,
-        international_code,
-        gov_code,
-        country_name,
-        demonym,
-        date_used_from,
-        date_used_to,
-        active
-    FROM public.countries
-    WHERE cjs_code BETWEEN 32001 AND 32011
-    ORDER BY cjs_code
-    $sql$,
-    $values$
-    VALUES
-        (32001::smallint, 'GBR'::varchar(3), NULL::varchar(2), 'United Kingdom'::varchar(100),
-            NULL::varchar(100), DATE '2025-01-01', NULL::date, TRUE),
-        (32002::smallint, 'IRL'::varchar(3), NULL::varchar(2), 'Ireland'::varchar(100),
-            NULL::varchar(100), DATE '2025-01-01', NULL::date, TRUE),
-        (32003::smallint, 'FRA'::varchar(3), NULL::varchar(2), 'France'::varchar(100),
-            NULL::varchar(100), DATE '2025-01-01', NULL::date, TRUE),
-        (32004::smallint, 'DEU'::varchar(3), NULL::varchar(2), 'Germany'::varchar(100),
-            NULL::varchar(100), DATE '2025-01-01', NULL::date, TRUE),
-        (32005::smallint, 'ESP'::varchar(3), NULL::varchar(2), 'Spain'::varchar(100),
-            NULL::varchar(100), DATE '2025-01-01', NULL::date, TRUE),
-        (32006::smallint, 'ITA'::varchar(3), NULL::varchar(2), 'Italy'::varchar(100),
-            NULL::varchar(100), DATE '2025-01-01', NULL::date, TRUE),
-        (32007::smallint, 'POL'::varchar(3), NULL::varchar(2), 'Poland'::varchar(100),
-            NULL::varchar(100), DATE '2025-01-01', NULL::date, TRUE),
-        (32008::smallint, 'USA'::varchar(3), NULL::varchar(2), 'United States'::varchar(100),
-            NULL::varchar(100), DATE '2025-01-01', NULL::date, TRUE),
-        (32009::smallint, 'IND'::varchar(3), NULL::varchar(2), 'India'::varchar(100),
-            NULL::varchar(100), DATE '2025-01-01', NULL::date, TRUE),
-        (32010::smallint, 'PAK'::varchar(3), NULL::varchar(2), 'Pakistan'::varchar(100),
-            NULL::varchar(100), DATE '2025-01-01', NULL::date, TRUE),
-        (32011::smallint, 'XIC'::varchar(3), NULL::varchar(2), 'Inactive Test Country'::varchar(100),
-            NULL::varchar(100), DATE '2025-01-01', DATE '2025-01-02', FALSE)
-    $values$,
-    'the exact development country fixtures are available'
-);
-SELECT ok(
-    (
-        SELECT count(*) = 11
-           AND count(DISTINCT country_id) = 11
-           AND bool_and(country_id > 0)
-        FROM public.countries
-        WHERE cjs_code BETWEEN 32001 AND 32011
-    ),
-    'development country fixtures have generated identifiers'
 );
 
 INSERT INTO public.countries (
