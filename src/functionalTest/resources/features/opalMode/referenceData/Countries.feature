@@ -2,12 +2,10 @@
 Feature: Countries Reference Data
 
   @JIRA-STORY:PO-10290 @JIRA-EPIC:PO-6506 @PO10290Active
-  Scenario: Retrieve active Countries
+  Scenario: Retrieve Active Countries in display order
     Given I am testing as the "opal-test@dev.platform.hmcts.net" user
-    When I request all Countries
-    And I request active Countries
-    And I request inactive Countries
-    Then the Country active filter partitions the available Countries
+    When I request active Countries
+    Then active Countries are returned in display order for casefile address selection
 
   @JIRA-STORY:PO-10290 @JIRA-EPIC:PO-6506 @PO10290Malformed
   Scenario: Reject a malformed Country filter
@@ -17,5 +15,5 @@ Feature: Countries Reference Data
 
   @JIRA-STORY:PO-10290 @JIRA-EPIC:PO-6506 @PO10290Authentication
   Scenario: Countries require authentication
-    When I request active Countries without authentication
+    When I request Countries without authentication
     Then the Country unauthorized Problem Details response is returned

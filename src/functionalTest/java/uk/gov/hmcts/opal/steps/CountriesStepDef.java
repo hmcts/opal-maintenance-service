@@ -1,68 +1,44 @@
 package uk.gov.hmcts.opal.steps;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static uk.gov.hmcts.opal.assertions.ProblemDetailAssertions.assertProblemDetail;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.cucumber.java.en.Then;
 import io.cucumber.java.en.When;
 import io.restassured.response.Response;
-
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.util.List;
 import java.util.Set;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static uk.gov.hmcts.opal.assertions.ProblemDetailAssertions.assertProblemDetail;
 
 public class CountriesStepDef extends BaseStepDef {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final Comparator<Country> DISPLAY_ORDER = Comparator.comparing(Country::countryName)
+        .thenComparingLong(Country::countryId);
 
-    private Response allCountriesResponse;
-    private Response activeCountriesResponse;
-    private Response inactiveCountriesResponse;
     private Response latestResponse;
-
-    @When("I request all Countries")
-    public void requestAllCountries() {
-        allCountriesResponse = getWithBearer("/countries", BearerTokenStepDef.getToken());
-        latestResponse = allCountriesResponse;
-    }
 
     @When("I request active Countries")
     public void requestActiveCountries() {
-        activeCountriesResponse = getWithBearer("/countries?active=true", BearerTokenStepDef.getToken());
-        latestResponse = activeCountriesResponse;
+        latestResponse = getWithBearer("/countries?active=true", BearerTokenStepDef.getToken());
     }
 
-    @When("I request inactive Countries")
-    public void requestInactiveCountries() {
-        inactiveCountriesResponse = getWithBearer("/countries?active=false", BearerTokenStepDef.getToken());
-        latestResponse = inactiveCountriesResponse;
-    }
-
-    @Then("the Country active filter partitions the available Countries")
-    public void assertCountryFilterPartition() throws IOException {
-        final Map<Long, Boolean> allCountries = readCountries(required(allCountriesResponse, "all"));
-        final Map<Long, Boolean> activeCountries = readCountries(required(activeCountriesResponse, "active"));
-        final Map<Long, Boolean> inactiveCountries = readCountries(required(inactiveCountriesResponse, "inactive"));
-
-        assertFalse(activeCountries.isEmpty(), "Expected at least one active Country");
-        assertFalse(inactiveCountries.isEmpty(), "Expected at least one inactive Country");
-        assertTrue(activeCountries.values().stream().allMatch(Boolean::booleanValue));
-        assertTrue(inactiveCountries.values().stream().noneMatch(Boolean::booleanValue));
-
-        Set<Long> activeIds = activeCountries.keySet();
-        Set<Long> inactiveIds = inactiveCountries.keySet();
-        assertTrue(disjoint(activeIds, inactiveIds), "Active and inactive Country sets overlap");
-
-        Set<Long> filteredIds = new HashSet<>(activeIds);
-        filteredIds.addAll(inactiveIds);
-        assertEquals(allCountries.keySet(), filteredIds, "Filtered Countries do not partition all Countries");
+    @Then("active Countries are returned in display order for casefile address selection")
+    public void assertActiveCountriesInDisplayOrder() throws IOException {
+        Response response = latestResponse();
+        assertEquals(200, response.statusCode(), "Country request did not succeed");
+        assertTrue(
+            response.contentType() != null && response.contentType().startsWith("application/json"),
+            "Expected application/json but received " + response.contentType()
+        );
+        assertActiveCountryResponse(response.asString());
     }
 
     @When("I request Countries with a malformed active filter")
@@ -87,15 +63,16 @@ public class CountriesStepDef extends BaseStepDef {
         );
     }
 
-    @When("I request active Countries without authentication")
-    public void requestActiveCountriesWithoutAuthentication() {
-        latestResponse = getWithoutBearer("/countries?active=true");
+    @When("I request Countries without authentication")
+    public void requestCountriesWithoutAuthentication() {
+        latestResponse = getWithoutBearer("/countries");
     }
 
     @Then("the Country unauthorized Problem Details response is returned")
     public void assertCountryUnauthorizedProblemDetails() throws IOException {
+        Response response = latestResponse();
         assertProblemDetail(
-            latestResponse(),
+            response,
             401,
             "https://hmcts.gov.uk/problems/unauthorized",
             "Unauthorized",
@@ -103,14 +80,13 @@ public class CountriesStepDef extends BaseStepDef {
             "instance",
             "operation_id"
         );
+
+        JsonNode problem = OBJECT_MAPPER.readTree(response.asString());
+        assertFalse(problem.has("count"), "Unauthorized response must not expose a Country count");
+        assertFalse(problem.has("refData"), "Unauthorized response must not expose Country reference data");
     }
 
-    private Map<Long, Boolean> readCountries(Response response) throws IOException {
-        assertEquals(200, response.statusCode(), "Country request did not succeed");
-        return readCountries(response.asString());
-    }
-
-    static Map<Long, Boolean> readCountries(String responseBody) throws IOException {
+    static void assertActiveCountryResponse(String responseBody) throws IOException {
         JsonNode root = OBJECT_MAPPER.readTree(responseBody);
         JsonNode count = root.path("count");
         assertTrue(
@@ -119,8 +95,13 @@ public class CountriesStepDef extends BaseStepDef {
         );
         assertTrue(root.path("refData").isArray(), "Country response refData is missing or invalid");
         assertEquals(count.intValue(), root.path("refData").size());
+        assertTrue(
+            root.path("refData").size() > 1,
+            "Expected the United Kingdom and at least one other active Country"
+        );
 
-        Map<Long, Boolean> countries = new LinkedHashMap<>();
+        List<Country> countries = new ArrayList<>();
+        Set<Long> countryIds = new HashSet<>();
         for (JsonNode item : root.path("refData")) {
             JsonNode countryIdNode = item.path("country_id");
             assertTrue(
@@ -129,12 +110,37 @@ public class CountriesStepDef extends BaseStepDef {
                     && countryIdNode.longValue() > 0,
                 "Country identifier is missing or invalid"
             );
+            assertTrue(
+                item.path("country_name").isTextual() && !item.path("country_name").asText().isBlank(),
+                "Country name is missing or invalid"
+            );
             assertTrue(item.path("active").isBoolean(), "Country active state is missing or invalid");
+            assertTrue(item.path("active").asBoolean(), "Inactive Country returned by the active filter");
+
             long countryId = countryIdNode.longValue();
-            Boolean previous = countries.put(countryId, item.path("active").asBoolean());
-            assertNull(previous, "Duplicate Country identifier returned: " + countryId);
+            assertTrue(countryIds.add(countryId), "Duplicate Country identifier returned: " + countryId);
+            String internationalCode = item.path("international_code").isTextual()
+                ? item.path("international_code").asText()
+                : null;
+            countries.add(new Country(countryId, internationalCode, item.path("country_name").asText()));
         }
-        return countries;
+
+        Country unitedKingdom = countries.getFirst();
+        assertEquals("GBR", unitedKingdom.internationalCode(), "United Kingdom must be returned first");
+        assertEquals("United Kingdom", unitedKingdom.countryName(), "Canonical United Kingdom record is missing");
+
+        JsonNode unitedKingdomNode = root.path("refData").get(0);
+        assertFalse(unitedKingdomNode.has("selected"), "United Kingdom must not be marked as selected");
+        assertFalse(unitedKingdomNode.has("defaulted"), "United Kingdom must not be marked as defaulted");
+
+        List<Country> remainingCountries = countries.subList(1, countries.size());
+        List<Country> expectedOrder = new ArrayList<>(remainingCountries);
+        expectedOrder.sort(DISPLAY_ORDER);
+        assertEquals(
+            expectedOrder,
+            remainingCountries,
+            "Countries after United Kingdom must be ordered by country_name and then country_id"
+        );
     }
 
     private Response required(Response response, String responseName) {
@@ -144,11 +150,10 @@ public class CountriesStepDef extends BaseStepDef {
         return response;
     }
 
-    private boolean disjoint(Set<Long> first, Set<Long> second) {
-        return first.stream().noneMatch(second::contains);
-    }
-
     Response latestResponse() {
         return required(latestResponse, "latest");
+    }
+
+    private record Country(long countryId, String internationalCode, String countryName) {
     }
 }
