@@ -1,6 +1,8 @@
 @Opal @JIRA-LABEL:reference-data
 Feature: Countries Reference Data
 
+  # Requires the target environment to contain one active GBR / United Kingdom record
+  # and at least one other active Country.
   @JIRA-STORY:PO-10290 @JIRA-EPIC:PO-6506 @PO10290Active
   Scenario: Retrieve Active Countries in display order
     Given I am testing as the "opal-test@dev.platform.hmcts.net" user
