@@ -62,6 +62,12 @@ paths:
             application/problem+json:
               schema:
                 $ref: './common.yaml#/components/schemas/ProblemDetail'
+        '406':
+          description: Not acceptable
+          content:
+            application/problem+json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
         '500':
           description: Internal server error
           content:
@@ -103,6 +109,15 @@ components:
         - major_creditor_code
         - name
         - address_line_1
+        - address_line_2
+        - address_line_3
+        - address_line_4
+        - address_line_5
+        - postcode
+        - country_id
+        - country_name
+        - contact_name
+        - contact_email
         - active
         - central_authority
       properties:
@@ -130,42 +145,51 @@ components:
           maxLength: 35
           description: First address line. DB Mapping - major_creditors.address_line_1
         address_line_2:
-          type: string
+          type: [string, 'null']
           maxLength: 35
+          x-extra-annotation: '@com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.ALWAYS)'
           description: Second address line. DB Mapping - major_creditors.address_line_2
         address_line_3:
-          type: string
+          type: [string, 'null']
           maxLength: 35
+          x-extra-annotation: '@com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.ALWAYS)'
           description: Third address line. DB Mapping - major_creditors.address_line_3
         address_line_4:
-          type: string
+          type: [string, 'null']
           maxLength: 35
+          x-extra-annotation: '@com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.ALWAYS)'
           description: Fourth address line. DB Mapping - major_creditors.address_line_4
         address_line_5:
-          type: string
+          type: [string, 'null']
           maxLength: 35
+          x-extra-annotation: '@com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.ALWAYS)'
           description: Fifth address line. DB Mapping - major_creditors.address_line_5
         postcode:
-          type: string
+          type: [string, 'null']
           maxLength: 10
+          x-extra-annotation: '@com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.ALWAYS)'
           description: Postcode. DB Mapping - major_creditors.postcode
         country_id:
-          type: integer
+          type: [integer, 'null']
           format: int64
           minimum: 1
+          x-extra-annotation: '@com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.ALWAYS)'
           description: Country identifier, when recorded. DB Mapping - major_creditors.country_id
         country_name:
-          type: string
+          type: [string, 'null']
           maxLength: 100
+          x-extra-annotation: '@com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.ALWAYS)'
           description: Country display name, when a Country is recorded. DB Mapping - countries.country_name
         contact_name:
-          type: string
+          type: [string, 'null']
           maxLength: 35
+          x-extra-annotation: '@com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.ALWAYS)'
           description: Named contact. DB Mapping - major_creditors.contact_name
         contact_email:
-          type: string
+          type: [string, 'null']
           format: email
           maxLength: 254
+          x-extra-annotation: '@com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.ALWAYS)'
           description: Contact email address. DB Mapping - major_creditors.contact_email
         active:
           type: boolean
