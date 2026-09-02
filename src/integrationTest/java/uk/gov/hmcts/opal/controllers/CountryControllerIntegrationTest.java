@@ -99,11 +99,11 @@ class CountryControllerIntegrationTest extends BaseIntegrationTest {
                 """
         );
 
-        mockMvc.perform(get("/countries").with(user("test-user")))
+        mockMvc.perform(get("/countries").param("active", "true").with(user("test-user")))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.count").value(6))
-            .andExpect(jsonPath("$.refData[4].country_id").value(201))
-            .andExpect(jsonPath("$.refData[5].country_id").value(202));
+            .andExpect(jsonPath("$.count").value(4))
+            .andExpect(jsonPath("$.refData[2].country_id").value(201))
+            .andExpect(jsonPath("$.refData[3].country_id").value(202));
     }
 
     @Test

@@ -7,6 +7,26 @@
 - **Functional:** `src/functionalTest/java`; run `./gradlew functional`. External HTTP checks use `TEST_URL`, defaulting to `http://localhost:4551`; they require a suitable running service.
 - **Smoke:** `src/smokeTest/java`; run `./gradlew smoke`. External HTTP checks use the same `TEST_URL` default and require a running service.
 
+## Cucumber functional tests
+
+Cucumber and Serenity scenarios run through `functionalOpal`. Use a Cucumber
+tag expression to run a focused set of scenarios:
+
+```bash
+./gradlew functionalOpal -Dcucumber.filter.tags='<tag-expression>'
+```
+
+Add `-Dcucumber.execution.dry-run=true` to validate feature and step discovery
+without executing scenario actions.
+
+External scenarios use `TEST_URL`, defaulting to `http://localhost:4551`.
+Authenticated scenarios that obtain a token from User Service use
+`OPAL_USER_SERVICE_API_URL`, defaulting to `http://localhost:4555`. Ensure all
+required services are compatible and the target environment contains
+representative data for the behavior under test.
+
+Never put a bearer token in a tracked file or command-line argument.
+
 ## Database migration validation
 
 Normal Docker Compose use is a persistent local-development workflow.

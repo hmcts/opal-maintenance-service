@@ -276,7 +276,7 @@ SELECT results_eq(
         date_used_to,
         active
     FROM public.countries
-    WHERE cjs_code BETWEEN 32001 AND 32010
+    WHERE cjs_code BETWEEN 32001 AND 32011
     ORDER BY cjs_code
     $sql$,
     $values$
@@ -300,17 +300,19 @@ SELECT results_eq(
         (32009::smallint, 'IND'::varchar(3), NULL::varchar(2), 'India'::varchar(100),
             NULL::varchar(100), DATE '2025-01-01', NULL::date, TRUE),
         (32010::smallint, 'PAK'::varchar(3), NULL::varchar(2), 'Pakistan'::varchar(100),
-            NULL::varchar(100), DATE '2025-01-01', NULL::date, TRUE)
+            NULL::varchar(100), DATE '2025-01-01', NULL::date, TRUE),
+        (32011::smallint, 'XIC'::varchar(3), NULL::varchar(2), 'Inactive Test Country'::varchar(100),
+            NULL::varchar(100), DATE '2025-01-01', DATE '2025-01-02', FALSE)
     $values$,
     'the exact development country fixtures are available'
 );
 SELECT ok(
     (
-        SELECT count(*) = 10
-           AND count(DISTINCT country_id) = 10
+        SELECT count(*) = 11
+           AND count(DISTINCT country_id) = 11
            AND bool_and(country_id > 0)
         FROM public.countries
-        WHERE cjs_code BETWEEN 32001 AND 32010
+        WHERE cjs_code BETWEEN 32001 AND 32011
     ),
     'development country fixtures have generated identifiers'
 );

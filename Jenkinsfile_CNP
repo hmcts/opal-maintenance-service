@@ -1,4 +1,5 @@
 #!groovy
+import uk.gov.hmcts.contino.GithubAPI
 
 @Library("Infrastructure@2.5.4")
 
@@ -6,14 +7,29 @@ def type = "java"
 def product = "opal"
 def component = "maintenance-service"
 
-def configurePrUserService() {
-  env.DEV_ENABLE_OPAL_USER_SERVICE = true
+def configurePrUserService(String namespace) {
+  env.DEV_ENABLE_OPAL_USER_SERVICE = false
   env.DEV_OPAL_USER_SERVICE_IMAGE_SUFFIX = 'latest'
-  env.OPAL_USER_SERVICE_API_URL =
-    "https://opal-maintenance-service-pr-${env.CHANGE_ID}-user-service.dev.platform.hmcts.net"
+  env.OPAL_USER_SERVICE_API_URL = 'https://opal-user-service.staging.platform.hmcts.net'
   env.DEV_ENABLE_OPAL_LOGGING_SERVICE = true
   env.DEV_OPAL_LOGGING_SERVICE_IMAGE_SUFFIX = 'latest'
   env.DEV_ENABLE_OPAL_SERVICE_BUS = true
+
+  def githubApi = new GithubAPI(this)
+
+  for (label in githubApi.getLabelsbyPattern(env.BRANCH_NAME, 'enable_opal_')) {
+    if (label ==~ /enable_opal_user_service.*/) {
+      env.DEV_ENABLE_OPAL_USER_SERVICE = true
+      // The labelled User Service enables token-minting test support, so use only cluster DNS.
+      env.OPAL_USER_SERVICE_API_URL =
+        "http://opal-maintenance-service-pr-${env.CHANGE_ID}-user-service.${namespace}.svc.cluster.local"
+
+      if (label ==~ /enable_opal_user_service:pr-.*/) {
+        env.DEV_OPAL_USER_SERVICE_IMAGE_SUFFIX =
+          label.replace('enable_opal_user_service:', '')
+      }
+    }
+  }
 }
 
 withPipeline(type, product, component) {
@@ -23,7 +39,7 @@ withPipeline(type, product, component) {
 
   before('akschartsinstall') {
     onPR {
-      configurePrUserService()
+      configurePrUserService(product)
     }
   }
 }

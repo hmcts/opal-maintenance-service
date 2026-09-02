@@ -114,7 +114,7 @@ configurations.configureEach {
   resolutionStrategy {
     force "io.cucumber:cucumber-core:${cucumberVersion}"
     force "io.cucumber:cucumber-java:${cucumberVersion}"
-    force "io.cucumber:cucumber-junit:${cucumberVersion}"
+    force "io.cucumber:cucumber-junit-platform-engine:${cucumberVersion}"
   }
 }
 
@@ -230,7 +230,25 @@ tasks.register('functionalOpal', Test) {
   reports.junitXml.getOutputLocation().set(layout.buildDirectory.dir("test-results/functional/opal"))
   testLogging.showStandardStreams = true
   environment("IS_LEGACY_MODE", "false")
-  exclude '**/OpalTestRunner.class'
+  String cucumberFilterTags = System.getProperty("cucumber.filter.tags")
+  systemProperty "cucumber.filter.tags",
+    cucumberFilterTags != null ? cucumberFilterTags : "@Opal and not @Smoke and not @Ignore"
+  systemProperty "cucumber.plugin",
+    "net.serenitybdd.cucumber.core.plugin.SerenityReporterParallel,pretty"
+  if (cucumberFilterTags != null) {
+    include '**/OpalTestRunner.class'
+  } else {
+    include '**/OpalTestRunner.class', '**/*FunctionalTest.class', '**/*Test.class'
+  }
+  if (!file("src/functionalTest/resources/features/opalMode").exists()) {
+    exclude '**/OpalTestRunner.class'
+  }
+
+  String cucumberDryRun = System.getProperty("cucumber.execution.dry-run")
+  if (cucumberDryRun != null) {
+    systemProperty "cucumber.execution.dry-run", cucumberDryRun
+  }
+  systemProperty "test.mode", "opal"
   finalizedBy 'mergeFunctionalResults', 'copyFunctionalReport'
 }
 
