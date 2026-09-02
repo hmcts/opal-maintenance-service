@@ -63,7 +63,7 @@ export REDIS_CONNECTION_STRING=redis://localhost:6379
 
 Redis values are JSON serialized. Cache entries use `OPAL_REDIS_TTL_DURATION`, which defaults to `8H`.
 
-The cache manager is application-wide. It also serves the existing `opal-common-lib` `userState` cache. User State therefore uses the eight-hour default TTL with Redis; with the local concurrent-map fallback it has no TTL and is cleared on process restart. This matches the Fines service cache-manager behaviour.
+The cache manager is application-wide for Spring-managed reference-data caches. The `opal-common-lib` direct Redis User State path remains separate and unchanged by this cache-manager configuration.
 
 The recommended shared-infrastructure Docker workflow enables Redis and connects to the shared `redis` service. The standalone Compose workflow also enables its bundled Redis service.
 

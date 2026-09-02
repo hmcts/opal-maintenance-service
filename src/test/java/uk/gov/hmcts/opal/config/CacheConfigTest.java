@@ -28,7 +28,6 @@ class CacheConfigTest {
         assertThat(manager).isInstanceOf(ConcurrentMapCacheManager.class);
         assertThat(manager.getCache("countryReferenceDataCache")).isNotNull();
         assertThat(manager.getCache("majorCreditorReferenceDataCache")).isNotNull();
-        assertThat(manager.getCache("userState")).isNotNull();
     }
 
     @Test
@@ -40,11 +39,6 @@ class CacheConfigTest {
         RedisCache cache = (RedisCache) manager.getCache("countryReferenceDataCache");
         assertThat(cache).isNotNull();
         assertThat(cache.getCacheConfiguration().getTtlFunction()
-            .getTimeToLive("key", null)).isEqualTo(Duration.ofHours(8));
-
-        RedisCache userStateCache = (RedisCache) manager.getCache("userState");
-        assertThat(userStateCache).isNotNull();
-        assertThat(userStateCache.getCacheConfiguration().getTtlFunction()
             .getTimeToLive("key", null)).isEqualTo(Duration.ofHours(8));
 
         CountryReferenceDataResponse response = CountryReferenceDataResponse.builder()
