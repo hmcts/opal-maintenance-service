@@ -10,7 +10,6 @@ import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -188,7 +187,7 @@ class AuthenticationIntegrationTest extends BaseIntegrationTest {
 
 
     @Test
-    void rejectsTokenWithoutAudienceBeforeUserStateResolution() throws Exception {
+    void acceptsTokenWithoutAudience() throws Exception {
         stubJwkSet();
         WIRE_MOCK_SERVER.stubFor(com.github.tomakehurst.wiremock.client.WireMock.get(USER_STATE_PATH)
                                      .willReturn(okJson(USER_STATE_RESPONSE)));
@@ -198,11 +197,14 @@ class AuthenticationIntegrationTest extends BaseIntegrationTest {
             Instant.now().plus(5, ChronoUnit.MINUTES)
         );
 
-        assertRejectedBeforeUserStateResolution(token);
+        mockMvc.perform(get(AUTHENTICATED_PATH).header(HttpHeaders.AUTHORIZATION, bearer(token)))
+            .andExpect(status().isOk());
+
+        WIRE_MOCK_SERVER.verify(1, getRequestedFor(urlEqualTo(USER_STATE_PATH)));
     }
 
     @Test
-    void rejectsTokenWithWrongAudienceBeforeUserStateResolution() throws Exception {
+    void acceptsTokenWithNonMatchingAudience() throws Exception {
         stubJwkSet();
         WIRE_MOCK_SERVER.stubFor(com.github.tomakehurst.wiremock.client.WireMock.get(USER_STATE_PATH)
                                      .willReturn(okJson(USER_STATE_RESPONSE)));
@@ -213,7 +215,10 @@ class AuthenticationIntegrationTest extends BaseIntegrationTest {
             Instant.now().plus(5, ChronoUnit.MINUTES)
         );
 
-        assertRejectedBeforeUserStateResolution(token);
+        mockMvc.perform(get(AUTHENTICATED_PATH).header(HttpHeaders.AUTHORIZATION, bearer(token)))
+            .andExpect(status().isOk());
+
+        WIRE_MOCK_SERVER.verify(1, getRequestedFor(urlEqualTo(USER_STATE_PATH)));
     }
 
     @Test
@@ -263,7 +268,9 @@ class AuthenticationIntegrationTest extends BaseIntegrationTest {
             .andExpect(jsonPath("$.title").value("Unauthorized"))
             .andExpect(jsonPath("$.status").value(401))
             .andExpect(jsonPath("$.detail").value("You are not authorized to access this resource"))
-            .andExpect(jsonPath("$.properties.retriable").value(false));
+            .andExpect(jsonPath("$.operation_id").isNotEmpty())
+            .andExpect(jsonPath("$.retriable").value(false))
+            .andExpect(jsonPath("$.properties").doesNotExist());
 
         assertUnauthenticatedAuditLoggedWithout(output, PRIVATE_SUBJECT, PRIVATE_OBJECT_ID);
     }
@@ -352,18 +359,6 @@ class AuthenticationIntegrationTest extends BaseIntegrationTest {
         String tokenIssuer,
         Instant expiration) throws JOSEException {
         return tokenWith(subject, null, audience, tokenIssuer, expiration);
-    }
-
-    private void assertRejectedBeforeUserStateResolution(String token) throws Exception {
-        int responseStatus = mockMvc.perform(
-            get(AUTHENTICATED_PATH).header(HttpHeaders.AUTHORIZATION, bearer(token))
-        ).andReturn().getResponse().getStatus();
-
-        assertAll(
-            () -> assertThat(responseStatus).isEqualTo(401),
-            () -> WIRE_MOCK_SERVER.verify(0, getRequestedFor(urlEqualTo(USER_STATE_PATH))),
-            () -> verifyNoInteractions(redisTemplate, redisValueOperations)
-        );
     }
 
     private static RSAKey generateRsaKey() {

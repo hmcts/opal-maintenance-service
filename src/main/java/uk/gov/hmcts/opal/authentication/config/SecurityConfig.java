@@ -59,7 +59,7 @@ public class SecurityConfig {
                 authorize.anyRequest().authenticated();
             })
             .exceptionHandling(errors -> errors
-                .authenticationEntryPoint(customAuthenticationExceptions)
+                .authenticationEntryPoint(oauth2AuthenticationEntryPoint)
                 .accessDeniedHandler(customAuthenticationExceptions))
             .oauth2ResourceServer(oauth -> oauth
                 .authenticationManagerResolver(resolver)

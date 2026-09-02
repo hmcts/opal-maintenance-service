@@ -15,7 +15,9 @@ import uk.gov.hmcts.opal.common.logging.SecurityEventLoggingService;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.net.URI;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 
 @Component
 public class PrivacyPreservingOauth2AuthenticationEntryPoint implements AuthenticationEntryPoint {
@@ -67,7 +69,18 @@ public class PrivacyPreservingOauth2AuthenticationEntryPoint implements Authenti
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
         try (PrintWriter writer = response.getWriter()) {
-            writer.write(ToJsonString.OBJECT_MAPPER.writeValueAsString(problemDetail));
+            writer.write(ToJsonString.OBJECT_MAPPER.writeValueAsString(toResponseBody(problemDetail)));
         }
+    }
+
+    private Map<String, Object> toResponseBody(ProblemDetail problemDetail) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("type", Optional.ofNullable(problemDetail.getType()).map(Object::toString).orElse(null));
+        body.put("title", problemDetail.getTitle());
+        body.put("status", problemDetail.getStatus());
+        body.put("detail", problemDetail.getDetail());
+        body.put("instance", Optional.ofNullable(problemDetail.getInstance()).map(Object::toString).orElse(null));
+        body.putAll(problemDetail.getProperties());
+        return body;
     }
 }
