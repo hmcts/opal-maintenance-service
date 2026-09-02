@@ -135,12 +135,17 @@ tasks.register('dbUnitTest') {
 
       boolean databaseReady = false
       for (int attempt = 1; attempt <= 60; attempt++) {
-        def readinessResult = runDbUnitTestCommand(
-          ['docker', 'exec', containerName, 'pg_isready', '-U', 'postgres', '-d', databaseName]
+        def postgresProcessResult = runDbUnitTestCommand(
+          ['docker', 'exec', containerName, 'cat', '/proc/1/comm']
         )
-        if (readinessResult.exitCode == 0) {
-          databaseReady = true
-          break
+        if (postgresProcessResult.exitCode == 0 && postgresProcessResult.stdout.trim() == 'postgres') {
+          def readinessResult = runDbUnitTestCommand(
+            ['docker', 'exec', containerName, 'pg_isready', '-U', 'postgres', '-d', databaseName]
+          )
+          if (readinessResult.exitCode == 0) {
+            databaseReady = true
+            break
+          }
         }
         TimeUnit.SECONDS.sleep(1)
       }
