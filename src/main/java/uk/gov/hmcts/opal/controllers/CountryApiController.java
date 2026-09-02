@@ -12,10 +12,10 @@ import uk.gov.hmcts.opal.service.CountryService;
 @RequiredArgsConstructor
 public class CountryApiController implements CountryApi {
 
-    private final CountryService service;
+    private final CountryService countryService;
 
     @Override
     public ResponseEntity<CountryReferenceDataResponse> getCountries(@Nullable Boolean active) {
-        return ResponseEntity.ok(service.getCountries(active));
+        return ResponseEntity.ok(countryService.getCountries(active));
     }
 }

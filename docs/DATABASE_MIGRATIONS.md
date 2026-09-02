@@ -76,31 +76,31 @@ after `docker compose down`. This preserves local development data, but neither
 restarting that database nor running the backend integration suite is evidence
 of a dedicated fresh-database migration check.
 
-The planned fresh and disposable path is the
-[DB-01 contract below](#planned-db-01-fresh-database-contract); Testing owns its
+The fresh and disposable path is the
+[DB-01 contract below](#db-01-fresh-database-contract); Testing owns its
 suite entry point and availability status. The direct Flyway tasks above
 operate against a configured target and do not create or clean up a disposable
 database. Do not substitute persistent Compose, backend tests, or a configured
-database target for the planned workflow.
+database target for this workflow.
 
 > **Destructive:** `docker compose down --volumes` deletes the developer-owned
 > named volume and its local database data. It is not part of routine migration
 > validation.
 
-### Planned DB-01 fresh-database contract
+### DB-01 fresh-database contract
 
-DB-01 defines the migration-safety and database-outcome contract for the future
-`dbTest` task. Its suite ownership, lifecycle integration, reporting,
-and current availability are documented in
-[Testing](TESTING.md#planned-db-01-suite-semantics).
+DB-01 defines the migration-safety and database-outcome contract for the
+database-owned `dbUnitTest` task. Its suite ownership, lifecycle integration,
+reporting, and availability are documented in
+[Testing](TESTING.md#db-01-suite-semantics).
 
 The fresh-database workflow must:
 
-1. Start a disposable PostgreSQL 17 Testcontainer and create a test-owned
+1. Start a disposable PostgreSQL 17 container and create a test-owned
    logical database with test-owned connection details.
 2. Confirm the logical database has the expected empty start state and no
    Flyway history or application-owned objects.
-3. Configure Flyway programmatically with an explicit list of repository
+3. Configure Flyway with an explicit list of repository
    migration locations. Do not inherit application or environment location
    defaults. Each required location must exist.
 4. Configure baseline behaviour explicitly. Automatic baselining is disabled
@@ -130,7 +130,7 @@ outcomes without redefining that contract here.
 
 ### Planned DB-03 upgrade-path validation
 
-DB-03 extends the planned DB-01 database-owned `dbTest` framework. It
+DB-03 extends the DB-01 database-owned `dbUnitTest` framework. It
 does not create a second framework and must not use Spring or backend
 integration-test fixtures. Testing owns the suite's availability status; the
 following requirements describe the planned workflow only.

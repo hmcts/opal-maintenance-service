@@ -1,4 +1,3 @@
-import org.gradle.api.tasks.PathSensitivity
 import org.flywaydb.gradle.task.FlywayMigrateTask
 import java.util.concurrent.TimeUnit
 import groovy.io.FileType
@@ -217,8 +216,6 @@ tasks.register('integration', Test) {
   dependsOn 'clearIntegrationReports'
   testClassesDirs = sourceSets.integrationTest.output.classesDirs
   classpath = sourceSets.integrationTest.runtimeClasspath
-  inputs.files(fileTree('src/dbUnitTest')).withPathSensitivity(PathSensitivity.RELATIVE)
-  inputs.file('docker/postgres-pgtap.Dockerfile').withPathSensitivity(PathSensitivity.RELATIVE)
   finalizedBy 'packageIntegrationOutput'
 }
 
@@ -751,3 +748,4 @@ tasks.named("compileJava") {
 }
 
 apply from: "$rootDir/gradle/zephyr.gradle"
+apply from: "$rootDir/gradle/db-unit-test.gradle"

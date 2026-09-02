@@ -1,0 +1,175 @@
+openapi: 3.1.1
+
+servers:
+  - url: http://localhost:4551/
+
+info:
+  description: Opal Maintenance Service - Major Creditor reference data
+  version: v0.0.1
+  title: Opal Maintenance Service
+
+paths:
+  /major-creditors:
+    get:
+      tags:
+        - Major Creditor
+      summary: Returns Major Creditor reference data with optional filters
+      operationId: getMajorCreditors
+      parameters:
+        - in: query
+          name: business_unit_id
+          description: Owning Business Unit used to select Major Creditors. DB Mapping - major_creditors.business_unit_id
+          required: true
+          schema:
+            type: integer
+            format: int16
+            minimum: 1
+            maximum: 32767
+        - in: query
+          name: central_authority
+          description: Filter Major Creditors by Central Authority status. When omitted, this criterion is not applied. DB Mapping - major_creditors.central_authority
+          required: false
+          schema:
+            type: boolean
+        - in: query
+          name: active
+          description: Filter Major Creditors by active status. When omitted, this criterion is not applied. DB Mapping - major_creditors.active
+          required: false
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Major Creditor reference data returned successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceDataResponse'
+        '400':
+          description: Bad request
+          content:
+            application/problem+json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
+        '403':
+          description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
+        '500':
+          description: Internal server error
+          content:
+            application/problem+json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
+        '503':
+          description: Service unavailable
+          content:
+            application/problem+json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
+
+components:
+  schemas:
+    ReferenceDataResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - count
+        - refData
+      properties:
+        count:
+          type: integer
+          format: int32
+          minimum: 0
+          description: Total number of Major Creditors returned.
+        refData:
+          type: array
+          description: Major Creditors matching the supplied filters.
+          items:
+            $ref: '#/components/schemas/ReferenceDataItem'
+    ReferenceDataItem:
+      type: object
+      additionalProperties: false
+      required:
+        - major_creditor_id
+        - business_unit_id
+        - major_creditor_code
+        - name
+        - address_line_1
+        - active
+        - central_authority
+      properties:
+        major_creditor_id:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Database-generated Major Creditor identifier. DB Mapping - major_creditors.major_creditor_id
+        business_unit_id:
+          type: integer
+          format: int16
+          minimum: 1
+          maximum: 32767
+          description: Owning Business Unit identifier. DB Mapping - major_creditors.business_unit_id
+        major_creditor_code:
+          type: string
+          maxLength: 4
+          description: Major Creditor business code, unique within the owning Business Unit. DB Mapping - major_creditors.major_creditor_code
+        name:
+          type: string
+          maxLength: 35
+          description: Major Creditor display name. DB Mapping - major_creditors.name
+        address_line_1:
+          type: string
+          maxLength: 35
+          description: First address line. DB Mapping - major_creditors.address_line_1
+        address_line_2:
+          type: string
+          maxLength: 35
+          description: Second address line. DB Mapping - major_creditors.address_line_2
+        address_line_3:
+          type: string
+          maxLength: 35
+          description: Third address line. DB Mapping - major_creditors.address_line_3
+        address_line_4:
+          type: string
+          maxLength: 35
+          description: Fourth address line. DB Mapping - major_creditors.address_line_4
+        address_line_5:
+          type: string
+          maxLength: 35
+          description: Fifth address line. DB Mapping - major_creditors.address_line_5
+        postcode:
+          type: string
+          maxLength: 10
+          description: Postcode. DB Mapping - major_creditors.postcode
+        country_id:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Country identifier, when recorded. DB Mapping - major_creditors.country_id
+        country_name:
+          type: string
+          maxLength: 100
+          description: Country display name, when a Country is recorded. DB Mapping - countries.country_name
+        contact_name:
+          type: string
+          maxLength: 35
+          description: Named contact. DB Mapping - major_creditors.contact_name
+        contact_email:
+          type: string
+          format: email
+          maxLength: 254
+          description: Contact email address. DB Mapping - major_creditors.contact_email
+        active:
+          type: boolean
+          description: Whether the Major Creditor is active. DB Mapping - major_creditors.active
+        central_authority:
+          type: boolean
+          description: Whether the Major Creditor is also a Central Authority. DB Mapping - major_creditors.central_authority
