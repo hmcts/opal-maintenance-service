@@ -34,11 +34,91 @@ The existing first migration is `V1_1__db_description.sql`; a future version mus
 
 Applied migrations are never edited, renamed, deleted, or renumbered. Correct a mistake in an applied migration with a later forward migration. Do not normalise existing version gaps or historical naming anomalies as incidental cleanup.
 
+## Migration headers
+
+### Selecting the applicable header
+
+Every new Flyway migration, other than a generated baseline migration, must use the applicable header:
+
+- An ordinary schema or data migration uses one file-level header at the start of the migration.
+- A routine-only migration uses an embedded header immediately after `AS $$` for each stored procedure or function.
+- A mixed migration uses one file-level header and an embedded header immediately after `AS $$` for each stored procedure or function.
+
+Historical view migrations use inconsistent header formats and history. The rules in this section apply prospectively; do not edit earlier migrations solely to align them.
+
+### Required header fields
+
+Every file-level and embedded header must contain:
+
+- `OPAL Program`.
+- `MODULE`, identifying the migration file for a file-level header or the stored procedure or function for an embedded header.
+- `DESCRIPTION`, stating the purpose and scope of the migration or routine.
+- `CHANGE HISTORY`, with `Date`, `Author`, `Ticket`, and `Nature of Change` columns.
+
+Do not add a manual `Version` field; the Flyway filename is the migration version. An embedded stored procedure or function header must also contain `PARAMETERS`, documenting every `IN`, `OUT`, and `INOUT` parameter in signature order. Update the parameter documentation whenever a parameter's signature or meaning changes. File-level headers, including headers for view migrations, do not contain `PARAMETERS`.
+
+### Carry-forward history rules
+
+For tables, columns, constraints, types and enums, indexes, sequences, and data changes, record only the current migration in `CHANGE HISTORY`; do not carry forward earlier object history. A newly created object starts with one current change row.
+
+When a view, stored procedure, or function is replaced or recreated, carry forward its trustworthy object history from the latest authoritative migration or consolidated baseline and append one row for the new change. A new view, stored procedure, or function starts with one current change row.
+
+Earlier Flyway migrations remain immutable. Never invent, reconstruct, renumber, or silently normalise missing or ambiguous history. Raise any history gap for review before finalising the new migration.
+
+### Standard migration and view template
+
+```sql
+/**
+ * OPAL Program
+ *
+ * MODULE      : <migration_filename.sql>
+ *
+ * DESCRIPTION : <concise purpose and scope>
+ *
+ * CHANGE HISTORY:
+ *
+ * Date        Author        Ticket        Nature of Change
+ * ----------  ------------  ------------  ----------------------------------------
+ * DD/MM/YYYY  <author>      <ticket>      <change summary>
+ */
+```
+
+For a replaced or recreated view, place any trustworthy carried-forward rows above the new current change row.
+
+### Stored procedure and function template
+
+Place this embedded header immediately after the routine's `AS $$`:
+
+```sql
+AS $$
+/**
+ * OPAL Program
+ *
+ * MODULE      : <procedure_or_function_name>
+ *
+ * DESCRIPTION : <purpose and behaviour>
+ *
+ * PARAMETERS  : IN    <parameter_name>  - <meaning>
+ *             : OUT   <parameter_name>  - <meaning>
+ *             : INOUT <parameter_name>  - <meaning>
+ *
+ * CHANGE HISTORY:
+ *
+ * Date        Author        Ticket        Nature of Change
+ * ----------  ------------  ------------  ----------------------------------------
+ * DD/MM/YYYY  <author>      <ticket>      <change summary>
+ */
+```
+
+Replace the sample parameter rows with one row for every parameter in the routine signature, retaining signature order. For a replaced or recreated routine, place any trustworthy carried-forward change rows above the new current change row.
+
 ## Safe schema changes
 
 When an application and schema cannot change atomically, prefer expand, backfill, and contract sequencing. Preserve compatibility with the currently deployed application until the rollout no longer needs it.
 
 Before writing a migration, assess lock duration, table rewrites, index creation, constraint validation, statement duration, and the volume of affected rows. Backfill and verify existing rows before making a column non-null or adding a restrictive constraint. Use explicit constraint and index names consistent with nearby maintained migrations. Keep each migration focused and avoid unrelated schema cleanup.
+
+Every Flyway migration that creates a persistent table must include, in the same migration, a descriptive `COMMENT ON COLUMN` statement for every column in that table. A `COMMENT ON TABLE` statement is not required. This requirement applies prospectively; do not edit historical migrations or generated baseline migrations solely to add missing column comments.
 
 ## Data migrations and environment scope
 
