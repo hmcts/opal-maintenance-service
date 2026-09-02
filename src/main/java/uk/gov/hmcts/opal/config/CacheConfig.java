@@ -4,6 +4,7 @@ import io.lettuce.core.ClientOptions;
 import io.lettuce.core.MaintNotificationsConfig;
 import io.lettuce.core.RedisURI;
 import java.time.Duration;
+import org.openapitools.jackson.nullable.JsonNullableJackson3Module;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.cache.CacheManager;
@@ -72,6 +73,7 @@ public class CacheConfig {
             .enableDefaultTyping(BasicPolymorphicTypeValidator.builder()
                 .allowIfSubType(Object.class)
                 .build())
+            .customize(builder -> builder.addModule(new JsonNullableJackson3Module()))
             .build();
     }
 }
