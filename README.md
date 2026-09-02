@@ -54,12 +54,18 @@ the current terminal or set in the IDE run configuration.
 
 #### Caching
 
-When the service runs directly on the JVM from IntelliJ or Gradle, Redis-backed caching is disabled by default and the service uses a no-op cache manager. To use a Redis instance available on the host, set:
+When the service runs directly on the JVM from IntelliJ or Gradle, Redis-backed caching is disabled by default and the service uses an in-process concurrent-map cache. Restarting the process clears this local cache. To use a Redis instance available on the host, set:
 
 ```bash / zsh
 export OPAL_REDIS_ENABLED=true
 export REDIS_CONNECTION_STRING=redis://localhost:6379
 ```
+
+Redis values are JSON serialized. Cache entries use `OPAL_REDIS_TTL_DURATION`, which defaults to `8H`.
+
+The cache manager is application-wide. It also serves the existing `opal-common-lib` `userState` cache. User State therefore uses the eight-hour default TTL with Redis; with the local concurrent-map fallback it has no TTL and is cleared on process restart. This matches the Fines service cache-manager behaviour.
+
+The recommended shared-infrastructure Docker workflow enables Redis and connects to the shared `redis` service. The standalone Compose workflow also enables its bundled Redis service.
 
 The standalone `docker-compose.yml` starts Redis, explicitly enables Redis-backed caching, and configures the service to use `redis://redis:6379` on the Compose network. Start the complete environment with:
 
