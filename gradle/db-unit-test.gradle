@@ -10,6 +10,7 @@ def dbUnitTestMigrationDirectories = [
 ]
 def dbUnitTestSqlFiles = fileTree("${rootDir}/src/dbUnitTest") {
   include '**/*_pgtap_tests.sql'
+  include '**/*_unit_tests.sql'
 }
 def dbUnitTestFailureFixture = file(
   "${rootDir}/src/dbUnitTest/framework/failing_pgtap_test.sql"
