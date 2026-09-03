@@ -18,7 +18,7 @@ plugins {
   id 'uk.gov.hmcts.java' version '0.12.70'
   id 'org.flywaydb.flyway' version '13.3.0'
   id 'net.serenity-bdd.serenity-gradle-plugin' version '5.3.9'
-  id "org.openapi.generator" version "7.24.0"
+  id "org.openapi.generator" version "7.25.0"
 }
 
 ext {
@@ -464,9 +464,9 @@ dependencies {
   testImplementation 'uk.gov.hmcts:zephyr-automation:1.2.2'
   testImplementation 'com.launchdarkly:launchdarkly-java-server-sdk:7.15.0'
 
-  openapiImplementation "io.swagger.parser.v3:swagger-parser:2.1.47"
-  openapiImplementation "io.swagger.core.v3:swagger-models:2.2.54"
-  openapiImplementation "io.swagger.core.v3:swagger-core:2.2.54"
+  openapiImplementation "io.swagger.parser.v3:swagger-parser:2.1.48"
+  openapiImplementation "io.swagger.core.v3:swagger-models:2.2.55"
+  openapiImplementation "io.swagger.core.v3:swagger-core:2.2.55"
   openapiImplementation "tools.jackson.dataformat:jackson-dataformat-yaml"
 
   implementation 'com.microsoft.azure:applicationinsights-web:3.7.9'
@@ -494,7 +494,7 @@ dependencies {
     exclude group: 'commons-fileupload', module: 'commons-fileupload'
   }
 
-  implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.2'
+  implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.1.0'
 
   implementation 'com.github.hmcts.java-logging:logging:8.0.0'
 
