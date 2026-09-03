@@ -14,6 +14,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 import org.springframework.data.redis.cache.RedisCacheConfiguration;
 import org.springframework.data.redis.cache.RedisCacheManager;
+import org.springframework.data.redis.cache.RedisCacheWriter;
 import org.springframework.data.redis.connection.RedisConfiguration;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.connection.lettuce.LettuceClientConfiguration;
@@ -55,8 +56,12 @@ public class CacheConfig {
             .entryTtl(ttl)
             .serializeKeysWith(SerializationPair.fromSerializer(RedisSerializer.string()))
             .serializeValuesWith(SerializationPair.fromSerializer(redisValueSerializer()));
+        RedisCacheWriter cacheWriter = RedisCacheWriter.create(
+            connectionFactory,
+            RedisCacheWriter.RedisCacheWriterConfigurer::immediateWrites
+        );
 
-        return RedisCacheManager.builder(connectionFactory)
+        return RedisCacheManager.builder(cacheWriter)
             .cacheDefaults(defaults)
             .build();
     }
