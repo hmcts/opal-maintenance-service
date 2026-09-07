@@ -22,6 +22,16 @@ The default local port is `4551`; configured endpoints are `/health` and `/prome
 - Do not force-add ignored files with `git add -f` or `git add --force` unless the user explicitly approves adding that specific file.
 - Treat Superpowers design and implementation-plan artifacts as local-only. Keep them under ignored `docs/superpowers/` paths. Never stage, force-add, commit, or relocate them into a tracked path to bypass ignore rules unless the user explicitly requests it.
 
+## Agent execution
+
+- Treat a request for action as authorisation to complete safe, reversible work within its stated scope, subject to any
+  mandatory gates in applicable skills.
+- Make reasonable assumptions and continue when missing detail would not materially change the result. Do not introduce
+  additional approval gates beyond those required by the user, an applicable skill, or the action's risk.
+- If an explicit user instruction conflicts with task-specific skill guidance, follow the user instruction.
+- If a skill causes work to pause, remain incomplete, or diverge from the user's request, identify the skill and the
+  relevant instruction, then explain briefly how it applies.
+
 ## Commands
 
 - `./gradlew test`
