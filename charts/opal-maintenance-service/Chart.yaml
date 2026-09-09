@@ -3,7 +3,7 @@ appVersion: "1.0"
 description: A Helm chart for opal-maintenance-service App
 name: opal-maintenance-service
 home: https://github.com/hmcts/opal-maintenance-service
-version: 0.0.22
+version: 0.0.23
 maintainers:
   - name: HMCTS Opal Team
 dependencies:
@@ -19,7 +19,7 @@ dependencies:
     repository: 'oci://hmctsprod.azurecr.io/helm'
     condition: opal-logging-service.enabled
   - name: servicebus
-    version: 1.2.2
+    version: 1.3.0
     repository: 'oci://hmctsprod.azurecr.io/helm'
     condition: servicebus.enabled
   - name: hmcts-redis
