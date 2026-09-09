@@ -24,13 +24,22 @@ The default local port is `4551`; configured endpoints are `/health` and `/prome
 
 ## Agent execution
 
-- Treat a request for action as authorisation to complete safe, reversible work within its stated scope, subject to any
-  mandatory gates in applicable skills.
-- Make reasonable assumptions and continue when missing detail would not materially change the result. Do not introduce
-  additional approval gates beyond those required by the user, an applicable skill, or the action's risk.
-- If an explicit user instruction conflicts with task-specific skill guidance, follow the user instruction.
-- If a skill causes work to pause, remain incomplete, or diverge from the user's request, identify the skill and the
-  relevant instruction, then explain briefly how it applies.
+- Match the work to the request. For questions and reviews, investigate and report; for implementation requests,
+  carry the authorised change through verification and handoff.
+- Preserve the task's objective, constraints, decisions, and approvals across follow-up messages. Treat new input as
+  clarification unless the user clearly changes direction.
+- Make reasonable assumptions for routine, reversible choices within scope. Ask when the answer would materially
+  affect correctness, scope, risk, or an external commitment.
+- Do not request approval already provided in the conversation unless the proposed action or its consequences
+  materially change.
+- When a decision is needed, complete independent, authorised work first and present a concrete recommendation
+  with the relevant trade-offs.
+- Explicit user instructions take precedence over task-specific skill guidance. Before pausing at an applicable
+  approval gate, check whether the user has already approved the specific decision or action that the gate covers.
+- If skill guidance causes a pause or changes the approach, link to the exact instruction, explain its relevance,
+  and distinguish an explicit requirement from your interpretation.
+- Run checks proportionate to the change and complete repository-required verification. Repeat or broaden checks
+  only when changes, failures, or unresolved concerns justify it.
 
 ## Commands
 
