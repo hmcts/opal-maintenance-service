@@ -52,6 +52,7 @@ bruno/environments/*.env
 .codex/*
 
 # Local Superpowers planning/assets
+/.agents/skills/superpowers
 superpowers/
 .superpowers/
 **/superpowers/
