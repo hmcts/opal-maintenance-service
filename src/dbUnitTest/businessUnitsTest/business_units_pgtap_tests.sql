@@ -3,6 +3,11 @@ CREATE EXTENSION IF NOT EXISTS pgtap;
 
 SELECT plan(58);
 
+-- ---------------------------------------------------------------------------
+-- Scenario: The promoted Business Unit enum is available.
+-- Setup:    Inspect the migrated PostgreSQL type and its ordered labels.
+-- Expected: An enum exists with exactly Area and Accounting Division.
+-- ---------------------------------------------------------------------------
 SELECT ok(
     EXISTS (
         SELECT 1
@@ -27,6 +32,11 @@ SELECT is(
     't_business_unit_type_enum has exactly the promoted values in order'
 );
 
+-- ---------------------------------------------------------------------------
+-- Scenario: The table matches the promoted column contract.
+-- Setup:    Inspect table existence, column order, types and nullability.
+-- Expected: Exactly nine approved columns; active is absent.
+-- ---------------------------------------------------------------------------
 SELECT has_table('public', 'business_units', 'public.business_units exists');
 SELECT is(
     (
@@ -101,6 +111,11 @@ SELECT is(
     0::bigint,
     'business_units does not contain active'
 );
+-- ---------------------------------------------------------------------------
+-- Scenario: Business Unit identifiers are supplied, not generated locally.
+-- Setup:    Inspect the identifier default, identity flag and owned sequences.
+-- Expected: No default, identity generation or owned sequence.
+-- ---------------------------------------------------------------------------
 SELECT is(
     (
         SELECT column_default
@@ -136,6 +151,11 @@ SELECT ok(
     ),
     'business_units owns no sequence'
 );
+-- ---------------------------------------------------------------------------
+-- Scenario: Column comments preserve the authoritative descriptions.
+-- Setup:    Read every column comment in physical column order.
+-- Expected: All nine descriptions match the TDIA verbatim.
+-- ---------------------------------------------------------------------------
 SELECT is(
     (
         SELECT array_agg(
@@ -161,6 +181,11 @@ SELECT is(
     'column comments match the verbatim TDIA descriptions in column order'
 );
 
+-- ---------------------------------------------------------------------------
+-- Scenario: Business Unit identifiers are protected by the primary key.
+-- Setup:    Inspect primary-key columns and the constraint name.
+-- Expected: business_units_pk protects business_unit_id.
+-- ---------------------------------------------------------------------------
 SELECT has_pk('public', 'business_units', 'business_units has a primary key');
 SELECT col_is_pk(
     'public', 'business_units', 'business_unit_id',
@@ -176,6 +201,11 @@ SELECT ok(
     ),
     'the primary key is named business_units_pk'
 );
+-- ---------------------------------------------------------------------------
+-- Scenario: Business Unit codes must be unique.
+-- Setup:    Inspect unique-constraint columns and the constraint name.
+-- Expected: business_units_business_unit_code_uk protects business_unit_code.
+-- ---------------------------------------------------------------------------
 SELECT has_unique('public', 'business_units', 'business_units has a unique constraint');
 SELECT col_is_unique(
     'public', 'business_units', 'business_unit_code',
@@ -191,6 +221,11 @@ SELECT ok(
     ),
     'the business unit code constraint has the promoted name'
 );
+-- ---------------------------------------------------------------------------
+-- Scenario: Parent relationships reference another Business Unit.
+-- Setup:    Inspect the named foreign key and both ends of its mapping.
+-- Expected: parent_business_unit_id references business_unit_id on this table.
+-- ---------------------------------------------------------------------------
 SELECT ok(
     EXISTS (
         SELECT 1
@@ -220,6 +255,11 @@ SELECT ok(
     ),
     'bu_parent_business_unit_id_fk is the promoted self-reference'
 );
+-- ---------------------------------------------------------------------------
+-- Scenario: Parent Business Unit lookups have the intended index.
+-- Setup:    Inspect indexed columns, access method and uniqueness.
+-- Expected: A non-unique btree index covers parent_business_unit_id.
+-- ---------------------------------------------------------------------------
 SELECT has_index(
     'public',
     'business_units',
@@ -247,13 +287,22 @@ SELECT is(
     'the parent business unit index is not unique'
 );
 
--- Check before any test fixtures: this migration must not load Business Unit data.
+-- ---------------------------------------------------------------------------
+-- Scenario: The schema migration does not load Business Unit data.
+-- Setup:    Count rows before inserting any test fixtures.
+-- Expected: The table is empty.
+-- ---------------------------------------------------------------------------
 SELECT is(
     (SELECT count(*) FROM public.business_units),
     0::bigint,
     'business_units is empty after migration and before test fixtures'
 );
 
+-- ---------------------------------------------------------------------------
+-- Scenario: A root Business Unit may have no parent or optional values.
+-- Setup:    Insert Area 31001 with optional columns NULL and Welsh flag FALSE.
+-- Expected: The insert succeeds; this row is reused by dependent scenarios.
+-- ---------------------------------------------------------------------------
 SELECT lives_ok(
     $sql$
     INSERT INTO public.business_units (
@@ -280,6 +329,11 @@ SELECT lives_ok(
     $sql$,
     'a valid root business unit can be inserted'
 );
+-- ---------------------------------------------------------------------------
+-- Scenario: An Accounting Division may reference an existing parent.
+-- Setup:    Insert child 31002 referencing root 31001, with optional values set.
+-- Expected: The insert succeeds and the stored parent remains 31001.
+-- ---------------------------------------------------------------------------
 SELECT lives_ok(
     $sql$
     INSERT INTO public.business_units (
@@ -315,6 +369,11 @@ SELECT is(
     31001::smallint,
     'the child retains its parent relationship'
 );
+-- ---------------------------------------------------------------------------
+-- Scenario: Text values at their declared length limits are accepted.
+-- Setup:    Insert code/name/prefix/domain/suffix lengths 4/200/2/30/2.
+-- Expected: The insert succeeds without truncation errors.
+-- ---------------------------------------------------------------------------
 SELECT lives_ok(
     $sql$
     INSERT INTO public.business_units (
@@ -340,6 +399,11 @@ SELECT lives_ok(
     'declared varchar boundary lengths can be inserted'
 );
 
+-- ---------------------------------------------------------------------------
+-- Scenario: An unrecognised Business Unit type is rejected.
+-- Setup:    Insert type Court, which is not an enum label.
+-- Expected: Invalid enum input raises SQLSTATE 22P02.
+-- ---------------------------------------------------------------------------
 SELECT throws_ok(
     $sql$
     INSERT INTO public.business_units (
@@ -353,6 +417,11 @@ SELECT throws_ok(
     NULL,
     'an unrecognised business unit type is rejected'
 );
+-- ---------------------------------------------------------------------------
+-- Scenario: An existing Business Unit identifier cannot be reused.
+-- Setup:    Insert a second row with the root identifier 31001.
+-- Expected: The primary key rejects the insert with SQLSTATE 23505.
+-- ---------------------------------------------------------------------------
 SELECT throws_ok(
     $sql$
     INSERT INTO public.business_units (
@@ -366,6 +435,11 @@ SELECT throws_ok(
     NULL,
     'a duplicate business_unit_id is rejected'
 );
+-- ---------------------------------------------------------------------------
+-- Scenario: An existing Business Unit code cannot be reused.
+-- Setup:    Insert a new identifier using the root code R001.
+-- Expected: The unique constraint rejects the insert with SQLSTATE 23505.
+-- ---------------------------------------------------------------------------
 SELECT throws_ok(
     $sql$
     INSERT INTO public.business_units (
@@ -379,6 +453,11 @@ SELECT throws_ok(
     NULL,
     'a duplicate business_unit_code is rejected'
 );
+-- ---------------------------------------------------------------------------
+-- Scenario: A Business Unit refers to a parent that does not exist.
+-- Setup:    Insert a child with parent_business_unit_id = 31999, which is absent.
+-- Expected: The foreign key rejects the insert with SQLSTATE 23503.
+-- ---------------------------------------------------------------------------
 SELECT throws_ok(
     $sql$
     INSERT INTO public.business_units (
@@ -393,6 +472,11 @@ SELECT throws_ok(
     NULL,
     'an unknown parent_business_unit_id is rejected'
 );
+-- ---------------------------------------------------------------------------
+-- Scenario: A Business Unit must have an explicit non-null identifier.
+-- Setup:    Insert NULL into business_unit_id.
+-- Expected: The NOT NULL constraint rejects the insert with SQLSTATE 23502.
+-- ---------------------------------------------------------------------------
 SELECT throws_ok(
     $sql$
     INSERT INTO public.business_units (
@@ -406,6 +490,11 @@ SELECT throws_ok(
     NULL,
     'a null business_unit_id is rejected'
 );
+-- ---------------------------------------------------------------------------
+-- Scenario: Omitting an identifier must not generate one automatically.
+-- Setup:    Insert a row without supplying business_unit_id.
+-- Expected: The insert fails with SQLSTATE 23502 instead of generating an ID.
+-- ---------------------------------------------------------------------------
 SELECT throws_ok(
     $sql$
     INSERT INTO public.business_units (
@@ -419,6 +508,11 @@ SELECT throws_ok(
     NULL,
     'omitting business_unit_id is rejected rather than generating an identifier'
 );
+-- ---------------------------------------------------------------------------
+-- Scenario: business_unit_code is required.
+-- Setup:    Insert an otherwise valid row with business_unit_code set to NULL.
+-- Expected: The NOT NULL constraint rejects the insert with SQLSTATE 23502.
+-- ---------------------------------------------------------------------------
 SELECT throws_ok(
     $sql$
     INSERT INTO public.business_units (
@@ -432,6 +526,11 @@ SELECT throws_ok(
     NULL,
     'a null business_unit_code is rejected'
 );
+-- ---------------------------------------------------------------------------
+-- Scenario: business_unit_name is required.
+-- Setup:    Insert an otherwise valid row with business_unit_name set to NULL.
+-- Expected: The NOT NULL constraint rejects the insert with SQLSTATE 23502.
+-- ---------------------------------------------------------------------------
 SELECT throws_ok(
     $sql$
     INSERT INTO public.business_units (
@@ -445,6 +544,11 @@ SELECT throws_ok(
     NULL,
     'a null business_unit_name is rejected'
 );
+-- ---------------------------------------------------------------------------
+-- Scenario: business_unit_type is required.
+-- Setup:    Insert an otherwise valid row with business_unit_type set to NULL.
+-- Expected: The NOT NULL constraint rejects the insert with SQLSTATE 23502.
+-- ---------------------------------------------------------------------------
 SELECT throws_ok(
     $sql$
     INSERT INTO public.business_units (
@@ -458,6 +562,11 @@ SELECT throws_ok(
     NULL,
     'a null business_unit_type is rejected'
 );
+-- ---------------------------------------------------------------------------
+-- Scenario: account_number_prefix is required.
+-- Setup:    Insert an otherwise valid row with account_number_prefix set to NULL.
+-- Expected: The NOT NULL constraint rejects the insert with SQLSTATE 23502.
+-- ---------------------------------------------------------------------------
 SELECT throws_ok(
     $sql$
     INSERT INTO public.business_units (
@@ -471,6 +580,11 @@ SELECT throws_ok(
     NULL,
     'a null account_number_prefix is rejected'
 );
+-- ---------------------------------------------------------------------------
+-- Scenario: welsh_language is required.
+-- Setup:    Insert an otherwise valid row with welsh_language set to NULL.
+-- Expected: The NOT NULL constraint rejects the insert with SQLSTATE 23502.
+-- ---------------------------------------------------------------------------
 SELECT throws_ok(
     $sql$
     INSERT INTO public.business_units (
@@ -484,6 +598,11 @@ SELECT throws_ok(
     NULL,
     'a null welsh_language value is rejected'
 );
+-- ---------------------------------------------------------------------------
+-- Scenario: business_unit_code cannot exceed its declared length.
+-- Setup:    Insert 5 characters into business_unit_code, whose limit is 4.
+-- Expected: The insert fails with string-length SQLSTATE 22001.
+-- ---------------------------------------------------------------------------
 SELECT throws_ok(
     $sql$
     INSERT INTO public.business_units (
@@ -497,6 +616,11 @@ SELECT throws_ok(
     NULL,
     'a business_unit_code longer than four characters is rejected'
 );
+-- ---------------------------------------------------------------------------
+-- Scenario: business_unit_name cannot exceed its declared length.
+-- Setup:    Insert 201 characters into business_unit_name, whose limit is 200.
+-- Expected: The insert fails with string-length SQLSTATE 22001.
+-- ---------------------------------------------------------------------------
 SELECT throws_ok(
     $sql$
     INSERT INTO public.business_units (
@@ -510,6 +634,11 @@ SELECT throws_ok(
     NULL,
     'a business_unit_name longer than 200 characters is rejected'
 );
+-- ---------------------------------------------------------------------------
+-- Scenario: account_number_prefix cannot exceed its declared length.
+-- Setup:    Insert 3 characters into account_number_prefix, whose limit is 2.
+-- Expected: The insert fails with string-length SQLSTATE 22001.
+-- ---------------------------------------------------------------------------
 SELECT throws_ok(
     $sql$
     INSERT INTO public.business_units (
@@ -523,6 +652,11 @@ SELECT throws_ok(
     NULL,
     'an account_number_prefix longer than two characters is rejected'
 );
+-- ---------------------------------------------------------------------------
+-- Scenario: opal_domain cannot exceed its declared length.
+-- Setup:    Insert 31 characters into opal_domain, whose limit is 30.
+-- Expected: The insert fails with string-length SQLSTATE 22001.
+-- ---------------------------------------------------------------------------
 SELECT throws_ok(
     $sql$
     INSERT INTO public.business_units (
@@ -536,6 +670,11 @@ SELECT throws_ok(
     NULL,
     'an opal_domain longer than 30 characters is rejected'
 );
+-- ---------------------------------------------------------------------------
+-- Scenario: account_number_suffix cannot exceed its declared length.
+-- Setup:    Insert 3 characters into account_number_suffix, whose limit is 2.
+-- Expected: The insert fails with string-length SQLSTATE 22001.
+-- ---------------------------------------------------------------------------
 SELECT throws_ok(
     $sql$
     INSERT INTO public.business_units (
@@ -551,5 +690,6 @@ SELECT throws_ok(
     'an account_number_suffix longer than two characters is rejected'
 );
 
+-- Verify the assertion plan, then roll back all test fixtures.
 SELECT * FROM finish();
 ROLLBACK;
