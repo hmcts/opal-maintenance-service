@@ -1,7 +1,7 @@
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap;
 
-SELECT plan(56);
+SELECT plan(58);
 
 SELECT ok(
     EXISTS (
@@ -112,6 +112,17 @@ SELECT is(
     NULL,
     'business_unit_id has no generated default'
 );
+SELECT is(
+    (
+        SELECT is_identity
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'business_units'
+          AND column_name = 'business_unit_id'
+    ),
+    'NO',
+    'business_unit_id is not an identity column'
+);
 SELECT ok(
     NOT EXISTS (
         SELECT 1
@@ -120,7 +131,7 @@ SELECT ok(
         WHERE ownership_dependency.classid = 'pg_class'::regclass
           AND ownership_dependency.refclassid = 'pg_class'::regclass
           AND ownership_dependency.refobjid = 'public.business_units'::regclass
-          AND ownership_dependency.deptype = 'a'
+          AND ownership_dependency.deptype IN ('a', 'i')
           AND sequence_relation.relkind = 'S'
     ),
     'business_units owns no sequence'
@@ -394,6 +405,19 @@ SELECT throws_ok(
     '23502',
     NULL,
     'a null business_unit_id is rejected'
+);
+SELECT throws_ok(
+    $sql$
+    INSERT INTO public.business_units (
+        business_unit_code, business_unit_name,
+        business_unit_type, account_number_prefix, welsh_language
+    ) VALUES (
+        'M001', 'pgTAP Missing Identifier', 'Area', 'MI', FALSE
+    )
+    $sql$,
+    '23502',
+    NULL,
+    'omitting business_unit_id is rejected rather than generating an identifier'
 );
 SELECT throws_ok(
     $sql$
