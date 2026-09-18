@@ -28,6 +28,11 @@ Optional improvements are not findings unless advisory feedback was requested.
 - Secret handling, log safety, configuration defaults, operational endpoints,
   and dependency suppressions.
 - Test coverage for likely regressions and evidence for required checks.
+- Check [SQL layout](DATABASE_MIGRATIONS.md#sql-readability) and
+  [pgTAP scenario introductions](TESTING.md#pgtap-scenario-introductions),
+  including unchanged definitions, authoritative comment wording, assertion
+  descriptions, and accurate fixture dependencies and expected outcomes.
+  Formatting alone remains outside defect findings under the review objective.
 
 ## Acceptable exceptions
 

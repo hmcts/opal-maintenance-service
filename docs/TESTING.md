@@ -175,6 +175,33 @@ Raw TAP diagnostics and a non-sensitive execution summary are written under
 `build/reports/dbUnitTest`. The current Countries contract is
 `src/dbUnitTest/countriesTest/countries_pgtap_tests.sql`.
 
+### pgTAP scenario introductions
+
+Keep a single object-focused suite and retain its existing assertion
+descriptions. Immediately before each meaningful behavioural scenario, add a
+separator and a SQL comment header explaining `Scenario`, `Setup`, and
+`Expected`. Related schema assertions may share a header; do not add manually
+maintained test numbering. The required pgTAP `plan` remains unchanged for
+comment-only edits.
+
+For example, a missing-parent scenario can be introduced with:
+
+```sql
+-- -----------------------------------------------------------------------------
+-- Scenario: A Business Unit refers to a parent that does not exist.
+-- Setup: Insert a child with parent_business_unit_id = 31999, which is absent.
+-- Expected: The foreign key rejects the insert with SQLSTATE 23503.
+```
+
+Keep headers accurate about fixture dependencies and outcomes, rather than
+merely repeating the SQL. This example requires parent `31999` to be absent
+and all other insert requirements to be satisfied so that the foreign key is
+the reason for rejection. Describe the actual setup when a scenario relies on
+earlier fixtures. Choose scenario boundaries from the behaviour being tested,
+not a target number of headers or assertions. Adding these introductions must
+not change coverage or executable SQL, split the suite, or introduce a new
+framework.
+
 ## Infrastructure and evidence
 
 Integration tests need Docker for Testcontainers. HTTP functional and smoke
