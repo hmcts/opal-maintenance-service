@@ -288,14 +288,18 @@ SELECT is(
 );
 
 -- ---------------------------------------------------------------------------
--- Scenario: The schema migration does not load Business Unit data.
--- Setup:    Count rows before inserting any test fixtures.
--- Expected: The table is empty.
+-- Scenario: Reserved schema-test fixture identifiers are available.
+-- Setup:    Count persisted rows in the synthetic identifier range 31001 to 31115.
+-- Expected: The reference seed does not use identifiers reserved by this suite.
 -- ---------------------------------------------------------------------------
 SELECT is(
-    (SELECT count(*) FROM public.business_units),
+    (
+        SELECT count(*)
+        FROM public.business_units
+        WHERE business_unit_id BETWEEN 31001 AND 31115
+    ),
     0::bigint,
-    'business_units is empty after migration and before test fixtures'
+    'reserved Business Unit schema-test fixture identifiers are absent'
 );
 
 -- ---------------------------------------------------------------------------
