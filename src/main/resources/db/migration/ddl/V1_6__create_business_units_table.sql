@@ -23,7 +23,7 @@ CREATE TABLE public.business_units (
     business_unit_code      VARCHAR(4)                       NOT NULL,
     business_unit_name      VARCHAR(200)                     NOT NULL,
     business_unit_type      public.t_business_unit_type_enum NOT NULL,
-    account_number_prefix   VARCHAR(2)                       NOT NULL,
+    account_number_prefix   VARCHAR(2),
     parent_business_unit_id SMALLINT,
     opal_domain             VARCHAR(30),
     welsh_language          BOOLEAN                          NOT NULL,

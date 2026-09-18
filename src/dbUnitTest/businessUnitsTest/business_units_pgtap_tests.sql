@@ -1,7 +1,7 @@
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap;
 
-SELECT plan(58);
+SELECT plan(61);
 
 -- ---------------------------------------------------------------------------
 -- Scenario: The promoted Business Unit enum is available.
@@ -85,9 +85,9 @@ SELECT col_not_null('public', 'business_units', 'business_unit_id', 'business_un
 SELECT col_not_null('public', 'business_units', 'business_unit_code', 'business_unit_code is required');
 SELECT col_not_null('public', 'business_units', 'business_unit_name', 'business_unit_name is required');
 SELECT col_not_null('public', 'business_units', 'business_unit_type', 'business_unit_type is required');
-SELECT col_not_null(
+SELECT col_is_null(
     'public', 'business_units', 'account_number_prefix',
-    'account_number_prefix is required'
+    'account_number_prefix is optional'
 );
 SELECT col_is_null(
     'public', 'business_units', 'parent_business_unit_id',
@@ -563,11 +563,11 @@ SELECT throws_ok(
     'a null business_unit_type is rejected'
 );
 -- ---------------------------------------------------------------------------
--- Scenario: account_number_prefix is required.
+-- Scenario: A Business Unit may have no account number prefix.
 -- Setup:    Insert an otherwise valid row with account_number_prefix set to NULL.
--- Expected: The NOT NULL constraint rejects the insert with SQLSTATE 23502.
+-- Expected: The insert succeeds and the stored prefix remains NULL.
 -- ---------------------------------------------------------------------------
-SELECT throws_ok(
+SELECT lives_ok(
     $sql$
     INSERT INTO public.business_units (
         business_unit_id, business_unit_code, business_unit_name,
@@ -576,9 +576,33 @@ SELECT throws_ok(
         31108, 'N008', 'pgTAP Null Prefix', 'Area', NULL, FALSE
     )
     $sql$,
-    '23502',
-    NULL,
-    'a null account_number_prefix is rejected'
+    'a null account_number_prefix is accepted'
+);
+SELECT results_eq(
+    'SELECT account_number_prefix FROM public.business_units WHERE business_unit_id = 31108',
+    'VALUES (NULL::varchar)',
+    'an explicitly null account_number_prefix is stored as NULL'
+);
+-- ---------------------------------------------------------------------------
+-- Scenario: An Accounting Division may omit its account number prefix.
+-- Setup:    Insert an otherwise valid row without the prefix column.
+-- Expected: The insert succeeds and the stored prefix is NULL, not fabricated.
+-- ---------------------------------------------------------------------------
+SELECT lives_ok(
+    $sql$
+    INSERT INTO public.business_units (
+        business_unit_id, business_unit_code, business_unit_name,
+        business_unit_type, welsh_language
+    ) VALUES (
+        31115, 'O015', 'pgTAP Omitted Prefix', 'Accounting Division', FALSE
+    )
+    $sql$,
+    'omitting account_number_prefix is accepted'
+);
+SELECT results_eq(
+    'SELECT account_number_prefix FROM public.business_units WHERE business_unit_id = 31115',
+    'VALUES (NULL::varchar)',
+    'an omitted account_number_prefix is stored as NULL'
 );
 -- ---------------------------------------------------------------------------
 -- Scenario: welsh_language is required.
