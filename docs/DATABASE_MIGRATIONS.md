@@ -120,6 +120,30 @@ Before writing a migration, assess lock duration, table rewrites, index creation
 
 Every Flyway migration that creates a persistent table must include, in the same migration, a descriptive `COMMENT ON COLUMN` statement for every column in that table. A `COMMENT ON TABLE` statement is not required. This requirement applies prospectively; do not edit historical migrations or generated baseline migrations solely to add missing column comments.
 
+## SQL readability
+
+In `CREATE TABLE` definitions, use spaces to align column names, data types,
+and `NOT NULL` clauses across the column block. For example, these column
+definitions are an excerpt, not a complete table definition:
+
+```sql
+    business_unit_id        SMALLINT                         NOT NULL,
+    business_unit_type      public.t_business_unit_type_enum NOT NULL,
+```
+
+Keep each `COMMENT ON COLUMN` statement, including its description, on one
+physical line. Use spaces to align `IS` and the descriptions across the block:
+
+```sql
+COMMENT ON COLUMN public.business_units.business_unit_id   IS 'Primary key supplied by the authoritative Business Unit catalogue';
+COMMENT ON COLUMN public.business_units.business_unit_type IS 'Area or Accounting Division';
+```
+
+Preserve authoritative comment wording exactly. Readability edits must not
+change definitions or quoted text. Apply these conventions to new or safely
+editable SQL; never rewrite an already-applied Flyway migration solely for
+formatting. The [immutability rules](#immutability-and-forward-fixes) still apply.
+
 ## Data migrations and environment scope
 
 Use deterministic inserts and updates with precise predicates. For backfills or destructive data changes, define expected row counts and post-migration queries. Review sequences after inserting explicit identifiers or large seed sets.
