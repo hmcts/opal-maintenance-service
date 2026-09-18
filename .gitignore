@@ -65,3 +65,9 @@ docs/plans/
 
 # Local linked worktrees
 /.worktrees/
+/.agents/skills/
+
+/.opal.env
+
+# Local Superpowers via skills CLI
+/skills-lock.json
