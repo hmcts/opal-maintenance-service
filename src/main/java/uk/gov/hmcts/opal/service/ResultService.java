@@ -3,6 +3,7 @@ package uk.gov.hmcts.opal.service;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uk.gov.hmcts.opal.generated.model.ResultReferenceDataItem;
@@ -18,6 +19,11 @@ public class ResultService {
     private final ResultMapper mapper;
 
     @Transactional(readOnly = true)
+    @Cacheable(
+        cacheNames = "resultReferenceDataCache",
+        key = "(#p0 == null ? 'noFilter' : #p0.toString()) + '_' + "
+            + "(#p1 == null ? 'noFilter' : #p1.toString())"
+    )
     public ResultReferenceDataResponse getResults(
         @Nullable Boolean orderTerm, @Nullable Boolean active
     ) {
