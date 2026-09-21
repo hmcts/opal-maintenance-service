@@ -65,6 +65,22 @@ Redis values are JSON serialized. Cache entries use `OPAL_REDIS_TTL_DURATION`, w
 
 The cache manager is application-wide for Spring-managed reference-data caches. The `opal-common-lib` direct Redis User State path remains separate and unchanged by this cache-manager configuration.
 
+`GET /results` requires authentication and accepts optional `order_term` and
+`active` Boolean filters. Omitted filters impose no restriction; false remains
+distinct from omitted. Responses contain `{count, refData}` with Result code/title
+items ordered by title then code. An empty result returns 200 with an empty array.
+No effective-date predicate is applied. Invalid parameter types return 400 Problem
+JSON; unsupported response media types return 406.
+
+Results responses use the existing reference-data cache configuration. Both filter
+states form the cache key, including omitted values. Redis expiry uses the existing
+TTL (eight hours by default); the in-memory fallback follows its existing lifecycle.
+
+This staged implementation depends on the Results table change (PO-10286 / PR #212).
+Results PostgreSQL mapping/query verification is deferred; mocked HTTP/cache tests
+do not prove database behavior. Approved Results population is separately owned by
+PO-10295. The singular Result-details endpoint is outside this change.
+
 The recommended shared-infrastructure Docker workflow enables Redis and connects to the shared `redis` service. The standalone Compose workflow also enables its bundled Redis service.
 
 The standalone `docker-compose.yml` starts Redis, explicitly enables Redis-backed caching, and configures the service to use `redis://redis:6379` on the Compose network. Start the complete environment with:
