@@ -45,7 +45,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ReferenceDataResponse'
         '400':
-          description: Bad request
+          description: Invalid parameter type or constraint, or a required parameter is missing
           content:
             application/problem+json:
               schema:
@@ -63,7 +63,7 @@ paths:
               schema:
                 $ref: './common.yaml#/components/schemas/ProblemDetail'
         '406':
-          description: Not acceptable
+          description: Unsupported response representation
           content:
             application/problem+json:
               schema:

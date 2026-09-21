@@ -149,22 +149,12 @@ class CountryControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
-    @DisplayName("PO-10251 rejects a malformed active filter with correlated Problem Details")
-    void rejectsMalformedActiveFilter() throws Exception {
-        mockMvc.perform(
-            get("/countries")
-                .param("active", "not-a-boolean")
-                .with(user("test-user"))
-        )
-            .andExpect(status().isNotAcceptable())
+    void rejectsMalformedActiveWithoutReflectingItsValue() throws Exception {
+        mockMvc.perform(get("/countries").param("active", "not-a-boolean")
+                .with(user("test-user")))
+            .andExpect(status().isBadRequest())
             .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
-            .andExpect(jsonPath("$.type").value("https://hmcts.gov.uk/problems/type-mismatch"))
-            .andExpect(jsonPath("$.title").value("Not Acceptable"))
-            .andExpect(jsonPath("$.detail").value("Invalid parameter value format"))
-            .andExpect(jsonPath("$.status").value(406))
-            .andExpect(jsonPath("$.instance").isNotEmpty())
-            .andExpect(jsonPath("$.operation_id").isNotEmpty())
-            .andExpect(jsonPath("$.retriable").value(false))
-            .andExpect(jsonPath("$.reason").isNotEmpty());
+            .andExpect(jsonPath("$.detail").value("Parameter 'active' must be of type Boolean"))
+            .andExpect(jsonPath("$.reason").doesNotExist());
     }
 }

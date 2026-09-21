@@ -96,11 +96,11 @@ class MajorCreditorControllerIntegrationTest extends BaseIntegrationTest {
         mockMvc.perform(get("/major-creditors")
                 .param("business_unit_id", "32768")
                 .with(user("test-user")))
-            .andExpect(status().isNotAcceptable())
+            .andExpect(status().isBadRequest())
             .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
             .andExpect(jsonPath("$.type").value("https://hmcts.gov.uk/problems/type-mismatch"))
-            .andExpect(jsonPath("$.title").value("Not Acceptable"))
-            .andExpect(jsonPath("$.status").value(406));
+            .andExpect(jsonPath("$.title").value("Bad Request"))
+            .andExpect(jsonPath("$.status").value(400));
     }
 
     @Test
@@ -108,11 +108,11 @@ class MajorCreditorControllerIntegrationTest extends BaseIntegrationTest {
         mockMvc.perform(get("/major-creditors")
                 .param("business_unit_id", "abc")
                 .with(user("test-user")))
-            .andExpect(status().isNotAcceptable())
+            .andExpect(status().isBadRequest())
             .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
             .andExpect(jsonPath("$.type").value("https://hmcts.gov.uk/problems/type-mismatch"))
-            .andExpect(jsonPath("$.title").value("Not Acceptable"))
-            .andExpect(jsonPath("$.status").value(406));
+            .andExpect(jsonPath("$.title").value("Bad Request"))
+            .andExpect(jsonPath("$.status").value(400));
     }
 
     @ParameterizedTest
@@ -122,11 +122,11 @@ class MajorCreditorControllerIntegrationTest extends BaseIntegrationTest {
                 .param("business_unit_id", "77")
                 .param(parameterName, "not-a-boolean")
                 .with(user("test-user")))
-            .andExpect(status().isNotAcceptable())
+            .andExpect(status().isBadRequest())
             .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
             .andExpect(jsonPath("$.type").value("https://hmcts.gov.uk/problems/type-mismatch"))
-            .andExpect(jsonPath("$.title").value("Not Acceptable"))
-            .andExpect(jsonPath("$.status").value(406));
+            .andExpect(jsonPath("$.title").value("Bad Request"))
+            .andExpect(jsonPath("$.status").value(400));
     }
 
     @Test

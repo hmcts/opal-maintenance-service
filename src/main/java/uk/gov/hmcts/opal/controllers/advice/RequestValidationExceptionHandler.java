@@ -17,6 +17,7 @@ import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import uk.gov.hmcts.opal.common.controllers.advice.OpalProblemDetailFactory;
 
 @Order(Ordered.HIGHEST_PRECEDENCE)
@@ -36,6 +37,19 @@ public class RequestValidationExceptionHandler {
             "missing-required-parameter",
             exception
         );
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ProblemDetail> handleMethodArgumentTypeMismatchException(
+        MethodArgumentTypeMismatchException exception
+    ) {
+        Class<?> requiredType = exception.getRequiredType();
+        String expectedType = requiredType == null ? "the required type" : requiredType.getSimpleName();
+        String detail = "Parameter '" + exception.getName() + "' must be of type " + expectedType;
+        ProblemDetail problem = OpalProblemDetailFactory.createProblemDetail(
+            HttpStatus.BAD_REQUEST, "Bad Request", detail, "type-mismatch", false, null, LOG
+        );
+        return OpalProblemDetailFactory.responseWithProblemDetail(HttpStatus.BAD_REQUEST, problem);
     }
 
     @ExceptionHandler(ConstraintViolationException.class)

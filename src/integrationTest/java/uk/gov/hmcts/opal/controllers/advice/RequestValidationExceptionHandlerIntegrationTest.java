@@ -65,15 +65,19 @@ class RequestValidationExceptionHandlerIntegrationTest extends BaseIntegrationTe
     }
 
     @Test
-    void preservesSharedTypeMismatchProblemDetail() throws Exception {
+    void returnsBadRequestForParameterTypeMismatch() throws Exception {
         mockMvc.perform(get("/test-support/request-validation")
                 .param("value", "not-an-integer")
                 .with(user("test-user")))
-            .andExpect(status().isNotAcceptable())
+            .andExpect(status().isBadRequest())
             .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
             .andExpect(jsonPath("$.type").value("https://hmcts.gov.uk/problems/type-mismatch"))
-            .andExpect(jsonPath("$.title").value("Not Acceptable"))
-            .andExpect(jsonPath("$.status").value(406));
+            .andExpect(jsonPath("$.title").value("Bad Request"))
+            .andExpect(jsonPath("$.status").value(400))
+            .andExpect(jsonPath("$.detail").value("Parameter 'value' must be of type Integer"))
+            .andExpect(jsonPath("$.reason").doesNotExist())
+            .andExpect(jsonPath("$.operation_id").isNotEmpty())
+            .andExpect(jsonPath("$.retriable").value(false));
     }
 
     @Test
