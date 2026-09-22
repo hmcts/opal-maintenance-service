@@ -1,0 +1,2 @@
+DELETE FROM public.results
+WHERE result_id IN ('OTAF01', 'NOAT01', 'NOAF01', 'OTAT02', 'OTAT01', 'NOAT02', 'OTAF02', 'NOAF02');
