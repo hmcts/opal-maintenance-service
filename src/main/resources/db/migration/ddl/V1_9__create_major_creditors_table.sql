@@ -21,7 +21,7 @@ CREATE SEQUENCE public.major_creditor_id_seq
     CACHE 1;
 
 CREATE TABLE public.major_creditors (
-    major_creditor_id   BIGINT       DEFAULT nextval('public.major_creditor_id_seq') NOT NULL,
+    major_creditor_id   BIGINT      DEFAULT nextval('public.major_creditor_id_seq') NOT NULL,
     business_unit_id    SMALLINT                                                    NOT NULL,
     major_creditor_code VARCHAR(4)                                                  NOT NULL,
     name                VARCHAR(100)                                                NOT NULL,
