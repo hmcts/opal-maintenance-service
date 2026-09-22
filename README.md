@@ -76,10 +76,11 @@ Results responses use the existing reference-data cache configuration. Both filt
 states form the cache key, including omitted values. Redis expiry uses the existing
 TTL (eight hours by default); the in-memory fallback follows its existing lifecycle.
 
-This staged implementation depends on the Results table change (PO-10286 / PR #212).
-Results PostgreSQL mapping/query verification is deferred; mocked HTTP/cache tests
-do not prove database behavior. Approved Results population is separately owned by
-PO-10295. The singular Result-details endpoint is outside this change.
+This staged implementation inherits the Results table schema from PO-10286 / PR #212.
+The PostgreSQL mapping and query behavior are verified locally against that Flyway-created
+schema. Deployment still requires the PR #212 schema and the approved Results population,
+which is separately owned by PO-10295. The singular Result-details endpoint is outside this
+change.
 
 The recommended shared-infrastructure Docker workflow enables Redis and connects to the shared `redis` service. The standalone Compose workflow also enables its bundled Redis service.
 
