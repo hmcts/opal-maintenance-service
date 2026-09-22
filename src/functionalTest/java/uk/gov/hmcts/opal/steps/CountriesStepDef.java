@@ -51,16 +51,19 @@ public class CountriesStepDef extends BaseStepDef {
 
     @Then("the Country validation Problem Details response is returned")
     public void assertCountryValidationProblemDetails() throws IOException {
+        Response response = latestResponse();
         assertProblemDetail(
-            latestResponse(),
-            406,
+            response,
+            400,
             "https://hmcts.gov.uk/problems/type-mismatch",
-            "Not Acceptable",
-            "Invalid parameter value format",
+            "Bad Request",
+            "Parameter 'active' must be of type Boolean",
             "instance",
-            "operation_id",
-            "reason"
+            "operation_id"
         );
+
+        JsonNode problem = OBJECT_MAPPER.readTree(response.asString());
+        assertFalse(problem.has("reason"), "Validation response must not expose the rejected value");
     }
 
     @When("I request Countries without authentication")
@@ -152,6 +155,10 @@ public class CountriesStepDef extends BaseStepDef {
 
     Response latestResponse() {
         return required(latestResponse, "latest");
+    }
+
+    void latestResponse(Response response) {
+        latestResponse = response;
     }
 
     private record Country(long countryId, String internationalCode, String countryName) {
