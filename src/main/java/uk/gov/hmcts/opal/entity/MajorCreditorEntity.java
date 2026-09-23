@@ -40,7 +40,7 @@ public class MajorCreditorEntity {
     @Column(name = "major_creditor_code", nullable = false, length = 4)
     private String majorCreditorCode;
 
-    @Column(name = "name", nullable = false, length = 35)
+    @Column(name = "name", nullable = false, length = 100)
     private String name;
 
     @Column(name = "address_line_1", nullable = false, length = 35)

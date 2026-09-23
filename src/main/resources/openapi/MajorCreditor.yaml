@@ -138,7 +138,7 @@ components:
           description: Major Creditor business code, unique within the owning Business Unit. DB Mapping - major_creditors.major_creditor_code
         name:
           type: string
-          maxLength: 35
+          maxLength: 100
           description: Major Creditor display name. DB Mapping - major_creditors.name
         address_line_1:
           type: string
