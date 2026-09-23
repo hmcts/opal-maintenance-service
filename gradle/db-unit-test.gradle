@@ -2,6 +2,8 @@ import java.util.concurrent.TimeUnit
 import org.gradle.api.GradleException
 import org.gradle.api.tasks.PathSensitivity
 
+apply from: "${rootDir}/gradle/major-creditors-data-validation.gradle"
+
 def dbUnitTestDockerfile = file("${rootDir}/docker/postgres-pgtap.Dockerfile")
 def dbUnitTestMigrationDirectories = [
   file("${rootDir}/src/main/resources/db/migration/ddl"),
@@ -15,6 +17,10 @@ def dbUnitTestSqlFiles = fileTree("${rootDir}/src/dbUnitTest") {
 def dbUnitTestFailureFixture = file(
   "${rootDir}/src/dbUnitTest/framework/failing_pgtap_test.sql"
 )
+def majorCreditorsValidationFixtures = [
+  file("${rootDir}/src/dbUnitTest/majorCreditorsDataTest/major-creditors.csv"),
+  file("${rootDir}/src/dbUnitTest/majorCreditorsDataTest/major-creditor-countries.csv")
+]
 
 def runDbUnitTestCommand = { List<String> command ->
   def execOutput = providers.exec {
@@ -48,6 +54,11 @@ tasks.register('dbUnitTest') {
   inputs.files(dbUnitTestMigrationDirectories).withPathSensitivity(PathSensitivity.RELATIVE)
   inputs.files(dbUnitTestSqlFiles).withPathSensitivity(PathSensitivity.RELATIVE)
   inputs.file(dbUnitTestFailureFixture).withPathSensitivity(PathSensitivity.RELATIVE)
+  inputs.file(file("${rootDir}/gradle/major-creditors-data-validation.gradle"))
+    .withPathSensitivity(PathSensitivity.RELATIVE)
+  majorCreditorsValidationFixtures.each { fixture ->
+    inputs.file(fixture).withPathSensitivity(PathSensitivity.RELATIVE)
+  }
   outputs.dir(layout.buildDirectory.dir('reports/dbUnitTest'))
   outputs.upToDateWhen { false }
 
@@ -75,8 +86,13 @@ tasks.register('dbUnitTest') {
     def pgProveReport = new File(reportDirectory, 'pg-prove.log')
     def frameworkSelfTestReport = new File(reportDirectory, 'framework-self-test.log')
     def summaryReport = new File(reportDirectory, 'summary.txt')
+    def majorCreditorsValidationReport = new File(
+      reportDirectory,
+      'major-creditors-candidate.log'
+    )
     pgProveReport.text = ''
     frameworkSelfTestReport.text = ''
+    majorCreditorsValidationReport.text = 'Not run: preceding database checks must pass.\n'
 
     def imageName = 'opal-maintenance-db-unit-test-postgres:17'
     def flywayImageName = 'flyway/flyway:13.3.0'
@@ -246,6 +262,14 @@ tasks.register('dbUnitTest') {
         'Copying pgTAP tests into the disposable database container',
         ['docker', 'cp', "${rootDir}/src/dbUnitTest/.", "${containerName}:/tmp/opal-db-unit-test"]
       )
+      requireSuccessfulDbUnitTestCommand(
+        'Copying actual migrations for direct SQL rerun tests',
+        [
+          'docker', 'cp',
+          "${rootDir}/src/main/resources/db/migration/.",
+          "${containerName}:/tmp/opal-db-migrations"
+        ]
+      )
 
       def containerSqlFiles = sqlFiles.collect { sqlFile ->
         def relativePath = file("${rootDir}/src/dbUnitTest").toPath().relativize(sqlFile.toPath())
@@ -286,6 +310,21 @@ tasks.register('dbUnitTest') {
           "pg_prove failed with exit code ${pgProveResult.exitCode}; see ${pgProveReport}"
         )
       }
+      project.ext.verifyMajorCreditorsCandidate.call([
+        rootDirectory: rootDir,
+        containerName: containerName,
+        databaseName: databaseName,
+        migrationDirectories: dbUnitTestMigrationDirectories,
+        flywayBaseCommand: flywayBaseCommand,
+        runCommand: runDbUnitTestCommand,
+        reportFile: majorCreditorsValidationReport
+      ])
+      evidence.add(
+        'Major Creditors V1.9-to-V1.10 upgrade, failure, rollback and concurrency checks: passed'
+      )
+      logger.lifecycle(
+        "Major Creditors candidate report: ${majorCreditorsValidationReport}"
+      )
 
       def postgresVersion = requireSuccessfulDbUnitTestCommand(
         'Reading the PostgreSQL version',
@@ -312,10 +351,16 @@ tasks.register('dbUnitTest') {
             "Unable to destroy disposable PostgreSQL: ${removeResult.stdout}${removeResult.stderr}"
           )
         } else {
-          def inspectResult = runDbUnitTestCommand(['docker', 'inspect', containerName])
-          cleanupConfirmed = inspectResult.exitCode != 0
+          def remainingContainers = runDbUnitTestCommand(
+            ['docker', 'ps', '-a', '--format', '{{.Names}}']
+          )
+          cleanupConfirmed = remainingContainers.exitCode == 0
+            && !remainingContainers.stdout.readLines().contains(containerName.toString())
           if (!cleanupConfirmed) {
-            cleanupFailure = new GradleException('Disposable PostgreSQL still exists after cleanup')
+            cleanupFailure = new GradleException(
+              'Disposable PostgreSQL removal could not be verified: '
+                + remainingContainers.stdout + remainingContainers.stderr
+            )
           }
         }
       }
