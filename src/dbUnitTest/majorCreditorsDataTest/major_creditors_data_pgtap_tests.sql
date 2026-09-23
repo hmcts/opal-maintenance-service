@@ -4,7 +4,7 @@
  */
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap;
-SELECT plan(13);
+SELECT plan(19);
 
 -- -----------------------------------------------------------------------------
 -- Scenario: Approved input retains exact identifiers, defaults and flags.
@@ -142,5 +142,75 @@ SELECT results_eq(
     'partial rerun preserves surviving and unrelated rows including IDs');
 SELECT ok(to_regclass('pg_temp.temp_major_creditors_seed') IS NULL,
     'partial rerun explicitly drops staging');
+-- -----------------------------------------------------------------------------
+-- Scenario: Reference errors and conflicting data reject the complete seed.
+-- Setup: Each case creates a synthetic failure inside a rolled-back subtransaction.
+-- Expected: Exact SQLSTATE, matching diagnostic, unchanged rows and no staging.
+-- The real migration is read from the test container, not duplicated here.
+-- -----------------------------------------------------------------------------
+CREATE FUNCTION pg_temp.seed_failure_is_atomic(setup_sql TEXT, expected_state TEXT, diagnostic TEXT)
+RETURNS BOOLEAN LANGUAGE plpgsql AS $test$
+DECLARE
+    before_rows JSONB;
+    after_rows JSONB;
+    actual_state TEXT;
+    actual_message TEXT;
+    passed BOOLEAN := FALSE;
+BEGIN
+    BEGIN
+        EXECUTE setup_sql;
+        SELECT jsonb_agg(to_jsonb(m) ORDER BY major_creditor_id)
+        INTO before_rows FROM public.major_creditors m;
+        BEGIN
+            EXECUTE pg_read_file('/tmp/opal-db-migrations/data/allEnvs/V1_10__insert_major_creditors_reference_data.sql');
+        EXCEPTION WHEN OTHERS THEN
+            GET STACKED DIAGNOSTICS actual_state = RETURNED_SQLSTATE, actual_message = MESSAGE_TEXT;
+        END;
+        SELECT jsonb_agg(to_jsonb(m) ORDER BY major_creditor_id)
+        INTO after_rows FROM public.major_creditors m;
+        passed := coalesce(actual_state = expected_state
+            AND position(diagnostic IN actual_message) > 0
+            AND before_rows IS NOT DISTINCT FROM after_rows
+            AND to_regclass('pg_temp.temp_major_creditors_seed') IS NULL, FALSE);
+        -- Roll back setup even on success; PL/pgSQL variables retain their values.
+        RAISE EXCEPTION USING ERRCODE = 'Z1096', MESSAGE = 'rollback test setup';
+    EXCEPTION WHEN SQLSTATE 'Z1096' THEN
+        NULL;
+    END;
+    RETURN passed;
+END;
+$test$;
+
+SELECT ok(pg_temp.seed_failure_is_atomic(
+    $$UPDATE public.major_creditors SET name = 'Conflicting test name'
+      WHERE business_unit_id = 44 AND major_creditor_code = '0001'$$,
+    'P0001', 'Existing Major Creditors differ'),
+    'conflicting source values fail without changing rows or leaving staging');
+SELECT ok(pg_temp.seed_failure_is_atomic(
+    $$UPDATE public.major_creditors SET contact_name = 'Test contact'
+      WHERE business_unit_id = 44 AND major_creditor_code = '0001'$$,
+    'P0001', 'Existing Major Creditors differ'),
+    'NULL versus populated conflicts fail atomically');
+SELECT ok(pg_temp.seed_failure_is_atomic(
+    $$UPDATE public.countries SET country_name = 'Hidden Finland' WHERE country_name = 'Finland'$$,
+    'P0001', 'No Country found for creditor 0002: Finland'),
+    'missing country fails atomically');
+SELECT ok(pg_temp.seed_failure_is_atomic(
+    $$INSERT INTO public.countries(cjs_code, country_name, date_used_from, active)
+      VALUES (32000, 'Finland', DATE '2026-09-23', TRUE)$$,
+    'P0001', 'Multiple Countries found for creditor 0002: Finland'),
+    'ambiguous country fails atomically');
+SELECT ok(pg_temp.seed_failure_is_atomic(
+    $$DELETE FROM public.major_creditors WHERE business_unit_id = 44;
+      DELETE FROM public.business_units WHERE business_unit_id = 44$$,
+    '23503', 'mc_business_unit_id_fk'),
+    'missing Business Unit rejects every seed row');
+SELECT ok(pg_temp.seed_failure_is_atomic(
+    $$DELETE FROM public.major_creditors WHERE business_unit_id = 44;
+      ALTER TABLE public.major_creditors ADD CONSTRAINT po10296_reject_last
+      CHECK (major_creditor_code <> '0010')$$,
+    '23514', 'po10296_reject_last'),
+    'late insert failure leaves no partial dataset');
+
 SELECT * FROM finish();
 ROLLBACK;

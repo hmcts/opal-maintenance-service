@@ -149,9 +149,6 @@ BEGIN
 END;
 $$;
 
--- Prevent concurrent writes between conflict validation and insertion.
-LOCK TABLE public.major_creditors IN SHARE ROW EXCLUSIVE MODE;
-
 -- An existing business key must have exactly the expected values.
 -- IS DISTINCT FROM compares nullable fields safely.
 DO $$

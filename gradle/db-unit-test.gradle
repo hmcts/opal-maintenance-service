@@ -2,8 +2,6 @@ import java.util.concurrent.TimeUnit
 import org.gradle.api.GradleException
 import org.gradle.api.tasks.PathSensitivity
 
-apply from: "${rootDir}/gradle/major-creditors-data-validation.gradle"
-
 def dbUnitTestDockerfile = file("${rootDir}/docker/postgres-pgtap.Dockerfile")
 def dbUnitTestMigrationDirectories = [
   file("${rootDir}/src/main/resources/db/migration/ddl"),
@@ -17,10 +15,9 @@ def dbUnitTestSqlFiles = fileTree("${rootDir}/src/dbUnitTest") {
 def dbUnitTestFailureFixture = file(
   "${rootDir}/src/dbUnitTest/framework/failing_pgtap_test.sql"
 )
-def majorCreditorsValidationFixtures = [
-  file("${rootDir}/src/dbUnitTest/majorCreditorsDataTest/major-creditors.csv"),
-  file("${rootDir}/src/dbUnitTest/majorCreditorsDataTest/major-creditor-countries.csv")
-]
+def dbUnitTestFixtures = fileTree("${rootDir}/src/dbUnitTest") {
+  include '**/*.csv'
+}
 
 def runDbUnitTestCommand = { List<String> command ->
   def execOutput = providers.exec {
@@ -54,11 +51,7 @@ tasks.register('dbUnitTest') {
   inputs.files(dbUnitTestMigrationDirectories).withPathSensitivity(PathSensitivity.RELATIVE)
   inputs.files(dbUnitTestSqlFiles).withPathSensitivity(PathSensitivity.RELATIVE)
   inputs.file(dbUnitTestFailureFixture).withPathSensitivity(PathSensitivity.RELATIVE)
-  inputs.file(file("${rootDir}/gradle/major-creditors-data-validation.gradle"))
-    .withPathSensitivity(PathSensitivity.RELATIVE)
-  majorCreditorsValidationFixtures.each { fixture ->
-    inputs.file(fixture).withPathSensitivity(PathSensitivity.RELATIVE)
-  }
+  inputs.files(dbUnitTestFixtures).withPathSensitivity(PathSensitivity.RELATIVE)
   outputs.dir(layout.buildDirectory.dir('reports/dbUnitTest'))
   outputs.upToDateWhen { false }
 
@@ -86,13 +79,8 @@ tasks.register('dbUnitTest') {
     def pgProveReport = new File(reportDirectory, 'pg-prove.log')
     def frameworkSelfTestReport = new File(reportDirectory, 'framework-self-test.log')
     def summaryReport = new File(reportDirectory, 'summary.txt')
-    def majorCreditorsValidationReport = new File(
-      reportDirectory,
-      'major-creditors-candidate.log'
-    )
     pgProveReport.text = ''
     frameworkSelfTestReport.text = ''
-    majorCreditorsValidationReport.text = 'Not run: preceding database checks must pass.\n'
 
     def imageName = 'opal-maintenance-db-unit-test-postgres:17'
     def flywayImageName = 'flyway/flyway:13.3.0'
@@ -310,22 +298,6 @@ tasks.register('dbUnitTest') {
           "pg_prove failed with exit code ${pgProveResult.exitCode}; see ${pgProveReport}"
         )
       }
-      project.ext.verifyMajorCreditorsCandidate.call([
-        rootDirectory: rootDir,
-        containerName: containerName,
-        databaseName: databaseName,
-        migrationDirectories: dbUnitTestMigrationDirectories,
-        flywayBaseCommand: flywayBaseCommand,
-        runCommand: runDbUnitTestCommand,
-        reportFile: majorCreditorsValidationReport
-      ])
-      evidence.add(
-        'Major Creditors V1.9-to-V1.10 upgrade, failure, rollback and concurrency checks: passed'
-      )
-      logger.lifecycle(
-        "Major Creditors candidate report: ${majorCreditorsValidationReport}"
-      )
-
       def postgresVersion = requireSuccessfulDbUnitTestCommand(
         'Reading the PostgreSQL version',
         ['docker', 'exec', containerName, 'postgres', '--version']

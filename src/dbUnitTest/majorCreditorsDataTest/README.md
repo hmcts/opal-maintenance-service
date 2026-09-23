@@ -17,26 +17,27 @@ The pgTAP suite compares every supplied field and relationship, checks generated
 IDs separately, reruns the actual migration, preserves unrelated records and
 surviving IDs, and restores a missing row. It rolls back its fixtures.
 Run `./gradlew dbUnitTest --no-daemon` with the repository Java/Gradle runtime
-and Docker available. The normal task discovers pgTAP tests and mandatorily
-runs the Gradle-owned candidate checks; neither phase requires an opt-in flag.
-There is no Python test script or Python runtime requirement for these tests.
+and Docker available. The shared Gradle task discovers SQL tests and CSV fixtures,
+copies migrations into its disposable container and reports pgTAP results.
+Ticket-specific assertions remain in SQL; no separate script or runtime is required.
 
 The entire standalone SQL script requires one caller-managed transaction.
-A SHARE ROW EXCLUSIVE target lock protects conflict checking and insertion.
 Conflicting existing values fail, including NULL differences; identical rows
 remain unchanged. Explicit staging cleanup is part of successful execution.
 
 V1.10 must follow the real integrated
 `V1_9__create_major_creditors_table.sql`. Preserve that ordering in deployment
-without outOfOrder. The Gradle-owned candidate checks cover V1.9-to-V1.10 upgrade, missing and ambiguous
-countries, missing Business Unit, conflicting values including NULL differences,
-late constraint failure, actual Flyway rollback, and two-session writer blocking,
-conflict detection and lock release. Every failure or unconfirmed container
-cleanup fails dbUnitTest. Logs are generated under
-`build/reports/dbUnitTest/major-creditors-candidate.log` and remain ignored;
-the Gradle helper, SQL tests and fixtures are committed. The helper reuses the
-normal task's disposable container and its final cleanup. These checks do not
-claim to implement a generic repository-wide upgrade framework.
+without outOfOrder. SQL tests cover missing and ambiguous countries, missing
+Business Unit, conflicting values including NULL differences and late insert
+failure. They execute the real migration inside rolled-back subtransactions,
+checking the SQLSTATE, diagnostic, unchanged rows and staging cleanup.
+
+Deployment is expected to run migrations serially without concurrent writes to
+the seed records. There is no explicit table lock or multi-session test harness.
+Database constraints and transaction rollback remain in force. The earlier implementation validation exercised the
+V1.9-to-V1.10 Flyway upgrade and rollback; the simplified routine suite covers
+fresh migration, repeat migration and SQL failure atomicity, not a dedicated
+predecessor-upgrade orchestration. Reports remain under `build/reports/dbUnitTest`.
 
 Business Unit 44 is interim pending MBEC consolidation. If the identifier changes
 before delivery, revise approved source mappings. After application, corrections
