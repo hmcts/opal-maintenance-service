@@ -21,8 +21,8 @@ public class ResultService {
     @Transactional(readOnly = true)
     @Cacheable(
         cacheNames = "resultReferenceDataCache",
-        key = "(#p0 == null ? 'noFilter' : #p0.toString()) + '_' + "
-            + "(#p1 == null ? 'noFilter' : #p1.toString())"
+        key = "(#orderTerm == null ? 'noFilter' : #orderTerm.toString()) + '_' + "
+            + "(#active == null ? 'noFilter' : #active.toString())"
     )
     public ResultReferenceDataResponse getResults(
         @Nullable Boolean orderTerm, @Nullable Boolean active
