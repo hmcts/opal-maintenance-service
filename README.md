@@ -281,27 +281,6 @@ When the application is running, its OpenAPI documentation is available at:
 - [Swagger UI](http://localhost:4551/swagger-ui/index.html)
 - [OpenAPI JSON](http://localhost:4551/v3/api-docs)
 
-## Major Creditor reference data
-
-Authenticated `GET /major-creditors` requires `business_unit_id` and accepts optional
-`central_authority` and `active` Boolean filters. Omitted filters impose no restriction;
-false remains distinct from omission. Results are ordered by name then identifier and
-returned as `count` and `refData`, including address, contact and optional Country details.
-Nullable response properties are present as JSON nulls. No matches return HTTP 200 with an empty list.
-
-The endpoint reads the schema introduced by PO-10289 (`V1_9`) and supports names up to
-100 characters. Country details are returned even when the Country is inactive or outside
-its usage dates; the Major Creditors table has no effective-date columns. No additional
-Country eligibility filter is applied. The existing reference-data cache includes the
-Business Unit and both filter states in its key; Redis uses its configured TTL and the
-local fallback follows the existing cache-manager lifecycle.
-
-`MajorCreditorDatabaseIntegrationTest` verifies filtering, Business Unit isolation, mapping,
-nullable Country joins, ordering, empty results and numeric/name boundaries against the real
-Flyway-created PostgreSQL schema. Deploy the schema before the API and load approved data
-through its separately owned database work. Local synthetic tests do not establish deployed
-data readiness or authenticated User Service acceptance.
-
 ## Development guidance
 
 Follow [AGENTS.md](AGENTS.md) for repository routing and safeguards. Detailed guidance is in [Repository Guidelines](docs/REPO_GUIDELINES.md), [Testing](docs/TESTING.md), [Contributing](docs/CONTRIBUTING.md), and [Code Review Guidelines](docs/CODE_REVIEW_GUIDELINES.md).
