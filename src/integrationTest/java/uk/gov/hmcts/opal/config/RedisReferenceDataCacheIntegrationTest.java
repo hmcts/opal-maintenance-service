@@ -41,12 +41,15 @@ import org.testcontainers.utility.DockerImageName;
 import uk.gov.hmcts.opal.BaseIntegrationTest;
 import uk.gov.hmcts.opal.entity.CountryEntity;
 import uk.gov.hmcts.opal.entity.MajorCreditorEntity;
+import uk.gov.hmcts.opal.entity.MaintenanceApplicationEntity;
 import uk.gov.hmcts.opal.entity.ResultEntity;
 import uk.gov.hmcts.opal.repository.CountryRepository;
 import uk.gov.hmcts.opal.repository.MajorCreditorRepository;
+import uk.gov.hmcts.opal.repository.MaintenanceApplicationRepository;
 import uk.gov.hmcts.opal.repository.ResultRepository;
 import uk.gov.hmcts.opal.service.CountryService;
 import uk.gov.hmcts.opal.service.MajorCreditorService;
+import uk.gov.hmcts.opal.service.MaintenanceApplicationService;
 import uk.gov.hmcts.opal.service.ResultService;
 
 @Testcontainers
@@ -94,6 +97,12 @@ class RedisReferenceDataCacheIntegrationTest extends BaseIntegrationTest {
     @MockitoBean
     private ResultRepository resultRepository;
 
+    @Autowired
+    private MaintenanceApplicationService maintenanceApplicationService;
+
+    @MockitoBean
+    private MaintenanceApplicationRepository maintenanceApplicationRepository;
+
     @DynamicPropertySource
     static void redisProperties(DynamicPropertyRegistry registry) {
         registry.add("opal.redis.enabled", () -> true);
@@ -109,6 +118,7 @@ class RedisReferenceDataCacheIntegrationTest extends BaseIntegrationTest {
         clearInvocations(countryRepository);
         clearInvocations(majorCreditorRepository);
         clearInvocations(resultRepository);
+        clearInvocations(maintenanceApplicationRepository);
     }
 
     @Test
@@ -223,6 +233,29 @@ class RedisReferenceDataCacheIntegrationTest extends BaseIntegrationTest {
             assertThat(json.get("result_parameters").asText()).isEqualTo(metadata);
         }
         verifyNoInteractions(resultRepository);
+    }
+
+    @Test
+    void maintenanceApplicationsRoundTripThroughRedis() throws Exception {
+        when(maintenanceApplicationRepository.findMaintenanceApplications("Create Casefile", true))
+            .thenReturn(List.of(MaintenanceApplicationEntity.builder()
+                .applicationId((short) 32001).applicationCode("APP00001").applicationTitle("Example")
+                .applicationGroup("Create Casefile").active(true).build()));
+        var first = maintenanceApplicationService.getMaintenanceApplications("Create Casefile", true);
+        verify(maintenanceApplicationRepository).findMaintenanceApplications("Create Casefile", true);
+        clearInvocations(maintenanceApplicationRepository);
+        var cached = maintenanceApplicationService.getMaintenanceApplications("Create Casefile", true);
+        assertThat(cached).isNotSameAs(first);
+        assertThat(cached).isEqualTo(first);
+        assertThat(cached.getRefData().getFirst().getApplicationId()).isEqualTo((short) 32001);
+        verifyNoInteractions(maintenanceApplicationRepository);
+        assertRedisEntryHasEightHourTtl("maintenanceApplicationReferenceDataCache::Create Casefile_true");
+        mockMvc.perform(get("/maintenance-applications").param("application_group", "Create Casefile")
+                .param("active", "true").with(user("test-user")))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.count").value(1))
+            .andExpect(jsonPath("$.refData[0].application_id").value(32001));
+        verifyNoInteractions(maintenanceApplicationRepository);
     }
 
     private void assertRedisEntryHasEightHourTtl(String key) {
