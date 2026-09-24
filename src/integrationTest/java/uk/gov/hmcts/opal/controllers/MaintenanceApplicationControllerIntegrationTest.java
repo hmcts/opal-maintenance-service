@@ -76,7 +76,9 @@ class MaintenanceApplicationControllerIntegrationTest extends BaseIntegrationTes
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"A", "12345678901234567890", "Create Casefile", "create casefile", " Create Casefile ", " "})
+    @ValueSource(strings = {
+        "A", "12345678901234567890", "Create Casefile", "create casefile", " Create Casefile ", " "
+    })
     void preservesValidGroupExactly(String group) throws Exception {
         when(repository.findMaintenanceApplications(group, null)).thenReturn(List.of());
         mockMvc.perform(get("/maintenance-applications").param("application_group", group)
