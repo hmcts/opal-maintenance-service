@@ -88,17 +88,17 @@ class ResultControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
-    void returnsSafeNotFoundProblem() throws Exception {
+    void returnsSharedNotFoundProblem() throws Exception {
         when(repository.findById("ABSENT")).thenReturn(Optional.empty());
         mockMvc.perform(get("/results/ABSENT").with(user("test-user")))
             .andExpect(status().isNotFound())
             .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
             .andExpect(jsonPath("$.status").value(404))
-            .andExpect(jsonPath("$.title").value("Not Found"))
-            .andExpect(jsonPath("$.detail").value("Result not found"))
+            .andExpect(jsonPath("$.title").value("Entity Not Found"))
+            .andExpect(jsonPath("$.detail").value("The requested entity could not be found"))
             .andExpect(jsonPath("$.operation_id").isNotEmpty())
             .andExpect(jsonPath("$.retriable").value(false))
-            .andExpect(jsonPath("$.reason").doesNotExist());
+            .andExpect(jsonPath("$.reason").value("Result not found"));
     }
 
     @Test
