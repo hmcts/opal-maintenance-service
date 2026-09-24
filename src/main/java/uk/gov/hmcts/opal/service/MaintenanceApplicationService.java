@@ -3,6 +3,7 @@ package uk.gov.hmcts.opal.service;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uk.gov.hmcts.opal.generated.model.MaintenanceApplicationReferenceDataItem;
@@ -18,6 +19,10 @@ public class MaintenanceApplicationService {
     private final MaintenanceApplicationMapper mapper;
 
     @Transactional(readOnly = true)
+    @Cacheable(
+        cacheNames = "maintenanceApplicationReferenceDataCache",
+        key = "#applicationGroup + '_' + (#active == null ? 'noFilter' : #active.toString())"
+    )
     public MaintenanceApplicationReferenceDataResponse getMaintenanceApplications(
         String applicationGroup, @Nullable Boolean active
     ) {

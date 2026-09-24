@@ -20,6 +20,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class MaintenanceApplicationEntity {
+
     @Id
     @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "application_id_seq_generator")
     @SequenceGenerator(name = "application_id_seq_generator", sequenceName = "application_id_seq", allocationSize = 1)
