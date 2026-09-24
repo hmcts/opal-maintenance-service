@@ -1,4 +1,5 @@
-TRUNCATE TABLE public.countries RESTART IDENTITY;
+-- Reset the referencing table together with countries to preserve foreign-key integrity.
+TRUNCATE TABLE public.major_creditors, public.countries RESTART IDENTITY;
 
 INSERT INTO public.countries (
     country_id,
