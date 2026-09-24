@@ -146,10 +146,16 @@ diagnostic requests. Never place a bearer value in a tracked Bruno file.
 
 ## DB-10 pgTAP execution
 
-Database contracts live under `src/dbUnitTest` as pgTAP suites named
-`<object>_pgtap_tests.sql`. `dbUnitTest` discovers those files recursively and
-runs them through `pg_prove`; adding a matching suite makes it part of Gradle
-and the normal `check` lifecycle.
+Database contracts live under `src/dbUnitTest`. `dbUnitTest` discovers both
+`*_pgtap_tests.sql` and `*_unit_tests.sql` recursively and executes them through
+`pg_prove`. New database contracts use `*_pgtap_tests.sql` for DB-04;
+the `*_unit_tests.sql` suffix remains supported for existing suites.
+For a database object's schema contract, combine catalogue and behavioral
+assertions in one `*_pgtap_tests.sql` suite rather than splitting them by test
+type.
+Maintenance Applications combines catalogue and behavioral checks in
+`maintenanceApplicationsTest/maintenance_applications_pgtap_tests.sql`.
+Discovered suites are part of Gradle and the normal `check` lifecycle.
 
 The task starts a fresh PostgreSQL 17 container with pgTAP, confirms the empty
 start state, and applies the explicit `ddl`, `data/allEnvs`, and `data/dev`

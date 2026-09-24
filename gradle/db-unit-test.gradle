@@ -83,7 +83,7 @@ tasks.register('dbUnitTest') {
     frameworkSelfTestReport.text = ''
 
     def imageName = 'opal-maintenance-db-unit-test-postgres:17'
-    def flywayImageName = 'flyway/flyway:13.3.0'
+    def flywayImageName = 'flyway/flyway:13.5.0'
     def containerName = "opal-maintenance-db-unit-test-${UUID.randomUUID()}"
     def databaseName = 'opal_maintenance_db_unit_test'
     def containerStarted = false
