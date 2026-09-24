@@ -8,7 +8,9 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import jakarta.persistence.EntityNotFoundException;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mapstruct.factory.Mappers;
@@ -61,6 +63,7 @@ class ResultServiceCacheTest {
     @BeforeEach
     void clearCacheAndResetRepository() {
         cacheManager.getCache("resultReferenceDataCache").clear();
+        cacheManager.getCache("resultDetailCache").clear();
         reset(repository);
     }
 
@@ -103,5 +106,50 @@ class ResultServiceCacheTest {
         assertThat(service.getResults(true, true).getCount()).isZero();
         assertThat(service.getResults(true, true).getCount()).isZero();
         verify(repository, times(2)).findResults(true, true);
+    }
+
+    @Test
+    void cachesDetailByExactIdSeparatelyFromList() {
+        for (String id : List.of("ABC123", "abc123")) {
+            when(repository.findById(id)).thenReturn(Optional.of(ResultEntity.builder()
+                .resultId(id).resultTitle(id).resultParameters("[]").active(false).orderTerm(false).build()));
+            assertThat(service.getResult(id).getResultId()).isEqualTo(id);
+        }
+        when(repository.findResults(null, null)).thenReturn(List.of());
+        assertThat(service.getResults(null, null).getRefData()).isEmpty();
+        for (String id : List.of("ABC123", "abc123")) {
+            assertThat(service.getResult(id).getResultId()).isEqualTo(id);
+            verify(repository, times(1)).findById(id);
+        }
+    }
+
+    @Test
+    void cachesSuccessfulDetailWithNullMetadata() {
+        when(repository.findById("ABC123")).thenReturn(Optional.of(ResultEntity.builder()
+            .resultId("ABC123").resultTitle("Example").active(true).orderTerm(true).build()));
+        assertThat(service.getResult("ABC123").getResultParameters().get()).isNull();
+        assertThat(service.getResult("ABC123").getResultParameters().get()).isNull();
+        verify(repository, times(1)).findById("ABC123");
+    }
+
+    @Test
+    void doesNotCacheMissingResult() {
+        var entity = ResultEntity.builder().resultId("ABC123").resultTitle("Example").build();
+        when(repository.findById("ABC123")).thenReturn(Optional.empty()).thenReturn(Optional.of(entity));
+        assertThatThrownBy(() -> service.getResult("ABC123")).isInstanceOf(EntityNotFoundException.class);
+        assertThat(service.getResult("ABC123").getResultId()).isEqualTo("ABC123");
+        assertThat(service.getResult("ABC123").getResultId()).isEqualTo("ABC123");
+        verify(repository, times(2)).findById("ABC123");
+    }
+
+    @Test
+    void doesNotCacheDetailRepositoryFailure() {
+        var entity = ResultEntity.builder().resultId("ABC123").resultTitle("Example").build();
+        when(repository.findById("ABC123")).thenThrow(new IllegalStateException("Synthetic failure"))
+            .thenReturn(Optional.of(entity));
+        assertThatThrownBy(() -> service.getResult("ABC123")).isInstanceOf(IllegalStateException.class);
+        assertThat(service.getResult("ABC123").getResultId()).isEqualTo("ABC123");
+        assertThat(service.getResult("ABC123").getResultId()).isEqualTo("ABC123");
+        verify(repository, times(2)).findById("ABC123");
     }
 }
