@@ -21,7 +21,7 @@ public class ResultService {
     private final ResultMapper mapper;
 
     @Transactional(readOnly = true)
-    @Cacheable(cacheNames = "resultDetailCache", key = "#p0")
+    @Cacheable(cacheNames = "resultDetailCache", key = "#resultId")
     public ResultDetailResponse getResult(String resultId) {
         return mapper.toDetailResponse(repository.findById(resultId)
             .orElseThrow(() -> new EntityNotFoundException("Result not found")));
