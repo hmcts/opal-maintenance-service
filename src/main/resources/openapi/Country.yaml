@@ -30,8 +30,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ReferenceDataResponse'
+        '400':
+          description: Invalid parameter type or constraint, or a required parameter is missing
+          content:
+            application/problem+json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
         '406':
-          description: Not Acceptable
+          description: Unsupported response representation
           content:
             application/problem+json:
               schema:

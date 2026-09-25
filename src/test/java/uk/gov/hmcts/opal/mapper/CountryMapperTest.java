@@ -5,12 +5,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.time.LocalDate;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mapstruct.factory.Mappers;
 import uk.gov.hmcts.opal.entity.CountryEntity;
 
 @DisplayName("PO-10251 CountryMapper")
 class CountryMapperTest {
 
-    private final CountryMapper mapper = new CountryMapper();
+    private final CountryMapper mapper = Mappers.getMapper(CountryMapper.class);
 
     @Test
     @DisplayName("PO-10251 maps all nine country fields")
