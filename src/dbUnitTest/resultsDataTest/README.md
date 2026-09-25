@@ -169,10 +169,11 @@ for this SQL-only change; endpoints, configuration and backend code are unchange
 | AC3 | New allEnvs V1_13, SQL failure atomicity, forward-only recovery |
 | AC4 | Discoverable 12 data + 91 schema assertions; see final validation evidence |
 | AC5 | Disposable PostgreSQL 17 fresh/predecessor/repeat/failure checks and cleanup |
-| AC6 | Maintenance Database LLD publication and saved-page readback remain pending |
+| Former AC6 | Removed by the ticket owner: no LLD change is required for this data-only insert |
 
-The LLD draft is a handoff, not published AC6 evidence. External publication,
-two human reviewer approvals, QA, CI, merge and deployment require their own
+The ticket owner confirmed removal of AC6 on 25 September 2026; the original
+fingerprinted Spec above records the earlier scope. No LLD publication is required.
+Two human reviewer approvals, QA, CI, merge and deployment require their own
 evidence. The workbook follow-up is separate and must not be claimed complete.
 The change contains reference definitions only, with no PII or secrets; no
 dependencies, security controls, privileges or persistent schema are changed.
