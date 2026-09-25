@@ -35,10 +35,13 @@ import org.testcontainers.utility.DockerImageName;
 import uk.gov.hmcts.opal.BaseIntegrationTest;
 import uk.gov.hmcts.opal.entity.CountryEntity;
 import uk.gov.hmcts.opal.entity.MajorCreditorEntity;
+import uk.gov.hmcts.opal.entity.ResultEntity;
 import uk.gov.hmcts.opal.repository.CountryRepository;
 import uk.gov.hmcts.opal.repository.MajorCreditorRepository;
+import uk.gov.hmcts.opal.repository.ResultRepository;
 import uk.gov.hmcts.opal.service.CountryService;
 import uk.gov.hmcts.opal.service.MajorCreditorService;
+import uk.gov.hmcts.opal.service.ResultService;
 
 @Testcontainers
 @AutoConfigureMockMvc
@@ -52,6 +55,7 @@ class RedisReferenceDataCacheIntegrationTest extends BaseIntegrationTest {
 
     private static final String COUNTRY_KEY = "countryReferenceDataCache::noFilter";
     private static final String MAJOR_CREDITOR_KEY = "majorCreditorReferenceDataCache::77_noFilter_true";
+    private static final String RESULT_KEY = "resultReferenceDataCache::noFilter_true";
 
     @Container
     private static final RedisContainer REDIS =
@@ -72,11 +76,17 @@ class RedisReferenceDataCacheIntegrationTest extends BaseIntegrationTest {
     @Autowired
     private MajorCreditorService majorCreditorService;
 
+    @Autowired
+    private ResultService resultService;
+
     @MockitoBean
     private CountryRepository countryRepository;
 
     @MockitoBean
     private MajorCreditorRepository majorCreditorRepository;
+
+    @MockitoBean
+    private ResultRepository resultRepository;
 
     @DynamicPropertySource
     static void redisProperties(DynamicPropertyRegistry registry) {
@@ -92,6 +102,7 @@ class RedisReferenceDataCacheIntegrationTest extends BaseIntegrationTest {
         });
         clearInvocations(countryRepository);
         clearInvocations(majorCreditorRepository);
+        clearInvocations(resultRepository);
     }
 
     @Test
@@ -153,6 +164,20 @@ class RedisReferenceDataCacheIntegrationTest extends BaseIntegrationTest {
             });
         verifyNoInteractions(majorCreditorRepository);
         assertRedisEntryHasEightHourTtl(MAJOR_CREDITOR_KEY);
+    }
+
+    @Test
+    void resultResponseRoundTripsThroughRedisWithEightHourTtl() {
+        when(resultRepository.findResults(null, true)).thenReturn(List.of(ResultEntity.builder()
+            .resultId("ABC123").resultTitle("Example Result").orderTerm(true).active(true).build()));
+        var first = resultService.getResults(null, true);
+        verify(resultRepository).findResults(null, true);
+        clearInvocations(resultRepository);
+        var cached = resultService.getResults(null, true);
+        assertThat(cached).isEqualTo(first);
+        assertThat(cached.getRefData().getFirst().getResultTitle()).isEqualTo("Example Result");
+        verifyNoInteractions(resultRepository);
+        assertRedisEntryHasEightHourTtl(RESULT_KEY);
     }
 
     @Test
