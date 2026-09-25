@@ -73,27 +73,24 @@ manual-enforcement and auto-enforcement flags are false.
 
 ## Existing rows, transactions and recovery
 
-The migration stages the literal input in a temporary table, compares all 19
-non-key fields using NULL-safe equality (JSON as text), and inserts missing keys
-in `result_id` order. Identical existing rows are permitted and preserved. A
-different value at a supplied key raises SQLSTATE `P0001` with
-`PO-10295 conflicting Results: <ordered IDs>` before target insertion.
-There is no target UPDATE, DELETE or generic upsert. Unrelated rows remain intact.
-Depending on existing identical keys, the migration inserts 0–22 rows.
+The migration is a single explicit INSERT with 22 literal rows. Every supplied
+key must be absent before execution; any duplicate key, even with identical
+values, fails with PostgreSQL SQLSTATE `23505` on `results_pk`. There is no
+staging table, custom conflict validator, target UPDATE/DELETE, or upsert.
+A successful application inserts exactly 22 rows and preserves unrelated rows.
 
-Flyway owns the transaction. Execute any intentional direct SQL replay inside
-a caller-owned transaction with stop-on-error behavior; autocommit execution is
-not supported. A normal Flyway rerun skips the recorded version, whereas direct
-SQL replay exercises the identical/missing/conflicting-row policy. Temporary
-staging is removed on success and rolled back on failure. An existing temporary
-table with the staging name causes an error rather than being overwritten.
+Flyway owns the transaction and skips the recorded version on subsequent runs.
+Direct SQL replay is deliberately not idempotent: duplicate keys fail and the
+whole INSERT rolls back, including when only a late source key already exists.
+The user explicitly chose this simpler one-time-load contract during implementation
+review, superseding the design's earlier identical/partial-row acceptance.
 
 Deploy serially without concurrent application writes to these definitions.
 Ordinary INSERT/index locks apply; no persistent schema rewrite or planned
 downtime is required. Concurrent uniqueness collisions fail and roll back, rather
 than being silently ignored. Concurrency stress testing is outside this approved
-22-row serial seed. Measured candidate execution in the disposable predecessor
-run was 9 ms; this is an observation, not a production latency guarantee.
+22-row serial seed. Measured candidate runtime is recorded in the local validation evidence; it is
+an observation, not a production latency guarantee.
 
 Deploy after the complete 1.12 predecessor. The schema and existing rows remain
 compatible; new values' frontend interpretation remains the accepted limitation
@@ -115,25 +112,25 @@ ORDER BY result_id;
 
 Expect one successful history entry, 22 supplied keys, all active, six Order
 Terms, and all `TBC`. These summaries do not replace full-field reconciliation.
-On failure, retain the diagnostic and investigate the named conflicting keys.
+On failure, retain the diagnostic and investigate the duplicate key or rejected value.
 Do not automatically overwrite rows, delete data, repair history, or reset a
 database. An applied migration is immutable; corrections require a separately
 approved forward migration. Rolling back application code does not remove data.
 
 ## Validation
 
-The 17-assertion `results_data_pgtap_tests.sql` is discovered by the existing
+The 12-assertion `results_data_pgtap_tests.sql` is discovered by the existing
 runner. It implements AC4's historical `results_data_unit_tests.sql` requirement
 using the repository's current naming convention. The existing 91-assertion
 schema suite permits seeded/unrelated rows and guards only its synthetic keys;
 its types, constraints, malformed JSON and invalid enum checks remain intact.
 
 Both suites apply to fresh and predecessor-upgrade paths. The data suite checks
-all supplied values, exact JSON text, direct replay, partial/fresh insertion and
-unrelated-row preservation. Failure scenarios execute the actual migration:
-scalar conflict, lexically different JSON, NULL versus supplied enum, and a late
-target CHECK rejection. Each requires its intended SQLSTATE/message or constraint,
-unchanged pre-attempt rows, and no staging residue. Fixture changes also roll back.
+all supplied values, exact JSON text, fresh insertion and unrelated-row preservation.
+Failure scenarios execute the actual migration: identical existing keys, differing
+existing keys, a late duplicate in an otherwise empty seed scope, and a late target
+CHECK rejection. Each requires the intended SQLSTATE and constraint name plus an
+unchanged pre-attempt full-row snapshot. Fixture changes also roll back.
 
 Commands executed with Java 21, repository Gradle 9.7.1, PostgreSQL 17.11 and
 Flyway 13.5.0 in disposable containers:
@@ -145,22 +142,16 @@ Flyway 13.5.0 in disposable containers:
 
 - Fresh-cache preflight resolved pinned PostgreSQL JDBC 42.7.13 successfully;
   temporary project/cache cleanup was confirmed after network remediation.
-- Unchanged baseline: nine suites passed. Before adding the migration, the new
-  exact-data assertion failed because Results were absent; source checks passed.
-- With the migration: ten suites / 420 assertions passed; the framework's
-  deliberately failing test was detected, Flyway validated, repeated migrate was
-  a no-op, and container cleanup was confirmed (7.304 seconds for this run).
-- A separate local Docker procedure applied only `ddl + allEnvs` from empty and
-  from complete version 1.12. Both passed 108 focused assertions, exact migration
-  sets, one successful candidate history entry, and unchanged Results/history
-  dumps after repeat migrate. The upgrade's unrelated row was preserved. The
-  two-database procedure took 13 seconds and confirmed container/volume cleanup.
-- Full build passed in 1 minute 15 seconds: 21 unit tests, 28 integration tests,
-  420 database assertions, Checkstyle and packaging. No test failures or skips.
-  The build's database run took 7.279 seconds and confirmed cleanup. Existing
-  OpenAPI-generator/JVM warnings were informational. Dependency vulnerability
-  scanning is not wired into this build and was not run separately: no dependency
-  or security-control change is in scope. CI security checks remain unverified.
+- Unchanged baseline passed. The original missing-seed test failed as expected.
+  Following review, three new duplicate-rejection assertions failed against the
+  old staging implementation before the migration was simplified.
+- Revised full build passed in 1 minute 15 seconds: 415 assertions across ten SQL
+  suites, 21 unit tests, 28 integration tests, Checkstyle and packaging. Database
+  execution took 8.837 seconds; cleanup was confirmed.
+- Revised fresh and complete-1.12 upgrade checks using only ddl + allEnvs each
+  passed 103 focused assertions, exact migration-set checks and unchanged
+  data/history after Flyway rerun. Unrelated rows were preserved. The matrix took
+  15 seconds, with a 6 ms candidate upgrade; container cleanup was confirmed.
 
 Local evidence and the bounded `validate-upgrade.sh` procedure are under
 `build/reports/dbUnitTest/po10295/` (ignored). The predecessor procedure is not a
@@ -176,7 +167,7 @@ for this SQL-only change; endpoints, configuration and backend code are unchange
 | AC1 | Existing TDIA/schema, direct mapping and explicitly accepted interim decisions |
 | AC2 | Retained fingerprinted CSV, 20-field exact comparison, no transformation/runtime sync |
 | AC3 | New allEnvs V1_13, SQL failure atomicity, forward-only recovery |
-| AC4 | Discoverable 17 data + 91 schema assertions, full database suite passes |
+| AC4 | Discoverable 12 data + 91 schema assertions; see final validation evidence |
 | AC5 | Disposable PostgreSQL 17 fresh/predecessor/repeat/failure checks and cleanup |
 | AC6 | Maintenance Database LLD publication and saved-page readback remain pending |
 

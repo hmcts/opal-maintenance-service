@@ -1,7 +1,7 @@
--- PO-10295: exact input, replay, conflict and row-preservation contract.
+-- PO-10295: exact input, duplicate rejection and row-preservation contract.
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap;
-SELECT plan(17);
+SELECT plan(12);
 
 -- -----------------------------------------------------------------------------
 -- Scenario: independent approved source shape and representations.
@@ -72,12 +72,10 @@ CREATE TEMP TABLE original_results_snapshot AS SELECT pg_temp.results_snapshot()
 -- -----------------------------------------------------------------------------
 -- Scenario: seeded data matches the independently retained expected input.
 -- Setup: compare every column at supplied keys; convert JSON to text first.
--- Expected: exact 22 rows; no migration staging object remains.
+-- Expected: all 22 rows match their independently supplied values.
 SELECT results_eq('SELECT * FROM actual_results_values ORDER BY result_id',
                   'SELECT * FROM expected_results_values ORDER BY result_id',
                   'all 20 supplied fields match exactly, including JSON text');
-SELECT ok(to_regclass('pg_temp.temp_results_seed') IS NULL,
-          'successful migration leaves no staging object');
 
 DO $guard$
 BEGIN
@@ -88,7 +86,7 @@ END;
 $guard$;
 
 -- -----------------------------------------------------------------------------
--- Scenario: direct replay, missing row and fresh seed beside unrelated rows.
+-- Scenario: fresh seed beside unrelated rows.
 -- Setup: isolate fixtures under a savepoint and rerun the actual candidate.
 -- Expected: exact seed values; all other rows retain their exact text and flags.
 SAVEPOINT success_scenarios;
@@ -97,25 +95,6 @@ SELECT 'T95001', 'Unrelated synthetic Result', false, false, true,
        'Ancillary'::public.t_case_result_type_enum, false, false, false, false,
        false, false, false, false, '{ "z": 1, "a": 2 }'::json,
        false, false, 'All', false, false;
-CREATE TEMP TABLE before_direct_replay AS SELECT pg_temp.results_snapshot() AS rows;
-\ir /tmp/opal-db-migrations/data/allEnvs/V1_13__insert_results_reference_data.sql
-SELECT pg_temp.results_snapshot() = (SELECT rows FROM before_direct_replay)
-       AND to_regclass('pg_temp.temp_results_seed') IS NULL AS replay_ok
-\gset
-CREATE TEMP TABLE before_partial AS SELECT * FROM all_results_values WHERE result_id <> 'MAT';
-DELETE FROM public.results WHERE result_id='MAT';
-\ir /tmp/opal-db-migrations/data/allEnvs/V1_13__insert_results_reference_data.sql
-SELECT NOT EXISTS (
-    (SELECT * FROM actual_results_values EXCEPT ALL SELECT * FROM expected_results_values)
-    UNION ALL
-    (SELECT * FROM expected_results_values EXCEPT ALL SELECT * FROM actual_results_values)
-) AS partial_exact,
-NOT EXISTS (
-    (SELECT * FROM all_results_values WHERE result_id <> 'MAT' EXCEPT ALL SELECT * FROM before_partial)
-    UNION ALL
-    (SELECT * FROM before_partial EXCEPT ALL SELECT * FROM all_results_values WHERE result_id <> 'MAT')
-) AS partial_untouched
-\gset
 DELETE FROM public.results WHERE result_id IN (SELECT result_id FROM expected_results_raw);
 CREATE TEMP TABLE before_fresh AS TABLE all_results_values;
 \ir /tmp/opal-db-migrations/data/allEnvs/V1_13__insert_results_reference_data.sql
@@ -135,9 +114,6 @@ NOT EXISTS (
 \gset
 ROLLBACK TO SAVEPOINT success_scenarios;
 -- Emit TAP only after rollback so pgTAP assertion counters do not roll back.
-SELECT ok(:'replay_ok'::boolean, 'direct replay preserves identical and unrelated rows');
-SELECT ok(:'partial_exact'::boolean, 'partial seed receives its missing row exactly');
-SELECT ok(:'partial_untouched'::boolean, 'partial seed preserves every surviving row');
 SELECT ok(:'fresh_exact'::boolean, 'actual candidate inserts all exact source values');
 SELECT ok(:'fresh_untouched'::boolean, 'actual candidate preserves unrelated rows');
 SELECT ok(:'added_22'::boolean, 'empty seed scope adds exactly 22 records');
@@ -145,14 +121,13 @@ SELECT ok(:'added_22'::boolean, 'empty seed scope adds exactly 22 records');
 -- -----------------------------------------------------------------------------
 -- Scenario: actual candidate failure preserves its pre-attempt database state.
 -- Setup: scenario fixtures are outer-subtransaction changes; candidate is inner.
--- Expected: intended error, identical rows, no staging; fixtures also rolled back.
+-- Expected: intended error and unchanged rows; scenario fixtures also roll back.
 CREATE FUNCTION pg_temp.results_failure_is_atomic(
-    setup_sql TEXT, expected_state TEXT, expected_message TEXT, expected_constraint TEXT
+    setup_sql TEXT, expected_state TEXT, expected_constraint TEXT
 ) RETURNS BOOLEAN LANGUAGE plpgsql AS $test$
 DECLARE
     before_rows TEXT[];
     actual_state TEXT;
-    actual_message TEXT;
     actual_constraint TEXT;
     passed BOOLEAN := false;
 BEGIN
@@ -163,13 +138,11 @@ BEGIN
             EXECUTE pg_read_file('/tmp/opal-db-migrations/data/allEnvs/V1_13__insert_results_reference_data.sql');
         EXCEPTION WHEN OTHERS THEN
             GET STACKED DIAGNOSTICS actual_state=RETURNED_SQLSTATE,
-                actual_message=MESSAGE_TEXT, actual_constraint=CONSTRAINT_NAME;
+                actual_constraint=CONSTRAINT_NAME;
         END;
         passed := coalesce(actual_state=expected_state
-            AND (expected_message IS NULL OR actual_message=expected_message)
             AND (expected_constraint IS NULL OR actual_constraint=expected_constraint)
-            AND pg_temp.results_snapshot()=before_rows
-            AND to_regclass('pg_temp.temp_results_seed') IS NULL, false);
+            AND pg_temp.results_snapshot()=before_rows, false);
         RAISE EXCEPTION USING ERRCODE='ZX095', MESSAGE='rollback Results test fixture';
     EXCEPTION WHEN SQLSTATE 'ZX095' THEN
         NULL;
@@ -178,28 +151,23 @@ BEGIN
 END;
 $test$;
 SELECT ok(pg_temp.results_failure_is_atomic(
-    $$DELETE FROM public.results WHERE result_id='MAT';
-      UPDATE public.results SET result_title='Conflicting title' WHERE result_id='MWDN'$$,
-    'P0001','PO-10295 conflicting Results: MWDN',NULL),
-    'scalar conflict rejects the actual candidate without filling a missing row');
+    'SELECT 1', '23505', 'results_pk'),
+    'direct replay rejects identical existing keys without changing rows');
 SELECT ok(pg_temp.results_failure_is_atomic(
-    $$DELETE FROM public.results WHERE result_id='MAT';
-      UPDATE public.results SET result_parameters='[ ]'::json WHERE result_id='MWDN'$$,
-    'P0001','PO-10295 conflicting Results: MWDN',NULL),
-    'lexically different but equivalent JSON is a conflict');
+    $$UPDATE public.results SET result_title='Conflicting title' WHERE result_id='MAT'$$,
+    '23505', 'results_pk'),
+    'existing differing keys are rejected without overwriting rows');
 SELECT ok(pg_temp.results_failure_is_atomic(
-    $$DELETE FROM public.results WHERE result_id='MAT';
-      UPDATE public.results SET case_result_type=NULL WHERE result_id='MWDN'$$,
-    'P0001','PO-10295 conflicting Results: MWDN',NULL),
-    'NULL differs from a supplied enum and cannot be silently accepted');
+    $$DELETE FROM public.results WHERE result_id <> 'MWAN'
+      AND result_id IN (SELECT result_id FROM expected_results_raw)$$,
+    '23505', 'results_pk'),
+    'late duplicate rejects the entire insert without filling missing rows');
 SELECT ok(pg_temp.results_failure_is_atomic(
     $$DELETE FROM public.results WHERE result_id IN (SELECT result_id FROM expected_results_raw);
-      ALTER TABLE public.results ADD CONSTRAINT po10295_reject_last CHECK(result_id <> 'MWOC')$$,
-    '23514',NULL,'po10295_reject_last'),
+      ALTER TABLE public.results ADD CONSTRAINT po10295_reject_last CHECK(result_id <> 'MWAN')$$,
+    '23514', 'po10295_reject_last'),
     'late-row rejection leaves no partial candidate rows');
 SELECT is(pg_temp.results_snapshot(), (SELECT rows FROM original_results_snapshot),
           'all successful and failing scenarios restore the original full dataset');
-SELECT ok(to_regclass('pg_temp.temp_results_seed') IS NULL,
-          'all scenarios leave no staging object');
 SELECT * FROM finish();
 ROLLBACK;
