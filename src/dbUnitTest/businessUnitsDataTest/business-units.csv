@@ -1,0 +1,100 @@
+business_unit_id,business_unit_code,business_unit_name,business_unit_type,account_number_prefix,parent_business_unit_id,opal_domain,welsh_language,account_number_suffix
+1042,63,Dyfed Powys,Area,,,,true,
+1041,62,South Wales,Area,,,,true,
+1040,61,Gwent,Area,,,,true,
+1039,60,North Wales,Area,,,,true,
+1038,55,Dorset,Area,,,,false,
+1037,54,Wiltshire,Area,,,,false,
+1036,53,Gloucestershire,Area,,,,false,
+1035,52,Avon and Somerset,Area,,,Confiscation,false,
+1034,50,Devon and Cornwall,Area,,,,false,
+1033,47,Sussex,Area,,,,false,
+1032,46,Kent,Area,,,,false,
+1031,45,Surrey,Area,,,,false,
+1030,44,Hampshire and Isle of Wight,Area,,,,false,
+1029,43,Thames Valley,Area,,,,false,
+1028,42,Essex,Area,,,,false,
+1027,41,Hertfordshire,Area,,,,false,
+1026,40,Bedfordshire,Area,,,,false,
+1025,37,Suffolk,Area,,,,false,
+1024,36,Norfolk,Area,,,,false,
+1023,35,Cambridgeshire,Area,,,,false,
+1022,34,Northamptonshire,Area,,,,false,
+1021,33,Leicestershire,Area,,,,false,
+1020,32,Lincolnshire,Area,,,,false,
+1019,31,Nottinghamshire,Area,,,,false,
+1018,30,Derbyshire,Area,,,,false,
+1017,23,Warwickshire,Area,,,,false,
+1016,22,West Mercia,Area,,,,false,
+1015,21,Staffordshire,Area,,,,false,
+1014,20,West Midlands,Area,,,,false,
+1013,17,Cleveland,Area,,,,false,
+1012,16,Humberside,Area,,,,false,
+1011,14,South Yorkshire,Area,,,,false,
+1010,13,West Yorkshire,Area,,,,false,
+1009,12,North Yorkshire,Area,,,,false,
+1008,11,Durham,Area,,,,false,
+1007,10,Northumbria,Area,,,,false,
+1006,07,Cheshire,Area,,,,false,
+1005,06,Greater Manchester,Area,,,,false,
+1004,05,Merseyside,Area,,,,false,
+1003,04,Lancashire,Area,,,,false,
+1002,03,Cumbria,Area,,,,false,
+1001,01,Greater London,Area,,,,false,
+5,0009,Cambridgeshire,Accounting Division,,1023,Fines,false,CB
+8,0011,Cleveland,Accounting Division,,1013,Fines,false,CL
+9,0012,Cumbria,Accounting Division,,1002,Fines,false,EC
+10,0013,Derbyshire,Accounting Division,,1018,Fines,false,DY
+11,0020,Dorset,Accounting Division,,1038,Fines,false,10
+12,0021,Durham,Accounting Division,,1008,Fines,false,DU
+14,0051,Gloucestershire,Accounting Division,,1036,Fines,false,GL
+21,0082,Leicester,Accounting Division,,1021,Fines,false,LE
+22,0084,Lincolnshire,Accounting Division,,1020,Fines,false,LN
+24,0121,Lowestoft,Accounting Division,,1025,Fines,false,SF
+26,0069,Hertfordshire,Accounting Division,,1027,Fines,false,HE
+28,0095,North Yorkshire,Accounting Division,,1009,Fines,false,NY
+29,0096,Northants,Accounting Division,,1022,Fines,false,NO
+30,0093,Norwich,Accounting Division,,1024,Fines,false,NF
+31,0127,Oxfordshire,Accounting Division,,1029,Fines,false,OX
+36,0113,LCIS (South + Mid Glamorgan),Accounting Division,,1041,Fines,true,SW
+38,0118,Staffordshire,Accounting Division,,1015,Fines,false,ST
+45,0055,Confiscation,Accounting Division,,1005,Confiscation,false,C1
+47,0003,Bristol,Accounting Division,,1035,Fines,false,AS
+52,0008,Bedfordshire,Accounting Division,,1026,Fines,false,BD
+57,0017,Plymouth District,Accounting Division,,1034,Fines,false,PL
+60,0022,Dyfed Powys,Accounting Division,,1042,Fines,true,DP
+61,0023,Essex,Accounting Division,,1028,Fines,false,EX
+65,0034,Camden and Islington,Accounting Division,,1001,Fines,false,HC
+66,0035,CAO London Confiscation Orders,Accounting Division,,1001,Confiscation,false,66
+73,0042,West London,Accounting Division,,1001,Fines,false,WL
+77,0046,Camberwell Green,Accounting Division,,1001,Fines,false,CG
+78,0047,N E Region,Accounting Division,,1001,Fines,false,TH
+80,0049,Westminster - North (Wells Street),Accounting Division,,1001,Fines,false,HD
+82,0056,Bolton,Accounting Division,,1005,Fines,false,GM
+89,0063,Gwent,Accounting Division,,1040,Fines,true,GW
+92,0066,S + SE Hampshire,Accounting Division,,1030,Fines,false,HA
+96,0073,South Bank,Accounting Division,,1012,Fines,false,HR
+97,0074,Confiscation,Accounting Division,,1032,Confiscation,false,CO
+99,0076,West Kent,Accounting Division,,1032,Fines,false,WK
+103,0080,Pennine,Accounting Division,,1003,Fines,false,LA
+105,0090,Liverpool,Accounting Division,,1004,Fines,false,MD
+106,0094,North Wales,Accounting Division,,1039,Fines,true,NW
+107,0098,Alnwick,Accounting Division,,1007,Fines,false,CU
+109,0100,Berwick,Accounting Division,,1007,Confiscation,false,CU
+110,0101,Gateshead,Accounting Division,,1007,Confiscation,false,C2
+112,0103,"Newcastle, Anderson + Broadacre",Accounting Division,,1007,Fines,false,NU
+113,0104,North Tyneside,Accounting Division,,1007,Fines,false,CO
+116,0107,Tynedale,Accounting Division,,1007,Confiscation,false,EM
+119,0110,Nottingham,Accounting Division,,1019,Fines,false,NT
+124,0117,Sheffield,Accounting Division,,1011,Fines,false,SY
+125,0122,Surrey,Accounting Division,,1031,Fines,false,SR
+126,0123,East  Sussex,Accounting Division,,1033,Fines,false,BM
+128,0128,Warwickshire,Accounting Division,,1017,Fines,false,WA
+129,0129,West Mercia,Accounting Division,,1016,Fines,false,TF
+130,0130,Birmingham & Sutton,Accounting Division,,1014,Fines,false,BS
+135,0135,"Bradford, Keighley & Halifax",Accounting Division,,1010,Fines,false,WY
+138,0138,Wiltshire,Accounting Division,,1037,Fines,false,WI
+139,0139,North Cheshire (Div 1),Accounting Division,,1006,Fines,false,CH
+44,0097,MBEC England,Accounting Division,,1022,RM,false,
+67,0036,MBEC London,Accounting Division,,1001,RM,false,
+111,0102,MBEC Wales,Accounting Division,,1035,RM,false,
