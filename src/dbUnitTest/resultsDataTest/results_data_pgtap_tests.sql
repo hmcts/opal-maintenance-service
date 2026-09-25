@@ -7,6 +7,7 @@ SELECT plan(12);
 -- Scenario: independent approved source shape and representations.
 -- Setup: load the retained CSV as text, with no normalization.
 -- Expected: 22 complete unique source keys and all exact supplied representations.
+-- -----------------------------------------------------------------------------
 CREATE TEMP TABLE expected_results_raw (
     result_id TEXT, result_title TEXT, order_term TEXT, enforcement_result TEXT,
     case_result TEXT, case_result_type TEXT, active TEXT, order_accruing TEXT,
@@ -73,6 +74,7 @@ CREATE TEMP TABLE original_results_snapshot AS SELECT pg_temp.results_snapshot()
 -- Scenario: seeded data matches the independently retained expected input.
 -- Setup: compare every column at supplied keys; convert JSON to text first.
 -- Expected: all 22 rows match their independently supplied values.
+-- -----------------------------------------------------------------------------
 SELECT results_eq('SELECT * FROM actual_results_values ORDER BY result_id',
                   'SELECT * FROM expected_results_values ORDER BY result_id',
                   'all 20 supplied fields match exactly, including JSON text');
@@ -89,6 +91,7 @@ $guard$;
 -- Scenario: fresh seed beside unrelated rows.
 -- Setup: isolate fixtures under a savepoint and rerun the actual candidate.
 -- Expected: exact seed values; all other rows retain their exact text and flags.
+-- -----------------------------------------------------------------------------
 SAVEPOINT success_scenarios;
 INSERT INTO public.results
 SELECT 'T95001', 'Unrelated synthetic Result', false, false, true,
@@ -122,6 +125,7 @@ SELECT ok(:'added_22'::boolean, 'empty seed scope adds exactly 22 records');
 -- Scenario: actual candidate failure preserves its pre-attempt database state.
 -- Setup: scenario fixtures are outer-subtransaction changes; candidate is inner.
 -- Expected: intended error and unchanged rows; scenario fixtures also roll back.
+-- -----------------------------------------------------------------------------
 CREATE FUNCTION pg_temp.results_failure_is_atomic(
     setup_sql TEXT, expected_state TEXT, expected_constraint TEXT
 ) RETURNS BOOLEAN LANGUAGE plpgsql AS $test$
