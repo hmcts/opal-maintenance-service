@@ -81,7 +81,8 @@ paths:
     get:
       tags:
         - Result
-      summary: Returns an active Result and its dynamic parameter metadata
+      summary: Returns a Result and its dynamic parameter metadata
+      description: Looks up the exact Result code regardless of active or order_term status.
       operationId: getResult
       parameters:
         - in: path
@@ -118,7 +119,13 @@ paths:
               schema:
                 $ref: './common.yaml#/components/schemas/ProblemDetail'
         '404':
-          description: Result not found or not active
+          description: No Result exists for the supplied identifier
+          content:
+            application/problem+json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
+        '406':
+          description: Unsupported response media type
           content:
             application/problem+json:
               schema:
@@ -176,6 +183,7 @@ components:
       required:
         - result_id
         - result_title
+        - result_parameters
       properties:
         result_id:
           type: string
@@ -187,6 +195,7 @@ components:
           maxLength: 60
           description: Result title presented for the selected Order Term. DB Mapping - results.result_title
         result_parameters:
-          type: string
-          description: JSON-encoded array containing the dynamic parameter metadata for this Result. DB Mapping - results.result_parameters
+          type: [string, 'null']
+          x-extra-annotation: '@com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.ALWAYS)'
+          description: JSON-encoded Result metadata, returned unchanged; null when no metadata is stored. DB Mapping - results.result_parameters
           example: '[{"name":"reason","prompt":"Reason","type":"text","min":1,"max":24,"language_dependent":"false"}]'

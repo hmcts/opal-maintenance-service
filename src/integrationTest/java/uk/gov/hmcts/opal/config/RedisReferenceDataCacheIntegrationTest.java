@@ -5,18 +5,24 @@ import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.redis.testcontainers.RedisContainer;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.openapitools.jackson.nullable.JsonNullable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -185,6 +191,38 @@ class RedisReferenceDataCacheIntegrationTest extends BaseIntegrationTest {
         mockMvc.perform(get("/health"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.components.redis.status").value("UP"));
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = {"[]", "[{\"name\":\"reason\"}]"})
+    void detailResponseRoundTripsThroughRedis(String metadata) throws Exception {
+        when(resultRepository.findById("ABC123")).thenReturn(Optional.of(ResultEntity.builder()
+            .resultId("ABC123").resultTitle("Example").active(false).orderTerm(false)
+            .resultParameters(metadata).build()));
+        var first = resultService.getResult("ABC123");
+        verify(resultRepository).findById("ABC123");
+        clearInvocations(resultRepository);
+
+        var cached = resultService.getResult("ABC123");
+        assertThat(cached).isNotSameAs(first);
+        assertThat(cached.getResultId()).isEqualTo("ABC123");
+        assertThat(cached.getResultParameters().get()).isEqualTo(metadata);
+        verifyNoInteractions(resultRepository);
+        assertRedisEntryHasEightHourTtl("resultDetailCache::ABC123");
+
+        String body = mockMvc.perform(get("/results/ABC123").with(user("test-user")))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        var json = new ObjectMapper().readTree(body);
+        assertThat(json.size()).isEqualTo(3);
+        assertThat(json.has("result_parameters")).isTrue();
+        if (metadata == null) {
+            assertThat(json.get("result_parameters").isNull()).isTrue();
+        } else {
+            assertThat(json.get("result_parameters").isTextual()).isTrue();
+            assertThat(json.get("result_parameters").asText()).isEqualTo(metadata);
+        }
+        verifyNoInteractions(resultRepository);
     }
 
     private void assertRedisEntryHasEightHourTtl(String key) {

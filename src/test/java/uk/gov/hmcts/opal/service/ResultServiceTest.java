@@ -5,7 +5,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import jakarta.persistence.EntityNotFoundException;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -72,5 +74,28 @@ class ResultServiceTest {
         when(repository.findResults(null, null)).thenThrow(failure);
 
         assertThatThrownBy(() -> service.getResults(null, null)).isSameAs(failure);
+    }
+
+    @Test
+    void returnsInactiveNonOrderResultWithoutChangingMetadata() {
+        String metadata = "[{\"name\":\"reason\",\"type\":\"text\"}]";
+        when(repository.findById("ABC123")).thenReturn(Optional.of(ResultEntity.builder()
+            .resultId("ABC123").resultTitle("Example").active(false).orderTerm(false)
+            .resultParameters(metadata).build()));
+
+        var response = service.getResult("ABC123");
+
+        assertThat(response.getResultId()).isEqualTo("ABC123");
+        assertThat(response.getResultTitle()).isEqualTo("Example");
+        assertThat(response.getResultParameters().get()).isEqualTo(metadata);
+        verify(repository).findById("ABC123");
+    }
+
+    @Test
+    void rejectsMissingResult() {
+        when(repository.findById("ABSENT")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.getResult("ABSENT"))
+            .isInstanceOf(EntityNotFoundException.class).hasMessage("Result not found");
     }
 }
