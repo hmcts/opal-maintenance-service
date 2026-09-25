@@ -1,0 +1,11 @@
+major_creditor_id,business_unit_id,major_creditor_code,name,address_line_1,address_line_2,address_line_3,address_line_4,address_line_5,postcode,country_id,contact_name,contact_email,active,central_authority
+,44,0001,Urad pro mezinarodnepravni ochranu deti,Silingrovo nam 3/4,Brno,,,,602 00,,,,true,true
+,44,0002,Kansanelakelaitos,"Perintakeskus, PL 50",Helsinki,,,,00601,,,,true,true
+,44,0003,Forsakringskassan,Box 1164,Visby,,,,SE-621 22,,,,true,true
+,44,0004,Uzturlīdzekļu garantiju fonda administrācija,Raina bulvaris 15,Rīga,,,,LV-1050,,,,true,true
+,44,0005,Vasario 16-Osios G 4,Mazeikiai,,,,,LT-89225,,,,true,true
+,44,0006,Landelijk Bureau Inning Onderhoudsbijdragen,Postbus 8901,Rotterdam,,,,3009AX,,,,true,true
+,44,0007,Inland Revenue Child Support Hague Convention,PO Box 39010 Wellington,Mail Centre,Lower Hutt,,,5045,,,,true,true
+,44,0008,The Collection Agency for Child Support and Overpaid Benefits,Kirkenes,,,,,NO-9917,,,,true,true
+,44,0009,Centre of International Legal Protection of Children and Youth,Spitalska 8 P.O. Box 57,Bratislava,,,,81499,,,,true,true
+,44,0010,c/o Services Australia,"GPO Box 9815,",Melbourne,Victoria,,,3001,,,,true,true

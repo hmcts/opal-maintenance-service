@@ -52,13 +52,22 @@ bruno/environments/*.env
 .codex/*
 
 # Local Superpowers planning/assets
+/.agents/skills/superpowers
 superpowers/
 .superpowers/
 **/superpowers/
 **/.superpowers/
+/docs/superpowers/specs/
+/docs/superpowers/plans/
 
 docs/designs/
 docs/plans/
 
 # Local linked worktrees
 /.worktrees/
+/.agents/skills/
+
+/.opal.env
+
+# Local Superpowers via skills CLI
+/skills-lock.json

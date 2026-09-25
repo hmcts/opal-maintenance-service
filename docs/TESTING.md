@@ -146,10 +146,16 @@ diagnostic requests. Never place a bearer value in a tracked Bruno file.
 
 ## DB-10 pgTAP execution
 
-Database contracts live under `src/dbUnitTest` as pgTAP suites named
-`<object>_pgtap_tests.sql`. `dbUnitTest` discovers those files recursively and
-runs them through `pg_prove`; adding a matching suite makes it part of Gradle
-and the normal `check` lifecycle.
+Database contracts live under `src/dbUnitTest`. `dbUnitTest` discovers both
+`*_pgtap_tests.sql` and `*_unit_tests.sql` recursively and executes them through
+`pg_prove`. New database contracts use `*_pgtap_tests.sql` for DB-04;
+the `*_unit_tests.sql` suffix remains supported for existing suites.
+For a database object's schema contract, combine catalogue and behavioral
+assertions in one `*_pgtap_tests.sql` suite rather than splitting them by test
+type.
+Maintenance Applications combines catalogue and behavioral checks in
+`maintenanceApplicationsTest/maintenance_applications_pgtap_tests.sql`.
+Discovered suites are part of Gradle and the normal `check` lifecycle.
 
 The task starts a fresh PostgreSQL 17 container with pgTAP, confirms the empty
 start state, and applies the explicit `ddl`, `data/allEnvs`, and `data/dev`
@@ -174,6 +180,33 @@ Run the database unit-test suite with:
 Raw TAP diagnostics and a non-sensitive execution summary are written under
 `build/reports/dbUnitTest`. The current Countries contract is
 `src/dbUnitTest/countriesTest/countries_pgtap_tests.sql`.
+
+### pgTAP scenario introductions
+
+Keep a single object-focused suite and retain its existing assertion
+descriptions. Immediately before each meaningful behavioural scenario, add a
+separator and a SQL comment header explaining `Scenario`, `Setup`, and
+`Expected`. Related schema assertions may share a header; do not add manually
+maintained test numbering. The required pgTAP `plan` remains unchanged for
+comment-only edits.
+
+For example, a missing-parent scenario can be introduced with:
+
+```sql
+-- -----------------------------------------------------------------------------
+-- Scenario: A Business Unit refers to a parent that does not exist.
+-- Setup: Insert a child with parent_business_unit_id = 31999, which is absent.
+-- Expected: The foreign key rejects the insert with SQLSTATE 23503.
+```
+
+Keep headers accurate about fixture dependencies and outcomes, rather than
+merely repeating the SQL. This example requires parent `31999` to be absent
+and all other insert requirements to be satisfied so that the foreign key is
+the reason for rejection. Describe the actual setup when a scenario relies on
+earlier fixtures. Choose scenario boundaries from the behaviour being tested,
+not a target number of headers or assertions. Adding these introductions must
+not change coverage or executable SQL, split the suite, or introduce a new
+framework.
 
 ## Infrastructure and evidence
 
