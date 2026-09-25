@@ -1,0 +1,447 @@
+/**
+ * OPAL Program
+ *
+ * MODULE      : V1_12__insert_maintenance_applications_reference_data.sql
+ * DESCRIPTION : Insert the 35 approved Create Casefile application definitions.
+ *
+ * CHANGE HISTORY:
+ * Date        Author        Ticket        Nature of Change
+ * ----------  ------------  ------------  ----------------------------------------
+ * 24/09/2026  Chris Larkin  PO-10293      Seed approved application reference data
+ */
+
+-- Flyway owns the transaction. Overlapping business codes fail; no upsert.
+-- IDs use application_id_seq. Empty source end dates are SQL NULL.
+INSERT INTO public.maintenance_applications (
+    application_code,
+    application_title,
+    application_group,
+    application_wording,
+    application_responses,
+    application_act_section,
+    application_act_summary,
+    active,
+    date_used_from,
+    date_used_to
+)
+VALUES
+    (
+        'MO72001',
+        'Applications for a Provisional Order to be confirmed',
+        'Create Casefile',
+        'Application for [application details].',
+        '[{"name":"Application details","prompt":"Application details","type":"text-1000","mandatory":"Yes"}]'::json,
+        '(Reciprocating Countries) Section 7 Maintenance Orders (Reciprocal Enforcement) Act 1972',
+        'Maintenance Orders (Reciprocal Enforcement) Act 1972',
+        true,
+        DATE '2026-08-26',
+        NULL
+    ),
+    (
+        'MO20001',
+        'Applications for a Provisional Order to be confirmed',
+        'Create Casefile',
+        'Application for [application details].',
+        '[{"name":"Application details","prompt":"Application details","type":"text-1000","mandatory":"Yes"}]'::json,
+        '(EA Countries) (Section 4 Maintenance Orders (Facilities for Enforcement) Act 1920',
+        'Maintenance Orders (Facilities for Enforcement) Act 1920',
+        true,
+        DATE '2026-08-26',
+        NULL
+    ),
+    (
+        'MO72002',
+        'Application for a Final Order to be made',
+        'Create Casefile',
+        'Application for [application details].',
+        '[{"name":"Application details","prompt":"Application details","type":"text-1000","mandatory":"Yes"}]'::json,
+        '(UN Convention Countries) (Part 2 Maintenance Orders (Reciprocal Enforcement) Act 1972',
+        'Maintenance Orders (Reciprocal Enforcement) Act 1972',
+        true,
+        DATE '2026-08-26',
+        NULL
+    ),
+    (
+        'HC07001',
+        'Applications for a Final Order to be made',
+        'Create Casefile',
+        'Application for [application details].',
+        '[{"name":"Application details","prompt":"Application details","type":"text-1000","mandatory":"Yes"}]'::json,
+        'Claim for Maintenance under Articles 10 & 11 - Hague Convention 2007',
+        'Hague Convention 2007',
+        true,
+        DATE '2026-08-26',
+        NULL
+    ),
+    (
+        'CA89001',
+        'Application under schedule 1 Children Act 1989 or the Domestic Proceedings & Magistrates Courts Act 1978, applying Jurisdictional Provisions in this Legislation (schedule 1 para 14 Children Act 1989 and Section 30 DPMCA 1978)',
+        'Create Casefile',
+        'Application for [application details].',
+        '[{"name":"Application details","prompt":"Application details","type":"text-1000","mandatory":"Yes"}]'::json,
+        'Application under schedule 1 Children Act 1989 or the Domestic Proceedings & Magistrates Courts Act 1978, applying Jurisdictional Provisions in this Legislation (schedule 1 para 14 Children Act 1989 and Section 30 DPMCA 1978)',
+        'Children Act 1989',
+        true,
+        DATE '2026-08-26',
+        NULL
+    ),
+    (
+        'MO72003',
+        'Application for Registration/recognition of a foreign order in the UK Family Court',
+        'Create Casefile',
+        'Application for [application details].',
+        '[{"name":"Application details","prompt":"Application details","type":"text-1000","mandatory":"Yes"}]'::json,
+        'Reciprocating Countries'' (Part 1 Maintenance Orders (Reciprocal Enforcement) Act 1972',
+        'Maintenance Orders (Reciprocal Enforcement) Act 1972',
+        true,
+        DATE '2026-08-26',
+        NULL
+    ),
+    (
+        'MO72004',
+        'Application for Registration/recognition of a foreign courts order in the UK Family Court',
+        'Create Casefile',
+        'Application for [application details].',
+        '[{"name":"Application details","prompt":"Application details","type":"text-1000","mandatory":"Yes"}]'::json,
+        '(Part 1 of the Maintenance Orders (Reciprocal Enforcement) Act 1972 as modified by the Reciprocal Enforcement Orders (Hague Convention Countries) Order 1993)',
+        'Maintenance Orders (Reciprocal Enforcement) Act 1972',
+        true,
+        DATE '2026-08-26',
+        NULL
+    ),
+    (
+        'CJ82001',
+        'Application from non-EU Country for registration recognition of an Order in the UK Family Court',
+        'Create Casefile',
+        'Application for [application details].',
+        '[{"name":"Application details","prompt":"Application details","type":"text-1000","mandatory":"Yes"}]'::json,
+        'Civil Jurisdiction & Judgements Act 1982, Hague Convention 2007 and International Recovery of Maintenance Regulations 2012 as applies to non EU countries.',
+        'Civil Jurisdiction & Judgements Act 1982; Hague Convention 2007',
+        true,
+        DATE '2026-08-26',
+        NULL
+    ),
+    (
+        'CJ82002',
+        'Application from EU Country for registration/recognition of an order in the family court',
+        'Create Casefile',
+        'Application for [application details].',
+        '[{"name":"Application details","prompt":"Application details","type":"text-1000","mandatory":"Yes"}]'::json,
+        'Civil Jurisdiction & Judgements Act 1982, Hague Convention 2007 and International Recovery of Maintenance Regulations 2012 as applied to EU countries.',
+        'Civil Jurisdiction & Judgements Act 1982; Hague Convention 2007',
+        true,
+        DATE '2026-08-26',
+        NULL
+    ),
+    (
+        'CJ82003',
+        'Application from EU Country for registration/recognition of an order in the family court',
+        'Create Casefile',
+        'Application for [application details].',
+        '[{"name":"Application details","prompt":"Application details","type":"text-1000","mandatory":"Yes"}]'::json,
+        'EU Reg 04/2009 Forms (with or without Hague 2007 forms), order made or proceedings began before 01 January 2021. Civil Jurisdiction and Judgements Act 1982, Hague Convention 2007 and International Recovery of Maintenance Regulations 2012 as applied to EU Countries.',
+        'Civil Jurisdiction and Judgements Act 1982; Hague Convention 2007; EU Reg 04/2009',
+        true,
+        DATE '2026-08-26',
+        NULL
+    ),
+    (
+        'MO20002',
+        'Application for Registration of a foreign order in the UK Family Court',
+        'Create Casefile',
+        'Application for [application details].',
+        '[{"name":"Application details","prompt":"Application details","type":"text-1000","mandatory":"Yes"}]'::json,
+        '(EA Countries) Maintenance Orders (Facilities for Enforcement) Act 1920)',
+        'Maintenance Orders (Facilities for Enforcement) Act 1920',
+        true,
+        DATE '2026-08-26',
+        NULL
+    ),
+    (
+        'MO72005',
+        'Countries that are only able to send applications to the Family Court under the UN Convention (Part 2 Maintenance orders (Reciprocal Enforcement) Act 1972',
+        'Create Casefile',
+        'Application for [application details].',
+        '[{"name":"Application details","prompt":"Application details","type":"text-1000","mandatory":"Yes"}]'::json,
+        'Applications to the Family Court under the UN Convention (Part 2 Maintenance orders (Reciprocal Enforcement) Act 1972',
+        'Maintenance orders (Reciprocal Enforcement) Act 1972',
+        true,
+        DATE '2026-08-26',
+        NULL
+    ),
+    (
+        'MO72006',
+        'Application for registration of a USA Order in the UK Family Court',
+        'Create Casefile',
+        'Application for [application details].',
+        '[{"name":"Application details","prompt":"Application details","type":"text-1000","mandatory":"Yes"}]'::json,
+        '(Maintenance orders (Reciprocal Enforcement) Act 1972 as modified by the Reciprocal Enforcement of Maintenance (United States of America orders 1995 & 2007)',
+        'Maintenance orders (Reciprocal Enforcement) Act 1972',
+        true,
+        DATE '2026-08-26',
+        NULL
+    ),
+    (
+        'MO50001',
+        'Application to register a Scottish or Northern Ireland order in the Family Court other UK Jurisdictions',
+        'Create Casefile',
+        'Application for [application details].',
+        '[{"name":"Application details","prompt":"Application details","type":"text-1000","mandatory":"Yes"}]'::json,
+        'Other UK Jurisdictions (Maintenance Orders Act 1950 and Part 32 Chapter II of the Family Proceedings Rules 2010)',
+        'Maintenance Orders Act 1950',
+        true,
+        DATE '2026-08-26',
+        NULL
+    ),
+    (
+        'MO58001',
+        'Enforcement of orders made by the High Court or registered in the High Court under MO(FE)A 1920 or MAO 1950 in the Family Court',
+        'Create Casefile',
+        'Application for [application details].',
+        '[{"name":"Application details","prompt":"Application details","type":"text-1000","mandatory":"Yes"}]'::json,
+        '(Maintenance Orders Act 1958, Part 32 Chapter III of the Family Procedure Rules)',
+        'Maintenance Orders Act 1958',
+        true,
+        DATE '2026-08-26',
+        NULL
+    ),
+    (
+        'XX00001',
+        'UK Residents - Applications where both parties reside in England or Wales (HOME CASES)',
+        'Create Casefile',
+        'Application for [application details].',
+        '[{"name":"Application details","prompt":"Application details","type":"text-1000","mandatory":"Yes"}]'::json,
+        'England/Wales orders made payable to HMCTS by a District Judge and Foreign Order from European/H07 Countries where the parties now live in England/Wales',
+        'England/Wales orders made payable to HMCTS by a District Judge and Foreign Order from European/H07 Countries where the parties now live in England/Wales',
+        true,
+        DATE '2026-08-26',
+        NULL
+    ),
+    (
+        'MO72007',
+        'Application for a Provisional Order to be made in the UK and confirmed abroad',
+        'Create Casefile',
+        'Application for [application details].',
+        '[{"name":"Application details","prompt":"Application details","type":"text-1000","mandatory":"Yes"}]'::json,
+        '(Reciprocating Country) (Section 3 Maintenance Orders (Reciprocal Enforcement) Act 1972',
+        'Maintenance Orders (Reciprocal Enforcement) Act 1972',
+        true,
+        DATE '2026-08-26',
+        NULL
+    ),
+    (
+        'MO20003',
+        'Application for a Provisional Order to be made in the UK and confirmed abroad',
+        'Create Casefile',
+        'Application for [application details].',
+        '[{"name":"Application details","prompt":"Application details","type":"text-1000","mandatory":"Yes"}]'::json,
+        '(EA Countries) (Section 3 Maintenance Orders (Facilities for Enforcement) Act 1920',
+        'Maintenance Orders (Facilities for Enforcement) Act 1920',
+        true,
+        DATE '2026-08-26',
+        NULL
+    ),
+    (
+        'MO72008',
+        'Application for documents to be signed and sworn for an Order to be made abroad',
+        'Create Casefile',
+        'Application for [application details].',
+        '[{"name":"Application details","prompt":"Application details","type":"text-1000","mandatory":"Yes"}]'::json,
+        '(UN Convention Countries) (Part 2 Maintenance Orders Reciprocal Enforcement) Act 1972)',
+        'Maintenance Orders (Reciprocal Enforcement) Act 1972',
+        true,
+        DATE '2026-08-26',
+        NULL
+    ),
+    (
+        'HC07002',
+        'Application for an Order to be made abroad',
+        'Create Casefile',
+        'Application for [application details].',
+        '[{"name":"Application details","prompt":"Application details","type":"text-1000","mandatory":"Yes"}]'::json,
+        'Countries reciprocating with the UK under Hague Convention 2007',
+        'Hague Convention 2007',
+        true,
+        DATE '2026-08-26',
+        NULL
+    ),
+    (
+        'MO72009',
+        'Application for a Final Order to be made  (RCJ Countries as per Fam Court Index Table 4)',
+        'Create Casefile',
+        'Application for [application details].',
+        '[{"name":"Application details","prompt":"Application details","type":"text-1000","mandatory":"Yes"}]'::json,
+        'Table 4 (Hague Convention Countries) (Section 3 Maintenance Orders (Reciprocal Enforcement) Act as modified by the Reciprocal Enforcement Orders (Hague Convention Countries) Order 1993)',
+        'Section 3, Maintenance Orders (Reciprocal Enforcement) Act 1972, as modified by the Reciprocal Enforcement of Maintenance Orders (Hague Convention Countries) Order 1993 (SI 1993/593)',
+        true,
+        DATE '2026-08-26',
+        NULL
+    ),
+    (
+        'MO72010',
+        'FCDO Countries as per FAM Court Index - Table 4',
+        'Create Casefile',
+        'Application for [application details].',
+        '[{"name":"Application details","prompt":"Application details","type":"text-1000","mandatory":"Yes"}]'::json,
+        'Table 4 (Hague Convention Countries) (Section 3 Maintenance Orders (Reciprocal Enforcement) Act as modified by the Reciprocal Enforcement Orders (Hague Convention Countries) Order 1993)',
+        'Section 3, Maintenance Orders (Reciprocal Enforcement) Act 1972, as modified by the Reciprocal Enforcement of Maintenance Orders (Hague Convention Countries) Order 1993 (SI 1993/593)',
+        true,
+        DATE '2026-08-26',
+        NULL
+    ),
+    (
+        'MO72011',
+        'All "Agent" Countries as per the FAM Court Index Table 4',
+        'Create Casefile',
+        'Application for [application details].',
+        '[{"name":"Application details","prompt":"Application details","type":"text-1000","mandatory":"Yes"}]'::json,
+        'Table 4 (Hague Convention Countries) (Section 3 Maintenance Orders (Reciprocal Enforcement) Act as modified by the Reciprocal Enforcement Orders (Hague Convention Countries) Order 1993)',
+        'Section 3, Maintenance Orders (Reciprocal Enforcement) Act 1972, as modified by the Reciprocal Enforcement of Maintenance Orders (Hague Convention Countries) Order 1993 (SI 1993/593)',
+        true,
+        DATE '2026-08-26',
+        NULL
+    ),
+    (
+        'CA20001',
+        'Application under Commonwealth Act 1920',
+        'Create Casefile',
+        'Application for [application details].',
+        '[{"name":"Application details","prompt":"Application details","type":"text-1000","mandatory":"Yes"}]'::json,
+        'Commonwealth Act 1920',
+        'Commonwealth Act 1920',
+        true,
+        DATE '2026-08-26',
+        NULL
+    ),
+    (
+        'UN56001',
+        'Application under United Nations 1956 [sometimes called the New York Convention 1956]',
+        'Create Casefile',
+        'Application for [application details].',
+        '[{"name":"Application details","prompt":"Application details","type":"text-1000","mandatory":"Yes"}]'::json,
+        'United Nations 1956 [sometimes called the New York Convention 1956]',
+        'United Nations 1956 (New York Convention)',
+        true,
+        DATE '2026-08-26',
+        NULL
+    ),
+    (
+        'HC07003',
+        'Application under Hague Convention 2007',
+        'Create Casefile',
+        'Application for [application details].',
+        '[{"name":"Application details","prompt":"Application details","type":"text-1000","mandatory":"Yes"}]'::json,
+        'Hague Convention 2007',
+        'Hague Convention 2007',
+        true,
+        DATE '2026-08-26',
+        NULL
+    ),
+    (
+        'HC73001',
+        'Application under Hague Convention 1973',
+        'Create Casefile',
+        'Application for [application details].',
+        '[{"name":"Application details","prompt":"Application details","type":"text-1000","mandatory":"Yes"}]'::json,
+        'Hague Convention 1973',
+        'Hague Convention 1973',
+        true,
+        DATE '2026-08-26',
+        NULL
+    ),
+    (
+        'MO72012',
+        'Application under USA Part I & II',
+        'Create Casefile',
+        'Application for [application details].',
+        '[{"name":"Application details","prompt":"Application details","type":"text-1000","mandatory":"Yes"}]'::json,
+        'USA Part I & II',
+        'Part I of the Maintenance Orders (Reciprocal Enforcement) Act 1972 (as applied to the United States via reciprocal enforcement orders)',
+        true,
+        DATE '2026-08-26',
+        NULL
+    ),
+    (
+        'CA89002',
+        'Application under UK Children Act 1989',
+        'Create Casefile',
+        'Application for [application details].',
+        '[{"name":"Application details","prompt":"Application details","type":"text-1000","mandatory":"Yes"}]'::json,
+        'Children Act 1989',
+        'Children Act 1989',
+        true,
+        DATE '2026-08-26',
+        NULL
+    ),
+    (
+        'EU20001',
+        'Application under withdrawal Agreement (WAC)',
+        'Create Casefile',
+        'Application for [application details].',
+        '[{"name":"Application details","prompt":"Application details","type":"text-1000","mandatory":"Yes"}]'::json,
+        'Withdrawal Agreement (WAC)',
+        'Application under the EU–UK Withdrawal Agreement (2019) – “WAC cases” (as implemented by the European Union (Withdrawal Agreement) Act 2020)',
+        true,
+        DATE '2026-08-26',
+        NULL
+    ),
+    (
+        'LC00001',
+        'Application under Lugano Convention',
+        'Create Casefile',
+        'Application for [application details].',
+        '[{"name":"Application details","prompt":"Application details","type":"text-1000","mandatory":"Yes"}]'::json,
+        'Lugano Convention',
+        'Lugano Convention',
+        true,
+        DATE '2026-08-26',
+        NULL
+    ),
+    (
+        'RE72001',
+        'Application under Reciprocal Maintenance Act 1972',
+        'Create Casefile',
+        'Application for [application details].',
+        '[{"name":"Application details","prompt":"Application details","type":"text-1000","mandatory":"Yes"}]'::json,
+        'Reciprocal Enforcement Act 1972',
+        'Reciprocal Enforcement Act 1972',
+        true,
+        DATE '2026-08-26',
+        NULL
+    ),
+    (
+        'AV00001',
+        'Application to Vary/Revoke an Order',
+        'Create Casefile',
+        'Application to Vary/Revoke an Order made on [order date] sitting at [court] for [order terms].',
+        '[{"name":"Order date","prompt":"Order date","type":"date","mandatory":"Yes"},{"name":"Court","prompt":"Court","type":"menu-autocomplete","mandatory":"Yes","options":"Courts-API"},{"name":"Order terms","prompt":"Order terms","type":"text-1000","mandatory":"Yes"}]'::json,
+        'Application to Vary/Revoke an Order',
+        'Application to Vary/Revoke an Order',
+        true,
+        DATE '2026-08-26',
+        NULL
+    ),
+    (
+        'AP00001',
+        'Application to Appeal',
+        'Create Casefile',
+        'Application to appeal an Order made on [order date] by [court] for [order terms]. On the grounds [grounds for appeal].',
+        '[{"name":"Order date","prompt":"Order date","type":"date","mandatory":"Yes"},{"name":"Court","prompt":"Court","type":"menu-autocomplete","mandatory":"Yes","options":"Courts-API"},{"name":"Order terms","prompt":"Order terms","type":"text-1000","mandatory":"Yes"},{"name":"Grounds for appeal","prompt":"Grounds for appeal","type":"text-1000","mandatory":"Yes"}]'::json,
+        'Application to Appeal',
+        'Application to Appeal',
+        true,
+        DATE '2026-08-26',
+        NULL
+    ),
+    (
+        'CV00001',
+        'Conversion of EU/WAC case from pay direct between parties to pay HMCTS',
+        'Create Casefile',
+        'Application for [application details].',
+        '[{"name":"Application details","prompt":"Application details","type":"text-1000","mandatory":"Yes"}]'::json,
+        'Conversion Cases Pay Direct to Pay HMCTS',
+        'Conversion Cases Pay Direct to Pay HMCTS',
+        true,
+        DATE '2026-08-26',
+        NULL
+    );

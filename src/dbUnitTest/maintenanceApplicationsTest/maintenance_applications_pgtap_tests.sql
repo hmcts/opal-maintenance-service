@@ -1,7 +1,14 @@
 -- PO-10285 / V1_11: catalogue and behavioral assertions apply to fresh and predecessor-upgrade paths.
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap;
-SELECT plan(41);
+SELECT plan(42);
+
+CREATE TEMP VIEW ma_schema_rows AS
+SELECT application_id, application_code, application_title, application_group,
+       application_wording, application_responses::text AS application_responses,
+       application_act_section, application_act_summary, active, date_used_from, date_used_to
+FROM public.maintenance_applications;
+CREATE TEMP TABLE ma_schema_before AS TABLE ma_schema_rows;
 
 -- -----------------------------------------------------------------------------
 -- Scenario: The migration exposes the exact TDIA physical contract.
@@ -77,16 +84,29 @@ SELECT is((SELECT count(*) FROM pg_attrdef
 
 -- Synthetic test records only. ALTER SEQUENCE RESTART rolls back with this transaction.
 -- -----------------------------------------------------------------------------
--- Scenario: The table is created without seed data.
--- Setup: Query the new table before adding synthetic test records.
--- Expected: No rows exist.
-SELECT is((SELECT count(*) FROM public.maintenance_applications), 0::bigint,
-          'table creation loads no application records');
+-- Scenario: Synthetic records cannot collide with seeded or predecessor data.
+-- Setup: Check test-only codes and reserved test-only identifier ranges.
+-- Expected: The test fixture region is unused; unrelated production rows are allowed.
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM public.maintenance_applications
+               WHERE application_id BETWEEN 30000 AND 30200
+                  OR application_id IN (-32768, 32767)
+                  OR application_code IN ('TEST0001','TEST0002','TEST0003','TEST0004',
+                       'DUPEID','NULLTEST','WIDTH','BADJSON','OVERFLOW','UNDERFLW',
+                       'ROLLBACK','LASTID','MINID')) THEN
+        RAISE EXCEPTION 'Maintenance Applications schema fixture collision';
+    END IF;
+END;
+$$;
+SELECT is((SELECT count(*) FROM public.maintenance_applications
+           WHERE application_code IN ('TEST0001','TEST0002','TEST0003','TEST0004')),
+          0::bigint, 'synthetic application records are initially absent');
 -- -----------------------------------------------------------------------------
 -- Scenario: Generated identifiers and complete application records are accepted.
 -- Setup: Restart the disposable sequence and insert valid boundary-length fields.
--- Expected: Identifier starts at one; JSON, text and dates are stored correctly.
-ALTER SEQUENCE public.application_id_seq RESTART WITH 1;
+-- Expected: Identifier uses the test-only restart value; JSON, text and dates are stored correctly.
+ALTER SEQUENCE public.application_id_seq RESTART WITH 30000;
 SELECT lives_ok($$
     INSERT INTO public.maintenance_applications
         (application_code, application_title, application_group, application_wording,
@@ -97,7 +117,7 @@ SELECT lives_ok($$
             true, DATE '2024-02-29', DATE '2030-12-31')$$,
     'complete record accepts title boundary, long text, valid JSON and dates');
 SELECT is((SELECT application_id::integer FROM public.maintenance_applications
-           WHERE application_code = 'TEST0001'), 1, 'omitted identifier uses the named sequence');
+           WHERE application_code = 'TEST0001'), 30000, 'omitted identifier uses the named sequence');
 SELECT ok((SELECT application_responses->'prompts'->0->>'name' = 'test'
                   AND length(application_wording)=1024 AND length(application_act_section)=1024
                   AND length(application_act_summary)=1024
@@ -114,26 +134,27 @@ SELECT lives_ok($$
            ('TEST0003','Same group but inactive','Create Casefile',false,DATE '2024-01-01'),
            ('TEST0004','Active but another group','Other group',true,DATE '2024-01-01')$$,
     'minimal inactive record accepts group boundary and all optional nulls');
-SELECT ok((SELECT application_id=2 AND application_wording IS NULL AND application_responses IS NULL
+SELECT ok((SELECT application_id=30001 AND application_wording IS NULL AND application_responses IS NULL
                   AND application_act_section IS NULL AND application_act_summary IS NULL
                   AND date_used_to IS NULL
            FROM public.maintenance_applications WHERE application_code='TEST0002'),
           'generated values increment and all five nullable fields remain null');
 SELECT results_eq(
     $$SELECT application_code::text FROM public.maintenance_applications
-      WHERE application_group='Create Casefile' AND active ORDER BY application_code$$,
+      WHERE application_code IN ('TEST0001','TEST0002','TEST0003','TEST0004')
+        AND application_group='Create Casefile' AND active ORDER BY application_code$$,
     $$VALUES ('TEST0001'::text)$$, 'intended filter returns only the matching active record');
 -- -----------------------------------------------------------------------------
 -- Scenario: Primary and business keys reject duplicates.
--- Setup: Reuse identifier 1, then TEST0001 in another group.
+-- Setup: Reuse fixture identifier 30000, then TEST0001 in another group.
 -- Expected: Both conflicts raise SQLSTATE 23505 without inserting rows.
 SELECT throws_ok($$INSERT INTO public.maintenance_applications
     (application_id,application_code,application_title,application_group,active,date_used_from)
-    VALUES (1,'DUPEID','Duplicate id','Test',true,DATE '2024-01-01')$$,
+    VALUES (30000,'DUPEID','Duplicate id','Test',true,DATE '2024-01-01')$$,
     '23505',NULL,'duplicate primary key is rejected');
 SELECT throws_ok($$INSERT INTO public.maintenance_applications
     (application_id,application_code,application_title,application_group,active,date_used_from)
-    VALUES (100,'TEST0001','Duplicate code','Other group',true,DATE '2024-01-01')$$,
+    VALUES (30100,'TEST0001','Duplicate code','Other group',true,DATE '2024-01-01')$$,
     '23505',NULL,'business code is globally unique, not unique only per group');
 
 -- -----------------------------------------------------------------------------
@@ -145,7 +166,7 @@ SELECT throws_ok(format($q$
     INSERT INTO public.maintenance_applications
       (application_id,application_code,application_title,application_group,active,date_used_from)
     SELECT %s,%s,%s,%s,%s,%s$q$,
-    CASE WHEN n='application_id' THEN 'NULL' ELSE '101' END,
+    CASE WHEN n='application_id' THEN 'NULL' ELSE '30101' END,
     CASE WHEN n='application_code' THEN 'NULL' ELSE quote_literal('NULLTEST') END,
     CASE WHEN n='application_title' THEN 'NULL' ELSE quote_literal('Null test') END,
     CASE WHEN n='application_group' THEN 'NULL' ELSE quote_literal('Test') END,
@@ -163,7 +184,7 @@ FROM (VALUES ('application_id'),('application_code'),('application_title'),
 SELECT throws_ok(format($q$
     INSERT INTO public.maintenance_applications
       (application_id,application_code,application_title,application_group,active,date_used_from)
-    VALUES (102,%s,%s,%s,true,DATE '2024-01-01')$q$,
+    VALUES (30102,%s,%s,%s,true,DATE '2024-01-01')$q$,
     CASE WHEN n='application_code' THEN 'repeat(''C'',9)' ELSE quote_literal('WIDTH') END,
     CASE WHEN n='application_title' THEN 'repeat(''T'',256)' ELSE quote_literal('Width test') END,
     CASE WHEN n='application_group' THEN 'repeat(''G'',21)' ELSE quote_literal('Test') END),
@@ -185,7 +206,8 @@ SELECT throws_ok($$INSERT INTO public.maintenance_applications
     (application_id,application_code,application_title,application_group,active,date_used_from)
     VALUES (-32769,'UNDERFLW','Outside smallint','Test',true,DATE '2024-01-01')$$,
     '22003',NULL,'identifier below SMALLINT range is rejected');
-SELECT is((SELECT count(*) FROM public.maintenance_applications),4::bigint,
+SELECT is((SELECT count(*) FROM public.maintenance_applications
+           WHERE application_code IN ('TEST0001','TEST0002','TEST0003','TEST0004')),4::bigint,
           'failed inserts leave no partial records');
 
 -- -----------------------------------------------------------------------------
@@ -195,7 +217,7 @@ SELECT is((SELECT count(*) FROM public.maintenance_applications),4::bigint,
 SAVEPOINT rollback_probe;
 INSERT INTO public.maintenance_applications
   (application_id,application_code,application_title,application_group,active,date_used_from)
-VALUES (200,'ROLLBACK','Rollback probe','Test',true,DATE '2024-01-01');
+VALUES (30200,'ROLLBACK','Rollback probe','Test',true,DATE '2024-01-01');
 ROLLBACK TO SAVEPOINT rollback_probe;
 SELECT is((SELECT count(*) FROM public.maintenance_applications WHERE application_code='ROLLBACK'),
           0::bigint,'caller-controlled rollback removes test write');
@@ -213,7 +235,8 @@ SELECT is((SELECT application_id::integer FROM public.maintenance_applications
            WHERE application_code='LASTID'),32767,'sequence reaches its configured maximum');
 SELECT throws_ok($$SELECT nextval('public.application_id_seq')$$,'2200H',NULL,
                  'sequence exhaustion raises instead of cycling');
-SELECT is((SELECT count(*) FROM public.maintenance_applications),5::bigint,
+SELECT is((SELECT count(*) FROM public.maintenance_applications
+           WHERE application_code IN ('TEST0001','TEST0002','TEST0003','TEST0004','LASTID')),5::bigint,
           'successful rows remain intact after failures');
 -- -----------------------------------------------------------------------------
 -- Scenario: Explicit identifiers retain the full SMALLINT domain.
@@ -223,5 +246,13 @@ SELECT lives_ok($$INSERT INTO public.maintenance_applications
     (application_id,application_code,application_title,application_group,active,date_used_from)
     VALUES (-32768,'MINID','Explicit smallint minimum','Test',false,DATE '2024-01-01')$$,
     'column permits full SMALLINT domain without an invented positive-id check');
+-- Scenario: Schema probes preserve all pre-existing data, including JSON spelling.
+-- Setup: Compare the original IDs against the snapshot after boundary tests.
+-- Expected: Exact original rows remain present.
+SELECT results_eq(
+    'SELECT a.* FROM ma_schema_rows a JOIN ma_schema_before b USING(application_id)
+     ORDER BY a.application_id',
+    'SELECT * FROM ma_schema_before ORDER BY application_id',
+    'schema probes preserve every pre-existing row');
 SELECT * FROM finish();
 ROLLBACK;
