@@ -156,7 +156,18 @@ SELECT ok(EXISTS (SELECT 1 FROM pg_constraint table_constraint WHERE table_const
 SELECT has_index('public', 'results', 'results_order_term_active_idx', ARRAY['order_term', 'active'], 'the results filter index covers order_term then active');
 SELECT is((SELECT index_definition.indisunique FROM pg_index index_definition JOIN pg_class index_relation ON index_relation.oid = index_definition.indexrelid JOIN pg_namespace index_namespace ON index_namespace.oid = index_relation.relnamespace WHERE index_namespace.nspname = 'public' AND index_relation.relname = 'results_order_term_active_idx'), FALSE, 'the results filter index is not unique');
 SELECT is((SELECT count(*) FROM pg_constraint WHERE conrelid = 'public.results'::regclass AND contype = 'f'), 0::bigint, 'results has no foreign key');
-SELECT is((SELECT count(*) FROM public.results), 0::bigint, 'results is empty after migration and before test fixtures');
+-- ---------------------------------------------------------------------------
+-- Scenario: Schema fixtures coexist with seeded and unrelated Results.
+-- Setup:    Check only the synthetic keys used by this suite.
+-- Expected: Fixture keys are unused; supplied reference rows are allowed.
+SELECT is(
+    (SELECT count(*) FROM public.results WHERE result_id IN (
+        'BASE01', 'TYPE00', 'ENUM01', 'ENUM02', 'ENUM03', 'ENUM04',
+        'JSON00', 'JSON01', 'JSON02', 'ID0001', 'TITLE1', 'TITLE2', 'NEXT01', 'NEXT02'
+    )),
+    0::bigint,
+    'Results schema fixture keys are unused before fixtures'
+);
 
 CREATE FUNCTION pg_temp.insert_result(
     p_result_id                    VARCHAR DEFAULT 'BASE01',
