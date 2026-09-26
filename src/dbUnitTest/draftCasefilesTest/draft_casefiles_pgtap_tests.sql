@@ -8,6 +8,7 @@ SELECT plan(119);
 -- Scenario: Physical schema and supporting objects
 -- Setup: Migrations applied; public schema selected
 -- Expected: Exact TDIA contract with only the account foreign key deferred
+-- -----------------------------------------------------------------------------
 SELECT has_table('public', 'draft_casefiles', 'table exists');
 
 SELECT is((SELECT array_agg(attname::text ORDER BY attnum) FROM pg_attribute WHERE attrelid='public.draft_casefiles'::regclass AND attnum>0 AND NOT attisdropped), ARRAY['draft_casefile_id','business_unit_id','created_date','submitted_by','submitted_by_name','validated_date','validated_by','validated_by_name','casefile','casefile_snapshot','casefile_type','casefile_status','casefile_status_date','status_message','timeline_data','account_number','account_id','version_number']::text[], 'exact ordered 18 columns');
@@ -156,6 +157,7 @@ SELECT is((SELECT count(*) FROM pg_trigger WHERE tgrelid='public.draft_casefiles
 -- Scenario: Empty initial table and collision-free fixtures
 -- Setup: No test rows inserted yet
 -- Expected: No casefiles and no reserved synthetic Business Unit keys
+-- -----------------------------------------------------------------------------
 SELECT is((SELECT count(*) FROM public.draft_casefiles), 0::bigint, 'table begins empty');
 
 SELECT is((SELECT count(*) FROM public.business_units WHERE business_unit_id IN (32091,-32092) OR business_unit_code='D991'), 0::bigint, 'synthetic fixture keys do not collide');
@@ -164,6 +166,7 @@ SELECT is((SELECT count(*) FROM public.business_units WHERE business_unit_id IN 
 -- Scenario: Valid inserts including VARCHAR boundaries
 -- Setup: Create one synthetic Business Unit and capture two generated IDs
 -- Expected: Minimal and fully populated rows succeed without invented defaults
+-- -----------------------------------------------------------------------------
 SELECT lives_ok($sql$INSERT INTO public.business_units (business_unit_id,business_unit_code,business_unit_name,business_unit_type,welsh_language) VALUES (32091,'D991','Synthetic PO-10299 test unit','Area',false)$sql$, 'create owned Business Unit fixture');
 
 CREATE TEMP TABLE dcf_test_ids (label text PRIMARY KEY, id bigint NOT NULL);
@@ -182,6 +185,7 @@ SELECT is((SELECT casefile::text||'|'||casefile_snapshot::text||'|'||timeline_da
 -- Scenario: Required column failures
 -- Setup: Update the minimal valid row, one required value at a time
 -- Expected: Every NULL update fails with 23502 and preserves the row
+-- -----------------------------------------------------------------------------
 SELECT throws_ok($sql$UPDATE public.draft_casefiles SET draft_casefile_id=NULL WHERE draft_casefile_id=(SELECT id FROM dcf_test_ids WHERE label='minimal')$sql$, '23502', NULL, 'draft_casefile_id rejects SQL NULL');
 
 SELECT throws_ok($sql$UPDATE public.draft_casefiles SET business_unit_id=NULL WHERE draft_casefile_id=(SELECT id FROM dcf_test_ids WHERE label='minimal')$sql$, '23502', NULL, 'business_unit_id rejects SQL NULL');
@@ -208,6 +212,7 @@ SELECT throws_ok($sql$UPDATE public.draft_casefiles SET timeline_data=NULL WHERE
 -- Scenario: VARCHAR overflow failures
 -- Setup: Assign one character beyond each declared maximum
 -- Expected: Each update fails with 22001 without explicit narrowing casts
+-- -----------------------------------------------------------------------------
 SELECT throws_ok($sql$UPDATE public.draft_casefiles SET submitted_by=repeat('x',21) WHERE draft_casefile_id=(SELECT id FROM dcf_test_ids WHERE label='minimal')$sql$, '22001', NULL, 'submitted_by rejects overlength value');
 
 SELECT throws_ok($sql$UPDATE public.draft_casefiles SET submitted_by_name=repeat('x',101) WHERE draft_casefile_id=(SELECT id FROM dcf_test_ids WHERE label='minimal')$sql$, '22001', NULL, 'submitted_by_name rejects overlength value');
@@ -222,6 +227,7 @@ SELECT throws_ok($sql$UPDATE public.draft_casefiles SET account_number=repeat('x
 -- Scenario: Enum and JSON input failures
 -- Setup: Supply unknown enum labels and malformed JSON to the minimal row
 -- Expected: Each update fails with 22P02
+-- -----------------------------------------------------------------------------
 SELECT throws_ok($sql$UPDATE public.draft_casefiles SET casefile_type='INVALID' WHERE draft_casefile_id=(SELECT id FROM dcf_test_ids WHERE label='minimal')$sql$, '22P02', NULL, 'casefile_type rejects unknown enum');
 
 SELECT throws_ok($sql$UPDATE public.draft_casefiles SET casefile_status='INVALID' WHERE draft_casefile_id=(SELECT id FROM dcf_test_ids WHERE label='minimal')$sql$, '22P02', NULL, 'casefile_status rejects unknown enum');
@@ -236,6 +242,7 @@ SELECT throws_ok($sql$UPDATE public.draft_casefiles SET timeline_data='{invalid'
 -- Scenario: Key conflicts and Business Unit integrity
 -- Setup: Attempt duplicate PK/account, missing parent and referenced-parent deletion
 -- Expected: 23505/23503 errors and original row values retained
+-- -----------------------------------------------------------------------------
 SELECT throws_ok($sql$UPDATE public.draft_casefiles SET draft_casefile_id=(SELECT id FROM dcf_test_ids WHERE label='complete') WHERE draft_casefile_id=(SELECT id FROM dcf_test_ids WHERE label='minimal')$sql$, '23505', NULL, 'duplicate PK rejected');
 
 SELECT throws_ok($sql$UPDATE public.draft_casefiles SET business_unit_id=-32092 WHERE draft_casefile_id=(SELECT id FROM dcf_test_ids WHERE label='minimal')$sql$, '23503', NULL, 'unknown Business Unit rejected');
@@ -250,6 +257,7 @@ SELECT is((SELECT business_unit_id=32091 AND account_id IS NULL AND submitted_by
 -- Scenario: All supported lifecycle and type labels
 -- Setup: Update only the minimal row through every declared enum value
 -- Expected: Every valid enum assignment succeeds
+-- -----------------------------------------------------------------------------
 SELECT lives_ok($sql$UPDATE public.draft_casefiles SET casefile_type='REMO In' WHERE draft_casefile_id=(SELECT id FROM dcf_test_ids WHERE label='minimal')$sql$, 'casefile_type permits REMO In');
 
 SELECT lives_ok($sql$UPDATE public.draft_casefiles SET casefile_type='REMO Out' WHERE draft_casefile_id=(SELECT id FROM dcf_test_ids WHERE label='minimal')$sql$, 'casefile_type permits REMO Out');
@@ -274,6 +282,7 @@ SELECT lives_ok($sql$UPDATE public.draft_casefiles SET casefile_status='RESUBMIT
 -- Scenario: Nullable account uniqueness
 -- Setup: Clear the complete row account; minimal row already has NULL account
 -- Expected: Two NULL account references coexist
+-- -----------------------------------------------------------------------------
 SELECT lives_ok($sql$UPDATE public.draft_casefiles SET account_id=NULL WHERE draft_casefile_id=(SELECT id FROM dcf_test_ids WHERE label='complete')$sql$, 'account can return to NULL');
 
 SELECT is((SELECT count(*) FROM public.draft_casefiles WHERE account_id IS NULL), 2::bigint, 'unique account constraint permits multiple NULLs');
@@ -282,6 +291,7 @@ SELECT is((SELECT count(*) FROM public.draft_casefiles WHERE account_id IS NULL)
 -- Scenario: Caller-owned rollback
 -- Setup: Change status_message within a savepoint then roll back to it
 -- Expected: Previous NULL value is restored without a database orchestration routine
+-- -----------------------------------------------------------------------------
 SAVEPOINT dcf_backend_transaction;
 
 UPDATE public.draft_casefiles SET status_message='rolled back' WHERE draft_casefile_id=(SELECT id FROM dcf_test_ids WHERE label='minimal');

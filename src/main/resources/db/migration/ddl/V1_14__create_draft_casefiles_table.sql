@@ -27,7 +27,7 @@ CREATE SEQUENCE public.draft_casefile_id_seq
     CACHE 1;
 
 CREATE TABLE public.draft_casefiles (
-    draft_casefile_id       BIGINT DEFAULT nextval('public.draft_casefile_id_seq'::regclass) NOT NULL,
+    draft_casefile_id       BIGINT DEFAULT nextval('public.draft_casefile_id_seq')           NOT NULL,
     business_unit_id        SMALLINT                                                         NOT NULL,
     created_date            TIMESTAMP                                                        NOT NULL,
     submitted_by            VARCHAR(20)                                                      NOT NULL,
