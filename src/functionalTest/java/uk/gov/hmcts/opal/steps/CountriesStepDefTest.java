@@ -3,11 +3,30 @@ package uk.gov.hmcts.opal.steps;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import io.restassured.builder.ResponseBuilder;
+import io.restassured.response.Response;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.http.MediaType;
 
 class CountriesStepDefTest {
+
+    @Test
+    void acceptsCurrentCountryValidationProblemDetails() {
+        CountriesStepDef stepDef = new CountriesStepDef();
+        stepDef.latestResponse(validationResponse(""));
+
+        assertDoesNotThrow(stepDef::assertCountryValidationProblemDetails);
+    }
+
+    @Test
+    void rejectsCountryValidationProblemDetailsThatExposeUnsafeReason() {
+        CountriesStepDef stepDef = new CountriesStepDef();
+        stepDef.latestResponse(validationResponse(", \"reason\": \"not-a-boolean\""));
+
+        assertThrows(AssertionError.class, stepDef::assertCountryValidationProblemDetails);
+    }
 
     @Test
     void acceptsActiveCountriesInDisplayOrder() {
@@ -112,5 +131,23 @@ class CountriesStepDefTest {
 
     private void assertInvalidCountryResponse(String body) {
         assertThrows(AssertionError.class, () -> CountriesStepDef.assertActiveCountryResponse(body));
+    }
+
+    private Response validationResponse(String additionalField) {
+        return new ResponseBuilder()
+            .setStatusCode(400)
+            .setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE)
+            .setBody("""
+                {
+                  "type": "https://hmcts.gov.uk/problems/type-mismatch",
+                  "title": "Bad Request",
+                  "status": 400,
+                  "detail": "Parameter 'active' must be of type Boolean",
+                  "instance": "/countries",
+                  "operation_id": "test-operation-id",
+                  "retriable": false%s
+                }
+                """.formatted(additionalField))
+            .build();
     }
 }
