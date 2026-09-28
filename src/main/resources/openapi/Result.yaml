@@ -12,8 +12,9 @@ paths:
   /results:
     get:
       tags:
-        - Result
+        - Results
       summary: Returns Result reference data with optional filters
+      description: Returns Result codes and titles ordered by result_title then result_id. No effective-date filtering is applied. Omitted filters do not restrict results.
       operationId: getResults
       parameters:
         - in: query
@@ -41,7 +42,7 @@ paths:
                   - result_id: ABC123
                     result_title: Example Result
         '400':
-          description: Bad request
+          description: Bad request, including malformed Boolean parameters
           content:
             application/problem+json:
               schema:
@@ -54,6 +55,12 @@ paths:
                 $ref: './common.yaml#/components/schemas/ProblemDetail'
         '403':
           description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
+        '406':
+          description: Unsupported response media type
           content:
             application/problem+json:
               schema:

@@ -1,0 +1,41 @@
+DELETE FROM public.results
+WHERE result_id IN ('OTAF01', 'NOAT01', 'NOAF01', 'OTAT02', 'OTAT01', 'NOAT02', 'OTAF02', 'NOAF02');
+
+INSERT INTO public.results (
+    result_id,
+    result_title,
+    order_term,
+    enforcement_result,
+    case_result,
+    case_result_type,
+    active,
+    order_accruing,
+    requires_creditor,
+    enforcement_hold,
+    requires_enforcer,
+    generates_hearing,
+    generates_warrant,
+    lists_monies,
+    result_parameters,
+    requires_employment_data,
+    allow_additional_action,
+    enf_next_permitted_actions,
+    manual_enforcement,
+    auto_enforcement
+) VALUES
+    ('OTAF01', 'Alpha Order Inactive', TRUE,  FALSE, TRUE,  'Final',     FALSE,
+        TRUE,  FALSE, TRUE,  FALSE, TRUE,  FALSE, TRUE,  '{"field":"alpha"}', FALSE, TRUE,  'NOAT01', TRUE,  FALSE),
+    ('NOAT01', 'Bravo Non Order Active', FALSE, TRUE,  FALSE, NULL,        TRUE,
+        FALSE, TRUE,  FALSE, TRUE,  FALSE, TRUE,  FALSE, NULL,                TRUE,  FALSE, 'All',    FALSE, TRUE),
+    ('NOAF01', 'Charlie Non Order Inactive', FALSE, FALSE, TRUE, 'Ancillary', FALSE,
+        TRUE,  TRUE,  FALSE, FALSE, TRUE,  FALSE, FALSE, '{"enabled":false}', TRUE,  TRUE,  'OTAF01', FALSE, FALSE),
+    ('OTAT02', 'Delta Shared Active Order', TRUE,  TRUE,  TRUE,  'Interim',   TRUE,
+        FALSE, FALSE, TRUE,  TRUE,  FALSE, TRUE,  TRUE,  NULL,                FALSE, FALSE, 'OTAT01', TRUE,  TRUE),
+    ('OTAT01', 'Delta Shared Active Order', TRUE,  FALSE, FALSE, NULL,        TRUE,
+        TRUE,  TRUE,  FALSE, FALSE, TRUE,  FALSE, FALSE, '{"count":1}',       TRUE,  TRUE,  'All',    FALSE, FALSE),
+    ('NOAT02', 'Echo Non Order Active', FALSE, TRUE,  TRUE,  'Final',       TRUE,
+        FALSE, TRUE,  TRUE,  FALSE, FALSE, TRUE,  TRUE,  NULL,                FALSE, TRUE,  'NOAT01', TRUE,  FALSE),
+    ('OTAF02', 'Foxtrot Order Inactive', TRUE, TRUE, FALSE, NULL,          FALSE,
+        TRUE,  FALSE, FALSE, TRUE,  TRUE,  FALSE, FALSE, '{"field":"foxtrot"}', TRUE, FALSE, 'All', FALSE, TRUE),
+    ('NOAF02', repeat('Z', 60), FALSE, FALSE, FALSE, 'Interim', FALSE,
+        FALSE, FALSE, TRUE,  TRUE,  FALSE, TRUE,  TRUE,  NULL,                FALSE, TRUE,  'NOAF01', TRUE,  TRUE);
