@@ -14,11 +14,12 @@ paths:
       tags:
         - Maintenance Application
       summary: Returns Maintenance Application reference data for an Application Group
+      description: Returns Maintenance Applications ordered by application_title then application_id. No effective-date filtering is applied. No matches return count zero and an empty refData array.
       operationId: getMaintenanceApplications
       parameters:
         - in: query
           name: application_group
-          description: Application Group used to select relevant Maintenance Applications. DB Mapping - maintenance_applications.application_group
+          description: Required exact Application Group, without trimming or case conversion. Unknown groups return no matches. DB Mapping - maintenance_applications.application_group
           required: true
           schema:
             type: string
@@ -39,7 +40,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ReferenceDataResponse'
         '400':
-          description: Bad request
+          description: Missing or invalid query parameter
           content:
             application/problem+json:
               schema:
@@ -52,6 +53,12 @@ paths:
                 $ref: './common.yaml#/components/schemas/ProblemDetail'
         '403':
           description: Forbidden
+          content:
+            application/problem+json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
+        '406':
+          description: Unsupported response media type
           content:
             application/problem+json:
               schema:
