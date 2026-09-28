@@ -85,7 +85,8 @@ class ResultsControllerIntegrationTest extends BaseIntegrationTest {
     @Test
     void returnsOnlyListFields() throws Exception {
         when(repository.findResults(true, false)).thenReturn(List.of(ResultEntity.builder()
-            .resultId("ABC123").resultTitle("Example Result").orderTerm(true).active(false).build()));
+            .resultId("ABC123").resultTitle("Example Result").orderTerm(true).active(false)
+            .resultParameters("[]").build()));
 
         mockMvc.perform(get("/results").param("order_term", "true").param("active", "false")
                 .with(user("test-user")))

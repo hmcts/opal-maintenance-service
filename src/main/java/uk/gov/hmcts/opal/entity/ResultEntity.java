@@ -9,6 +9,8 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "results")
@@ -24,6 +26,10 @@ public class ResultEntity {
 
     @Column(name = "result_title", nullable = false, length = 60)
     private String resultTitle;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "result_parameters", columnDefinition = "json")
+    private String resultParameters;
 
     @Column(name = "order_term", nullable = false)
     private Boolean orderTerm;
