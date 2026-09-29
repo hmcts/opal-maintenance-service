@@ -49,6 +49,13 @@ You can:
 - Run an entire folder as a suite
 - Pass environment variables using {{VAR_NAME}} syntax
 
+For authenticated local requests, run **Auth Token** first. It saves
+`BEARER_TOKEN` in the selected environment. Reference-data requests are under
+**Maintenance → Reference data**; set their required values in the environment.
+
+The **Ping** and **Auth check** requests require
+`TESTING_SUPPORT_ENDPOINTS_ENABLED=true`. **Auth check** also requires a token.
+
 Example:
 
 ```text

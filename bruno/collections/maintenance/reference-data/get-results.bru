@@ -1,0 +1,25 @@
+meta {
+  name: Get results
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseURL}}/results
+  body: none
+  auth: bearer
+}
+
+params:query {
+  ~order_term: true
+  ~active: true
+}
+
+auth:bearer {
+  token: {{BEARER_TOKEN}}
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
