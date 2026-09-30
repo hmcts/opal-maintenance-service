@@ -20,13 +20,19 @@ public class MaintenanceApplicationsStepDef extends BaseStepDef {
     private static final String CREATE_CASEFILE_GROUP = "Create Casefile";
     private static final String REPRESENTATIVE_CODE = "AP00001";
     private static final String REPRESENTATIVE_TITLE = "Application to Appeal";
+    static final String ACTIVE_REQUEST_PATH =
+        "/maintenance-applications?application_group=Create Casefile&active=true";
+    static final String INACTIVE_REQUEST_PATH =
+        "/maintenance-applications?application_group=Create Casefile&active=false";
+    static final String MALFORMED_REQUEST_PATH =
+        "/maintenance-applications?application_group=Create Casefile&active=not-a-boolean";
 
     private Response latestResponse;
 
     @When("I request active Maintenance Applications for Create Casefile")
     public void requestActiveMaintenanceApplications() {
         latestResponse = getWithBearer(
-            "/maintenance-applications?application_group=Create%20Casefile&active=true",
+            ACTIVE_REQUEST_PATH,
             BearerTokenStepDef.getToken()
         );
     }
@@ -41,7 +47,7 @@ public class MaintenanceApplicationsStepDef extends BaseStepDef {
     @When("I request inactive Maintenance Applications for Create Casefile")
     public void requestInactiveMaintenanceApplications() {
         latestResponse = getWithBearer(
-            "/maintenance-applications?application_group=Create%20Casefile&active=false",
+            INACTIVE_REQUEST_PATH,
             BearerTokenStepDef.getToken()
         );
     }
@@ -56,7 +62,7 @@ public class MaintenanceApplicationsStepDef extends BaseStepDef {
     @When("I request Maintenance Applications with a malformed active filter")
     public void requestMaintenanceApplicationsWithMalformedActiveFilter() {
         latestResponse = getWithBearer(
-            "/maintenance-applications?application_group=Create%20Casefile&active=not-a-boolean",
+            MALFORMED_REQUEST_PATH,
             BearerTokenStepDef.getToken()
         );
     }
@@ -82,7 +88,7 @@ public class MaintenanceApplicationsStepDef extends BaseStepDef {
     @When("I request Maintenance Applications without authentication")
     public void requestMaintenanceApplicationsWithoutAuthentication() {
         latestResponse = getWithoutBearer(
-            "/maintenance-applications?application_group=Create%20Casefile&active=true"
+            ACTIVE_REQUEST_PATH
         );
     }
 

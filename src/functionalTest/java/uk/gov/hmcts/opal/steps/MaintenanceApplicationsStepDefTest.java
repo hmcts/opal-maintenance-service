@@ -1,14 +1,56 @@
 package uk.gov.hmcts.opal.steps;
 
+import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
+import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
+import static com.github.tomakehurst.wiremock.client.WireMock.get;
+import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
+import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import com.github.tomakehurst.wiremock.WireMockServer;
 import io.restassured.builder.ResponseBuilder;
 import io.restassured.response.Response;
+import java.util.List;
+import net.serenitybdd.rest.SerenityRest;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 
 class MaintenanceApplicationsStepDefTest {
+
+    @Test
+    void sendsCreateCasefileApplicationGroupWithoutDoubleEncoding() {
+        WireMockServer server = new WireMockServer(options().dynamicPort());
+        server.start();
+
+        try {
+            server.stubFor(get(urlPathEqualTo("/maintenance-applications"))
+                               .willReturn(aResponse().withStatus(200)));
+
+            for (String path : maintenanceApplicationRequestPaths()) {
+                Response response = SerenityRest.given()
+                    .config(BaseStepDef.requestConfig())
+                    .when()
+                    .get("http://localhost:" + server.port() + path);
+                assertEquals(200, response.statusCode());
+            }
+
+            server.verify(
+                4,
+                getRequestedFor(urlPathEqualTo("/maintenance-applications"))
+                    .withQueryParam("application_group", equalTo("Create Casefile"))
+            );
+            server.verify(
+                0,
+                getRequestedFor(urlPathEqualTo("/maintenance-applications"))
+                    .withQueryParam("application_group", equalTo("Create%20Casefile"))
+            );
+        } finally {
+            server.stop();
+        }
+    }
 
     @Test
     void acceptsActiveCreateCasefileApplicationsWithRepresentativeRecord() {
@@ -187,5 +229,14 @@ class MaintenanceApplicationsStepDefTest {
                 }
                 """.formatted(additionalField))
             .build();
+    }
+
+    private List<String> maintenanceApplicationRequestPaths() {
+        return List.of(
+            MaintenanceApplicationsStepDef.ACTIVE_REQUEST_PATH,
+            MaintenanceApplicationsStepDef.INACTIVE_REQUEST_PATH,
+            MaintenanceApplicationsStepDef.MALFORMED_REQUEST_PATH,
+            MaintenanceApplicationsStepDef.ACTIVE_REQUEST_PATH
+        );
     }
 }
