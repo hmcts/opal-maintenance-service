@@ -2,7 +2,7 @@ openapi: 3.1.1
 
 info:
   description: Opal Maintenance Service - RM common business objects
-  version: v0.0.1
+  version: 1.0.0
   title: Opal Maintenance Service
 
 components:
@@ -38,6 +38,9 @@ components:
           then:
             required:
               - individual_details
+            not:
+              required:
+                - organisation_details
         - if:
             properties:
               organisation:
@@ -45,12 +48,14 @@ components:
           then:
             required:
               - organisation_details
+            not:
+              required:
+                - individual_details
 
     IndividualDetails:
       type: object
       additionalProperties: false
       required:
-        - forenames
         - surname
       properties:
         title:
@@ -82,6 +87,19 @@ components:
           type: string
           maxLength: 250
           description: Required by business validation when restrict_personal_information is true.
+      allOf:
+        - if:
+            properties:
+              restrict_personal_information:
+                const: true
+            required:
+              - restrict_personal_information
+          then:
+            required:
+              - restriction_reason
+            properties:
+              restriction_reason:
+                minLength: 1
 
     OrganisationDetails:
       type: object
@@ -95,8 +113,12 @@ components:
           maxLength: 80
         foreign_authority_reference:
           type: string
+          minLength: 1
           maxLength: 40
-          description: Foreign Authority reference used for an organisation Applicant, when applicable.
+          pattern: '^[A-Za-z0-9]+$'
+          description: >-
+            Foreign Authority reference, required for an organisation Applicant. Retained in the Casefile
+            for population on the Applicant party at publication; not required for other party roles.
 
     Alias:
       type: object
@@ -121,30 +143,13 @@ components:
           type: string
           minLength: 1
           maxLength: 80
-      oneOf:
-        - title: Individual alias
-          required:
-            - forenames
-            - surname
-          not:
-            required:
-              - organisation_name
-        - title: Organisation alias
-          required:
-            - organisation_name
-          not:
-            anyOf:
-              - required:
-                  - forenames
-              - required:
-                  - surname
 
     Address:
       type: object
       additionalProperties: false
       required:
         - address_line_1
-        - country
+        - cjs_code
       properties:
         address_line_1:
           type: string
@@ -165,13 +170,16 @@ components:
         postcode:
           type: string
           maxLength: 10
-        country:
-          type: string
-          minLength: 1
-          maxLength: 100
+        cjs_code:
+          type: integer
+          format: int16
+          minimum: -32768
+          maximum: 32767
           description: >-
-            Active Country display name selected from RM reference data. Eventual DB Mapping - parties.country,
-            debtor_detail.employer_country or third_party_contact.country as applicable.
+            CJS code of the active Country selected from Get Countries, not country_id or country_name.
+            Retained in the Casefile. Must resolve to exactly one Country. Publication uses the resolved
+            country_id for parties.country_id or debtor_detail.employer_country_id, and the resolved
+            country_name for the text field third_party_contact.country.
 
     ContactDetails:
       type: object
@@ -220,11 +228,11 @@ components:
       type: object
       additionalProperties: false
       required:
-        - name_or_organisation
+        - name
         - relationship
         - address
       properties:
-        name_or_organisation:
+        name:
           type: string
           minLength: 1
           maxLength: 40
@@ -285,7 +293,7 @@ components:
           maxLength: 18
         sort_code:
           type: string
-          pattern: '^(?:[0-9]{6}|[0-9]{2}-[0-9]{2}-[0-9]{2})$'
+          pattern: '^[0-9]{6}$'
         account_number:
           type: string
           pattern: '^[0-9]{6,8}$'
@@ -321,13 +329,14 @@ components:
           maxLength: 100
         branch_code_or_sort_code:
           type: string
-          pattern: '^[0-9]{1,12}$'
+          minLength: 1
+          maxLength: 12
         account_number:
           type: string
           maxLength: 20
       description: >-
-        The FE requires either bic_or_swift_code or iban when Non-UK Bank is selected. Bank name, branch or sort
-        code and account number are additional optional details.
+        Account name and payment reference are required when Non-UK Bank is selected. BIC/SWIFT, IBAN,
+        bank name, branch or sort code and account number are optional in the Create Draft Casefile journey.
 
     ResultResponse:
       type: object
@@ -349,7 +358,6 @@ components:
       additionalProperties: false
       required:
         - note_text
-        - note_type
       properties:
         note_text:
           type: string
@@ -358,5 +366,8 @@ components:
         note_type:
           type: string
           enum:
-            - AA
-          description: Account Activity note.
+            - NT
+            - MN
+          description: >-
+            Required when returning a persisted Note. Not supplied in Add or Re-submit Draft Casefile requests;
+            assigned on publication. The CCF Case Note is expected to use NT, subject to confirmation.

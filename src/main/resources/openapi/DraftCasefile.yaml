@@ -5,7 +5,7 @@ servers:
 
 info:
   description: Opal Maintenance Service - Draft Casefile submission
-  version: v0.0.1
+  version: 1.0.0
   title: Opal Maintenance Service
 
 paths:
@@ -17,6 +17,13 @@ paths:
       description: >-
         Validates and persists the complete RM Casefile as a submitted Draft Casefile. The service derives the
         identifier, submitter, timestamps, Casefile Snapshot, lifecycle status and initial Timeline Data.
+        The authenticated user must hold Create and Manage Draft Casefiles permission for the owning Business Unit.
+        Account creation and publication are separate operations.
+      externalDocs:
+        description: Add Draft Casefile logical API specification
+        url: https://hmcts.atlassian.net/wiki/spaces/PO/pages/271483468/Add+Draft+Casefile
+      security:
+        - DraftCasefileBearerAuth: []
       operationId: addDraftCasefile
       requestBody:
         required: true
@@ -30,15 +37,20 @@ paths:
                 description: >-
                   Demonstrates the contract shape. Reference identifiers other than Business Unit 1 must be
                   replaced with values from the deployed RM reference datasets before use as executable test data.
+                  Country codes are illustrative. The example includes the visible mandatory MAT parameters;
+                  mapping of ordersHidden parameters from the rest of the Casefile remains to be agreed.
                 value:
                   business_unit_id: 1
                   casefile_type: REMO In
                   casefile:
                     respondent_account:
                       business_unit_id: 1
-                      application_id: 1
+                      application_code: EXAMPLE
                       originator_name: Example Court
                       casefile_type: REMO In
+                      account_comment: Synthetic example case comment
+                      notes:
+                        note_text: Synthetic example case note
                       respondent:
                         party_details:
                           organisation: false
@@ -47,7 +59,7 @@ paths:
                             surname: Smith
                           address:
                             address_line_1: 1 High Street
-                            country: United Kingdom
+                            cjs_code: 1
                       order_details:
                         date_ordered: 2026-08-01
                         date_arrears_last_updated: 2026-08-25
@@ -61,6 +73,8 @@ paths:
                             result_responses:
                               - parameter_name: Amount
                                 response: '100.00'
+                              - parameter_name: Frequency
+                                response: monthly
                     applicant:
                       party_details:
                         organisation: false
@@ -69,7 +83,7 @@ paths:
                           surname: Jones
                         address:
                           address_line_1: 2 Main Street
-                          country: France
+                          cjs_code: 2
                       bank_account_details:
                         bank_account_type: None or not applicable
       responses:
@@ -87,6 +101,29 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AddResponse'
+              example:
+                draft_casefile_id: 123
+                business_unit_id: 1
+                created_date: '2026-09-29T10:00:00Z'
+                submitted_by: 'example-user'
+                submitted_by_name: Example Submitter
+                casefile_snapshot:
+                  respondent_account:
+                    account_id: null
+                    account_number: null
+                    respondent_name: SMITH, Alex
+                  applicant_account:
+                    account_id: null
+                    account_number: null
+                    applicant_name: JONES, Sam
+                  minor_creditor_accounts: []
+                casefile_type: REMO In
+                casefile_status: SUBMITTED
+                casefile_status_date: '2026-09-29T10:00:00Z'
+                timeline_data:
+                  - username: Example Submitter
+                    status: Submitted
+                    status_date: '2026-09-29T10:00:00Z'
         '400':
           description: Request structure, field validation or referenced data is invalid
           content:
@@ -119,6 +156,11 @@ paths:
                 $ref: './common.yaml#/components/schemas/ProblemDetail'
 
 components:
+  securitySchemes:
+    DraftCasefileBearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
   schemas:
     AddRequest:
       type: object
@@ -172,13 +214,16 @@ components:
         submitted_by:
           type: string
           maxLength: 20
-          description: Authenticated submitting user identifier. DB Mapping - draft_casefiles.submitted_by
+          description: >-
+            Business Unit User ID of the authenticated submitting user, not the global User ID.
+            DB Mapping - draft_casefiles.submitted_by
         submitted_by_name:
           type: string
           maxLength: 100
-          description: Authenticated submitting user's display name. DB Mapping - draft_casefiles.submitted_by_name
+          description: Display name captured at submission. DB Mapping - draft_casefiles.submitted_by_name
         casefile_snapshot:
           $ref: './Casefile.yaml#/components/schemas/CasefileSnapshot'
+          description: Names and Minor Creditor sequences populated; all account IDs and numbers are null on creation.
         casefile_type:
           $ref: './Casefile.yaml#/components/schemas/CasefileType'
         casefile_status:
@@ -189,9 +234,32 @@ components:
         casefile_status_date:
           type: string
           format: date-time
-          description: Backend-generated status timestamp. DB Mapping - draft_casefiles.casefile_status_date
+          description: Same UTC submission timestamp as created_date. DB Mapping - draft_casefiles.casefile_status_date
         timeline_data:
           type: array
           minItems: 1
+          maxItems: 1
           items:
-            $ref: './Casefile.yaml#/components/schemas/TimelineEntry'
+            $ref: '#/components/schemas/SubmissionTimelineEntry'
+
+    SubmissionTimelineEntry:
+      type: object
+      additionalProperties: false
+      required:
+        - username
+        - status
+        - status_date
+      properties:
+        username:
+          type: string
+          maxLength: 100
+          description: Display name captured from the authenticated user's name claim.
+        status:
+          type: string
+          enum:
+            - Submitted
+        status_date:
+          type: string
+          format: date-time
+          description: Same UTC submission timestamp as created_date.
+      description: Initial Submitted event with the captured submitter name and UTC submission timestamp; no reason.
