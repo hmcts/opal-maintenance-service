@@ -123,6 +123,9 @@ components:
     Alias:
       type: object
       additionalProperties: false
+      description: >-
+        An optional alias entry must contain either individual forenames and surname, or an organisation name.
+        Do not supply both individual and organisation name fields in the same entry.
       required:
         - sequence_number
       properties:
@@ -143,6 +146,23 @@ components:
           type: string
           minLength: 1
           maxLength: 80
+      oneOf:
+        - title: Individual alias
+          required:
+            - forenames
+            - surname
+          not:
+            required:
+              - organisation_name
+        - title: Organisation alias
+          required:
+            - organisation_name
+          not:
+            anyOf:
+              - required:
+                  - forenames
+              - required:
+                  - surname
 
     Address:
       type: object
