@@ -134,7 +134,7 @@ public class MaintenanceApplicationsStepDef extends BaseStepDef {
             );
 
             String code = requiredText(item, "application_code");
-            String title = requiredText(item, "application_title");
+            final String title = requiredText(item, "application_title");
             assertTrue(applicationCodes.add(code), "Duplicate Maintenance Application code: " + code);
             assertEquals(CREATE_CASEFILE_GROUP, requiredText(item, "application_group"));
             assertTrue(item.path("active").isBoolean(), "Maintenance Application active state is invalid");
