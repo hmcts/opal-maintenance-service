@@ -18,8 +18,6 @@ components:
           $ref: '#/components/schemas/RespondentAccount'
         applicant:
           $ref: '#/components/schemas/Applicant'
-        central_authority:
-          $ref: '#/components/schemas/CentralAuthority'
         minor_creditors:
           type: array
           description: >-
@@ -78,6 +76,14 @@ components:
           type: string
           maxLength: 20
           description: Eventual DB Mapping - respondent_accounts.remo_reference
+        central_authority_code:
+          type: string
+          minLength: 1
+          maxLength: 4
+          description: >-
+            Optional Major Creditor code identifying the selected Central Authority, not its free-text reference.
+            Must identify an active Major Creditor with central_authority=true in this Respondent Account's
+            business_unit_id. Resolve against major_creditors using the Business Unit and major_creditor_code.
         central_authority_reference:
           type: string
           maxLength: 50
@@ -155,21 +161,6 @@ components:
                       - foreign_authority_reference
                 required:
                   - organisation_details
-
-    CentralAuthority:
-      type: object
-      additionalProperties: false
-      required:
-        - major_creditor_code
-      properties:
-        major_creditor_code:
-          type: string
-          minLength: 1
-          maxLength: 4
-          description: >-
-            Code of an active Major Creditor with central_authority=true in the Casefile's owning Business Unit.
-            Resolve using business_unit_id and major_creditor_code, not the code alone.
-            Publication resolves this pair to major_creditors.major_creditor_id.
 
     MinorCreditor:
       type: object
