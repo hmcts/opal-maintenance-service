@@ -2,7 +2,7 @@ openapi: 3.1.1
 
 info:
   description: Opal Maintenance Service - RM Casefile objects
-  version: v0.0.1
+  version: 1.0.0
   title: Opal Maintenance Service
 
 components:
@@ -22,10 +22,9 @@ components:
           $ref: '#/components/schemas/CentralAuthority'
         minor_creditors:
           type: array
-          minItems: 1
           description: >-
             Minor Creditors created within this Casefile and referenced by creditor_sequence from Order Terms.
-            The collection supports a different new Minor Creditor for each Order Term, as described by the FE journey.
+            Omit the collection or supply an empty array when there are none.
           items:
             $ref: '#/components/schemas/MinorCreditor'
       description: >-
@@ -45,7 +44,7 @@ components:
       additionalProperties: false
       required:
         - business_unit_id
-        - application_id
+        - application_code
         - casefile_type
         - respondent
         - order_details
@@ -56,14 +55,14 @@ components:
           minimum: 1
           maximum: 32767
           description: Must equal the root business_unit_id. Eventual DB Mapping - respondent_accounts.business_unit_id
-        application_id:
-          type: integer
-          format: int16
-          minimum: 1
-          maximum: 32767
+        application_code:
+          type: string
+          minLength: 1
+          maxLength: 8
           description: >-
-            Active Maintenance Application for the Create Casefile journey. Eventual DB Mapping -
-            respondent_accounts.application_id
+            Active Maintenance Application business code returned by Get Maintenance Applications.
+            Retained in the Casefile; publication resolves maintenance_applications.application_code
+            to respondent_accounts.application_id.
         originator_name:
           type: string
           minLength: 1
@@ -86,13 +85,29 @@ components:
         account_comment:
           type: string
           maxLength: 250
-          description: Important Casefile comment displayed on the live Respondent Account summary.
+          description: >-
+            Optional Case Comment, separate from the Case Note. Retained in the Casefile and populated into
+            respondent_accounts.account_comment on publication; does not create a Notes record.
         respondent:
           $ref: '#/components/schemas/Respondent'
         order_details:
           $ref: '#/components/schemas/OrderDetails'
         notes:
-          $ref: './CommonObjects.yaml#/components/schemas/Note'
+          $ref: '#/components/schemas/CaseNoteInput'
+
+    CaseNoteInput:
+      type: object
+      additionalProperties: false
+      required:
+        - note_text
+      properties:
+        note_text:
+          type: string
+          minLength: 1
+          maxLength: 1000
+      description: >-
+        Optional single Case Note supplied with the Casefile, not an array. Note type is not an input;
+        it is assigned on publication. An empty object is invalid.
 
     Respondent:
       type: object
@@ -145,13 +160,16 @@ components:
       type: object
       additionalProperties: false
       required:
-        - major_creditor_id
+        - major_creditor_code
       properties:
-        major_creditor_id:
-          type: integer
-          format: int64
-          minimum: 1
-          description: Active Major Creditor selected as the Central Authority. DB Mapping - major_creditors.major_creditor_id
+        major_creditor_code:
+          type: string
+          minLength: 1
+          maxLength: 4
+          description: >-
+            Code of an active Major Creditor with central_authority=true in the Casefile's owning Business Unit.
+            Resolve using business_unit_id and major_creditor_code, not the code alone.
+            Publication resolves this pair to major_creditors.major_creditor_id.
 
     MinorCreditor:
       type: object
@@ -175,6 +193,7 @@ components:
       type: object
       additionalProperties: false
       required:
+        - date_ordered
         - date_arrears_last_updated
         - interest_flag
         - indexation
@@ -222,9 +241,12 @@ components:
     OrderTerm:
       type: object
       additionalProperties: false
+      description: >-
+        Creditor selection is required only when the selected Result has requires_creditor=true.
+        The service validates this against Result metadata;
+        the static schema cannot determine it from result_id. When no creditor is required, omit creditor fields.
       required:
         - result_id
-        - creditor_type
         - result_responses
       properties:
         result_id:
@@ -234,6 +256,7 @@ components:
           description: Active Order Term Result. DB Mapping - results.result_id
         creditor_type:
           type: string
+          description: Required by business validation when the selected Result requires a creditor.
           enum:
             - Applicant
             - Minor Creditor
@@ -243,11 +266,14 @@ components:
           format: int32
           minimum: 1
           description: Required when creditor_type is Minor Creditor; identifies creditor_sequence within this Casefile.
-        major_creditor_id:
-          type: integer
-          format: int64
-          minimum: 1
-          description: Required when creditor_type is Major Creditor; must identify an active record in the owning Business Unit.
+        major_creditor_code:
+          type: string
+          minLength: 1
+          maxLength: 4
+          description: >-
+            Required when creditor_type is Major Creditor. Must identify an active Major Creditor in the
+            Casefile's owning Business Unit. Publication resolves business_unit_id and major_creditor_code
+            to major_creditors.major_creditor_id; the code alone is not globally unique.
         result_responses:
           type: array
           minItems: 1
@@ -258,6 +284,8 @@ components:
             properties:
               creditor_type:
                 const: Minor Creditor
+            required:
+              - creditor_type
           then:
             required:
               - minor_creditor_sequence
@@ -265,40 +293,96 @@ components:
             properties:
               creditor_type:
                 const: Major Creditor
+            required:
+              - creditor_type
           then:
             required:
-              - major_creditor_id
+              - major_creditor_code
 
     CasefileSnapshot:
       type: object
       additionalProperties: false
       required:
-        - respondent_name
-        - created_date
-        - casefile_type
-        - submitted_by_name
-        - business_unit_name
+        - respondent_account
+        - applicant_account
+        - minor_creditor_accounts
       properties:
+        respondent_account:
+          $ref: '#/components/schemas/SnapshotRespondentAccount'
+        applicant_account:
+          $ref: '#/components/schemas/SnapshotApplicantAccount'
+        minor_creditor_accounts:
+          type: array
+          items:
+            $ref: '#/components/schemas/SnapshotMinorCreditorAccount'
+          description: Always present; empty when there are no Minor Creditors.
+      description: >-
+        Server-maintained display summary. Names and Minor Creditor sequences are populated before publication;
+        account identifiers and numbers are null until publication. Lifecycle and submitter fields are returned
+        separately on the Draft Casefile response, not duplicated here.
+
+    SnapshotRespondentAccount:
+      type: object
+      additionalProperties: false
+      required:
+        - account_id
+        - account_number
+        - respondent_name
+      properties:
+        account_id:
+          type: [integer, 'null']
+          format: int64
+          minimum: 1
+        account_number:
+          type: [string, 'null']
         respondent_name:
           type: string
-          maxLength: 101
-        date_of_birth:
+          minLength: 1
+          description: Individual display name in SURNAME, Forenames format, or organisation name.
+
+    SnapshotApplicantAccount:
+      type: object
+      additionalProperties: false
+      required:
+        - account_id
+        - account_number
+        - applicant_name
+      properties:
+        account_id:
+          type: [integer, 'null']
+          format: int64
+          minimum: 1
+        account_number:
+          type: [string, 'null']
+        applicant_name:
           type: string
-          format: date
-        created_date:
+          minLength: 1
+          description: Individual display name in SURNAME, Forenames format, or organisation name.
+
+    SnapshotMinorCreditorAccount:
+      type: object
+      additionalProperties: false
+      required:
+        - creditor_sequence
+        - account_id
+        - account_number
+        - name
+      properties:
+        creditor_sequence:
+          type: integer
+          format: int32
+          minimum: 1
+          description: Unique within the Casefile; matches the submitted Minor Creditor, not array position.
+        account_id:
+          type: [integer, 'null']
+          format: int64
+          minimum: 1
+        account_number:
+          type: [string, 'null']
+        name:
           type: string
-          format: date-time
-        casefile_type:
-          $ref: '#/components/schemas/CasefileType'
-        submitted_by_name:
-          type: string
-          maxLength: 100
-        approved_date:
-          type: string
-          format: date-time
-        business_unit_name:
-          type: string
-          maxLength: 100
+          minLength: 1
+          description: Individual display name in SURNAME, Forenames format, or organisation name.
 
     TimelineEntry:
       type: object
@@ -311,7 +395,7 @@ components:
         username:
           type: string
           maxLength: 100
-          description: Display name of the user responsible for the lifecycle event.
+          description: Captured display name from the authenticated user's name claim, not an ID or login email.
         status:
           type: string
           enum:
@@ -320,11 +404,10 @@ components:
             - Rejected
             - Approved
             - Deleted
-            - Failed
         status_date:
           type: string
           format: date-time
-          description: Backend-generated lifecycle timestamp, ordered ascending within Timeline Data.
+          description: Backend-generated UTC lifecycle timestamp, ordered ascending within Timeline Data.
         reason_text:
           type: string
           maxLength: 1000
