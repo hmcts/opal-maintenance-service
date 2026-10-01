@@ -161,6 +161,9 @@ There is no need to remove postgres and java or similar core images.
 Ensure you have pulled `opal-shared-infrastructure`, which contains the scripts
 that support the shared Docker environment.
 
+To run the dependencies in Docker and Maintenance Service in IntelliJ, follow
+the [local development guide](docs/LOCAL_DEVELOPMENT.md).
+
 First ensure all repositories are downloaded in the same parent directory.
 To do this automatically you can run the following command from the opal-shared-infrastructure directory:
 ```bash / zsh
