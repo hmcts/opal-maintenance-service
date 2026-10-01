@@ -41,7 +41,7 @@ wrapper configuration as authoritative for tool and dependency versions.
 - Run functional tests: `./gradlew functional`
 - Run smoke tests: `./gradlew smoke`
 - Produce coverage: `./gradlew jacocoTestReport`
-- Run focused static analysis: `./gradlew checkstyleMain` and `./gradlew pmdMain`
+- Run configured focused static analysis: `./gradlew checkstyleMain`. The current build does not configure PMD.
 - Start the local service and PostgreSQL: `docker compose up --build`
 
 `build` includes the configured unit, database-owned pgTAP, integration,
@@ -55,14 +55,14 @@ sufficient validation.
 
 ## Formatting and naming
 
-- Follow `.editorconfig` and the Checkstyle and PMD rules under `config/`.
+- Follow `.editorconfig` and the configured Checkstyle rules under `config/`.
 - Use four-space Java indentation and the configured 120-character line limit.
 - Do not use wildcard imports. Keep imports in the configured third-party,
   standard Java, and static groups.
 - Keep one top-level Java type per file and use descriptive UpperCamelCase type
   names and lowerCamelCase member, parameter, and local-variable names.
 - Keep production and test packages aligned, and name JUnit classes `*Test`.
-- Do not suppress compiler, Checkstyle, PMD, test, or coverage findings merely
+- Do not suppress compiler, Checkstyle, test, or coverage findings merely
   to make a check pass. Scope an unavoidable suppression to the smallest useful
   target and document why it is safe.
 
