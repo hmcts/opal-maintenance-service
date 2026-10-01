@@ -196,6 +196,57 @@ class OpenApiSchemaValidatorTest {
     }
 
     @ParameterizedTest
+    @ValueSource(strings = {"/casefile/applicant/party_details",
+        "/casefile/respondent_account/respondent/party_details"})
+    void rejectsMissingSelectedIndividualName(String pointer) {
+        ObjectNode request = request();
+        ((ObjectNode) request.at(pointer + "/individual_details")).remove("surname");
+        assertInvalid(request.toString());
+    }
+
+    @Test
+    void rejectsMissingSelectedOrganisationNameAndBothPartyDetailKinds() {
+        ObjectNode request = request();
+        ObjectNode party = (ObjectNode) request.at("/casefile/applicant/party_details");
+        party.put("organisation", true);
+        party.putObject("organisation_details").put("foreign_authority_reference", "SYNTH");
+        party.remove("individual_details");
+        assertInvalid(request.toString());
+        ((ObjectNode) party.get("organisation_details")).put("organisation_name", "Synthetic organisation");
+        assertThatCode(() -> validate(request.toString())).doesNotThrowAnyException();
+        party.putObject("individual_details").put("surname", "Synthetic");
+        assertInvalid(request.toString());
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs = {1, 2147483647L})
+    void acceptsMinorCreditorSequenceInt32Boundaries(long sequence) {
+        ObjectNode request = requestWithMinorSequence(sequence);
+        assertThatCode(() -> validate(request.toString())).doesNotThrowAnyException();
+    }
+
+    @ParameterizedTest
+    @CsvSource({"0,true", "2147483648,true", "0,false", "2147483648,false"})
+    void rejectsMinorCreditorSequenceOutsideInt32Bounds(long sequence, boolean minor) {
+        ObjectNode request = requestWithMinorSequence(1);
+        String pointer = minor ? "/casefile/minor_creditors/0/creditor_sequence"
+            : "/casefile/respondent_account/order_details/order_terms/0/minor_creditor_sequence";
+        parent(request, pointer).put(property(pointer), sequence);
+        assertInvalid(request.toString());
+    }
+
+    private static ObjectNode requestWithMinorSequence(long sequence) {
+        ObjectNode request = request();
+        ObjectNode casefile = (ObjectNode) request.get("casefile");
+        ObjectNode minor = (ObjectNode) casefile.get("applicant").deepCopy();
+        minor.put("creditor_sequence", sequence);
+        casefile.putArray("minor_creditors").add(minor);
+        ObjectNode term = (ObjectNode) casefile.at("/respondent_account/order_details/order_terms/0");
+        term.put("creditor_type", "Minor Creditor").put("minor_creditor_sequence", sequence);
+        return request;
+    }
+
+    @ParameterizedTest
     @ValueSource(strings = {"{", "{\"sensitive-input\":", "null", "[]", "", "{} {}"})
     void rejectsMalformedOrWrongRootJsonSafely(String json) {
         assertInvalid(json);
