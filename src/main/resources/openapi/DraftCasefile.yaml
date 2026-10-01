@@ -35,10 +35,7 @@ paths:
               illustrative:
                 summary: Illustrative REMO In submission
                 description: >-
-                  Demonstrates the contract shape. Reference identifiers other than Business Unit 1 must be
-                  replaced with values from the deployed RM reference datasets before use as executable test data.
-                  Country codes are illustrative. The example includes the visible mandatory MAT parameters;
-                  mapping of ordersHidden parameters from the rest of the Casefile remains to be agreed.
+                  Illustrative payload showing the response structure.
                 value:
                   business_unit_id: 1
                   casefile_type: REMO In
