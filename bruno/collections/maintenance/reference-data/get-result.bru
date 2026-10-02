@@ -5,9 +5,13 @@ meta {
 }
 
 get {
-  url: {{baseURL}}/results/{{resultId}}
+  url: {{baseURL}}/results/:resultId
   body: none
   auth: bearer
+}
+
+params:path {
+  resultId: MAT
 }
 
 auth:bearer {

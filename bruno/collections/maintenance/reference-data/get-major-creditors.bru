@@ -5,13 +5,13 @@ meta {
 }
 
 get {
-  url: {{baseURL}}/major-creditors?business_unit_id={{businessUnitId}}
+  url: {{baseURL}}/major-creditors?business_unit_id=44
   body: none
   auth: bearer
 }
 
 params:query {
-  business_unit_id: {{businessUnitId}}
+  business_unit_id: 44
   ~central_authority: true
   ~active: true
 }
