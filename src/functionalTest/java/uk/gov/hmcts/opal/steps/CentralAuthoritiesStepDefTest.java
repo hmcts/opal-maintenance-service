@@ -12,45 +12,38 @@ import org.mockito.MockedStatic;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
-import java.sql.SQLException;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
-import static org.mockito.Mockito.verify;
 
 class CentralAuthoritiesStepDefTest {
 
-    private static final short BUSINESS_UNIT_ID = 30000;
+    private static final short BUSINESS_UNIT_ID = 44;
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final String RESPONSE = """
-        {"count":2,"refData":[
-          {"major_creditor_id":101,"business_unit_id":30000,"major_creditor_code":"A001",
-           "name":"Synthetic Authority One","address_line_1":"Synthetic address one",
-           "address_line_2":"Synthetic line two","postcode":"ZZ1 1ZZ",
-           "contact_name":"Synthetic Contact","contact_email":"contact@example.invalid",
-           "active":true,"central_authority":true},
-          {"major_creditor_id":102,"business_unit_id":30000,"major_creditor_code":"A002",
-           "name":"Synthetic Authority Two","address_line_1":"Synthetic address two",
-           "address_line_2":null,"postcode":null,"contact_name":null,"contact_email":null,
-           "active":true,"central_authority":true}
+        {"count":1,"refData":[
+          {"major_creditor_id":101,"business_unit_id":44,"major_creditor_code":"0001",
+           "name":"Urad pro mezinarodnepravni ochranu deti",
+           "address_line_1":"Silingrovo nam 3/4","address_line_2":"Brno",
+           "postcode":"602 00","active":true,"central_authority":true}
         ]}
         """;
 
     @Test
-    void acceptsAuthoritiesWithNullableContact() {
+    void acceptsSeededAuthority() {
         assertDoesNotThrow(() -> CentralAuthoritiesStepDef.assertAuthorities(RESPONSE, BUSINESS_UNIT_ID));
     }
 
-    @Test
-    void acceptsReversedOrder() throws IOException {
-        ObjectNode response = response();
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void acceptsExtraAuthorityInEitherOrder(boolean reversed) throws IOException {
+        ObjectNode response = responseWithExtraAuthority();
         ArrayNode items = (ArrayNode) response.path("refData");
-        items.add(items.remove(0));
+        if (reversed) {
+            items.add(items.remove(0));
+        }
         assertDoesNotThrow(() -> CentralAuthoritiesStepDef.assertAuthorities(response.toString(), BUSINESS_UNIT_ID));
     }
 
@@ -64,42 +57,36 @@ class CentralAuthoritiesStepDefTest {
         assertInvalid("{\"count\":2,\"refData\":[]}");
     }
 
-    @ParameterizedTest
-    @ValueSource(ints = {0, 1})
-    void rejectsMissingAuthority(int index) throws IOException {
-        ObjectNode response = response();
-        ((ArrayNode) response.path("refData")).remove(index);
-        response.put("count", 1);
+    @Test
+    void rejectsMissingSeededAuthority() {
+        assertInvalid(RESPONSE.replace("\"0001\"", "\"0002\""));
+    }
+
+    @Test
+    void rejectsDuplicateCode() throws IOException {
+        ObjectNode response = responseWithExtraAuthority();
+        item(response, 1).put("major_creditor_code", "0001");
         assertInvalid(response.toString());
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"I001", "M001", "A001"})
-    void rejectsExcludedOrDuplicateCode(String code) throws IOException {
+    @ValueSource(strings = {"active", "central_authority"})
+    void rejectsFalseFilterFlag(String field) throws IOException {
         ObjectNode response = response();
-        item(response, 1).put("major_creditor_code", code);
+        item(response, 0).put(field, false);
         assertInvalid(response.toString());
     }
 
-    @ParameterizedTest
-    @CsvSource({"0,active", "1,active", "0,central_authority", "1,central_authority"})
-    void rejectsFalseFilterFlag(int index, String field) throws IOException {
+    @Test
+    void rejectsWrongBusinessUnit() throws IOException {
         ObjectNode response = response();
-        item(response, index).put(field, false);
-        assertInvalid(response.toString());
-    }
-
-    @ParameterizedTest
-    @ValueSource(ints = {0, 1})
-    void rejectsWrongBusinessUnit(int index) throws IOException {
-        ObjectNode response = response();
-        item(response, index).put("business_unit_id", 1);
+        item(response, 0).put("business_unit_id", 1);
         assertInvalid(response.toString());
     }
 
     @Test
     void rejectsDuplicateIdentifier() throws IOException {
-        ObjectNode response = response();
+        ObjectNode response = responseWithExtraAuthority();
         item(response, 1).put("major_creditor_id", 101);
         assertInvalid(response.toString());
     }
@@ -113,61 +100,47 @@ class CentralAuthoritiesStepDefTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"0,name", "1,name", "0,address_line_1", "1,address_line_1", "0,address_line_2",
-        "0,postcode", "0,contact_name", "0,contact_email", "1,address_line_2", "1,postcode",
-        "1,contact_name", "1,contact_email"})
-    void rejectsAlteredCasefileDetails(int index, String field) throws IOException {
+    @ValueSource(strings = {"name", "address_line_1", "address_line_2", "postcode"})
+    void rejectsAlteredCasefileDetails(String field) throws IOException {
         ObjectNode response = response();
-        item(response, index).put(field, "Altered synthetic value");
-        assertInvalid(response.toString());
-    }
-
-    @ParameterizedTest
-    @ValueSource(ints = {0, 1})
-    void rejectsMissingAddress(int index) throws IOException {
-        ObjectNode response = response();
-        item(response, index).remove("address_line_1");
+        item(response, 0).put(field, "Altered value");
         assertInvalid(response.toString());
     }
 
     @Test
-    void propagatesCleanupFailureAfterScenarioFailure() throws SQLException {
-        CentralAuthorityFixtures fixtures = mock(CentralAuthorityFixtures.class);
-        SQLException cleanupFailure = new SQLException("Synthetic cleanup failure");
-        doThrow(cleanupFailure).when(fixtures).close();
-        try (MockedStatic<CentralAuthorityFixtures> factory = mockStatic(CentralAuthorityFixtures.class)) {
-            factory.when(CentralAuthorityFixtures::create).thenReturn(fixtures);
-            CentralAuthoritiesStepDef steps = new CentralAuthoritiesStepDef();
-            steps.createOwnedAuthorities();
-            assertThrows(AssertionError.class, () ->
-                CentralAuthoritiesStepDef.assertAuthorities("{\"count\":0,\"refData\":[]}", BUSINESS_UNIT_ID));
-            assertSame(cleanupFailure, assertThrows(SQLException.class, steps::closeOwnedAuthorities));
-            verify(fixtures).close();
+    void rejectsMissingAddress() throws IOException {
+        ObjectNode response = response();
+        item(response, 0).remove("address_line_1");
+        assertInvalid(response.toString());
+    }
+
+    @Test
+    void requestsSeededBusinessUnit() {
+        try (MockedStatic<BaseStepDef> http = mockStatic(BaseStepDef.class);
+             MockedStatic<BearerTokenStepDef> token = mockStatic(BearerTokenStepDef.class)) {
+            token.when(BearerTokenStepDef::getToken).thenReturn("synthetic-test-token");
+            new CentralAuthoritiesStepDef().requestActiveAuthorities();
+            http.verify(() -> BaseStepDef.getWithBearer(
+                "/major-creditors?business_unit_id=44&active=true&central_authority=true", "synthetic-test-token"));
         }
     }
 
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
-    void errorJourneysDoNotCreateFixtures(boolean authenticated) {
-        try (MockedStatic<CentralAuthorityFixtures> factory = mockStatic(CentralAuthorityFixtures.class);
-             MockedStatic<BaseStepDef> http = mockStatic(BaseStepDef.class);
+    void requestsSeededErrorJourneys(boolean authenticated) {
+        try (MockedStatic<BaseStepDef> http = mockStatic(BaseStepDef.class);
              MockedStatic<BearerTokenStepDef> token = mockStatic(BearerTokenStepDef.class)) {
             token.when(BearerTokenStepDef::getToken).thenReturn("synthetic-test-token");
             CentralAuthoritiesStepDef steps = new CentralAuthoritiesStepDef();
             if (authenticated) {
                 steps.requestMalformedAuthorityFilter();
-            } else {
-                steps.requestUnauthenticatedAuthorities();
-            }
-            assertDoesNotThrow(steps::closeOwnedAuthorities);
-            factory.verifyNoInteractions();
-            if (authenticated) {
                 http.verify(() -> BaseStepDef.getWithBearer(
-                    "/major-creditors?business_unit_id=1&active=true&central_authority=not-a-boolean",
+                    "/major-creditors?business_unit_id=44&active=true&central_authority=not-a-boolean",
                     "synthetic-test-token"));
             } else {
+                steps.requestUnauthenticatedAuthorities();
                 http.verify(() -> BaseStepDef.getWithoutBearer(
-                    "/major-creditors?business_unit_id=1&active=true&central_authority=true"));
+                    "/major-creditors?business_unit_id=44&active=true&central_authority=true"));
             }
         }
     }
@@ -219,6 +192,16 @@ class CentralAuthoritiesStepDefTest {
 
     private static ObjectNode response() throws IOException {
         return (ObjectNode) OBJECT_MAPPER.readTree(RESPONSE);
+    }
+
+    private static ObjectNode responseWithExtraAuthority() throws IOException {
+        ObjectNode response = response();
+        ObjectNode extra = OBJECT_MAPPER.createObjectNode();
+        extra.put("major_creditor_id", 102).put("business_unit_id", BUSINESS_UNIT_ID)
+            .put("major_creditor_code", "0002").put("active", true).put("central_authority", true);
+        ((ArrayNode) response.path("refData")).add(extra);
+        response.put("count", 2);
+        return response;
     }
 
     private static ObjectNode item(ObjectNode response, int index) {
