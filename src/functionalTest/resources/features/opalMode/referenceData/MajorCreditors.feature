@@ -17,3 +17,21 @@ Feature: Major Creditor reference data
   Scenario: Central Authorities require authentication
     When I request Central Authorities without authentication
     Then authentication is required without exposing Central Authority data
+
+  @JIRA-STORY:PO-10297 @JIRA-EPIC:PO-6506 @PO10297Active
+  Scenario: Retrieve active Major Creditors
+    Given I am testing as the "opal-test@dev.platform.hmcts.net" user
+    And isolated Major Creditor reference data is available
+    When I request active non-Central Authority Major Creditors
+    Then the Major Creditors required for creditor selection are returned
+
+  @JIRA-STORY:PO-10297 @JIRA-EPIC:PO-6506 @PO10297Malformed
+  Scenario: Reject a malformed Major Creditor filter
+    Given I am testing as the "opal-test@dev.platform.hmcts.net" user
+    When I request Major Creditors with a malformed active filter
+    Then the Major Creditor validation response is correlated
+
+  @JIRA-STORY:PO-10297 @JIRA-EPIC:PO-6506 @PO10297Authentication
+  Scenario: Major Creditors require authentication
+    When I request Major Creditors without authentication
+    Then Major Creditor reference data is not disclosed
