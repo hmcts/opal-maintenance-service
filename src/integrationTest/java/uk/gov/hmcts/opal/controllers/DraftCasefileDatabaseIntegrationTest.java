@@ -14,6 +14,7 @@ import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.InvalidDataAccessResourceUsageException;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -40,6 +41,7 @@ import java.time.ZoneOffset;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.times;
@@ -125,6 +127,7 @@ class DraftCasefileDatabaseIntegrationTest extends BaseIntegrationTest {
         assertThat(row.getSubmittedBy()).isEqualTo("BUU-1");
         assertThat(row.getSubmittedByName()).isEqualTo("Synthetic Submitter");
         assertThat(row.getBusinessUnitId()).isEqualTo((short) 1);
+        assertThat(row.getVersionNumber()).isZero();
         assertThat(row.getCasefileType()).isEqualTo("REMO In");
         assertThat(row.getCreatedDate().toInstant(ZoneOffset.UTC)).isEqualTo(EXPECTED);
         assertThat(row.getCasefileStatusDate()).isEqualTo(row.getCreatedDate());
@@ -149,6 +152,24 @@ class DraftCasefileDatabaseIntegrationTest extends BaseIntegrationTest {
             .isEqualTo("EXAMPLE");
         assertThat(response.get("casefile_snapshot").toString())
             .doesNotContain("status", "timeline", "submitted", "created");
+    }
+
+    @Test
+    void incrementsVersionAndRejectsAStaleUpdate() throws Exception {
+        JsonNode response = submit(validBody);
+        Long id = response.get("draft_casefile_id").longValue();
+        DraftCasefileEntity original = repository.findById(id).orElseThrow();
+
+        DraftCasefileEntity updated = repository.saveAndFlush(original.toBuilder()
+            .statusMessage("Synthetic first update").build());
+        assertThat(updated.getVersionNumber()).isEqualTo(1L);
+
+        assertThatThrownBy(() -> repository.saveAndFlush(original.toBuilder()
+            .statusMessage("Synthetic stale update").build()))
+            .isInstanceOf(ObjectOptimisticLockingFailureException.class);
+        DraftCasefileEntity persisted = repository.findById(id).orElseThrow();
+        assertThat(persisted.getStatusMessage()).isEqualTo("Synthetic first update");
+        assertThat(persisted.getVersionNumber()).isEqualTo(1L);
     }
 
     @Test
@@ -235,9 +256,11 @@ class DraftCasefileDatabaseIntegrationTest extends BaseIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON).content(body))
             .andExpect(status().isCreated())
             .andExpect(header().doesNotExist("Location"))
+            .andExpect(header().string("ETag", "\"0\""))
             .andExpect(jsonPath("$.casefile_status").value("SUBMITTED"))
             .andExpect(jsonPath("$.timeline_data.length()").value(1))
             .andExpect(jsonPath("$.casefile").doesNotExist())
+            .andExpect(jsonPath("$.version_number").doesNotExist())
             .andReturn().getResponse().getContentAsString();
         return JSON.readTree(response);
     }

@@ -92,9 +92,11 @@ class DraftCasefileServiceTest {
             assertThat(entity.getCreatedDate().toInstant(ZoneOffset.UTC)).isEqualTo(expected);
             assertThat(entity.getCasefileStatusDate()).isEqualTo(entity.getCreatedDate());
             assertThat(JsonMapper.builder().build().readTree(entity.getCasefile())).isEqualTo(request.getCasefile());
-            return entity.toBuilder().draftCasefileId(123L).build();
+            return entity.toBuilder().draftCasefileId(123L).versionNumber(0L).build();
         });
-        var response = service.addDraftCasefile(request);
+        var submission = service.addDraftCasefile(request);
+        assertThat(submission.version()).isZero();
+        var response = submission.response();
         assertThat(response.getCreatedDate().toInstant()).isEqualTo(expected);
         assertThat(response.getCasefileStatusDate()).isEqualTo(response.getCreatedDate());
         assertThat(response.getTimelineData()).singleElement()

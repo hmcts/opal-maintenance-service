@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uk.gov.hmcts.opal.authorisation.MaintenanceUser;
 import uk.gov.hmcts.opal.authorisation.MaintenanceUserService;
+import uk.gov.hmcts.opal.dto.DraftCasefileSubmission;
 import uk.gov.hmcts.opal.entity.DraftCasefileEntity;
 import uk.gov.hmcts.opal.event.DraftCasefileSubmittedEvent;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileAddRequest;
@@ -34,7 +35,7 @@ public class DraftCasefileService {
     private final Clock clock;
 
     @Transactional
-    public DraftCasefileAddResponse addDraftCasefile(DraftCasefileAddRequest request) {
+    public DraftCasefileSubmission addDraftCasefile(DraftCasefileAddRequest request) {
         MaintenanceUser user = maintenanceUserService.requireAuthorisedUser(
             request.getBusinessUnitId(), CREATE_MANAGE_DRAFT_CASEFILES);
         validator.validate(request);
@@ -44,6 +45,6 @@ public class DraftCasefileService {
         eventPublisher.publishEvent(new DraftCasefileSubmittedEvent(
             entity.getDraftCasefileId(), user.userId(), user.ipAddress(), submittedAt,
             participantCategoryResolver.resolve(request.getCasefile())));
-        return response;
+        return new DraftCasefileSubmission(response, entity.getVersionNumber());
     }
 }
