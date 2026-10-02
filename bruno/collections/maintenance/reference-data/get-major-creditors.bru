@@ -1,0 +1,26 @@
+meta {
+  name: Get major creditors
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseURL}}/major-creditors?business_unit_id=44
+  body: none
+  auth: bearer
+}
+
+params:query {
+  business_unit_id: 44
+  ~central_authority: true
+  ~active: true
+}
+
+auth:bearer {
+  token: {{BEARER_TOKEN}}
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

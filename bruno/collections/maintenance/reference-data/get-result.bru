@@ -1,0 +1,24 @@
+meta {
+  name: Get result
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseURL}}/results/:resultId
+  body: none
+  auth: bearer
+}
+
+params:path {
+  resultId: MAT
+}
+
+auth:bearer {
+  token: {{BEARER_TOKEN}}
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

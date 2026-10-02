@@ -161,6 +161,9 @@ There is no need to remove postgres and java or similar core images.
 Ensure you have pulled `opal-shared-infrastructure`, which contains the scripts
 that support the shared Docker environment.
 
+To run the dependencies in Docker and Maintenance Service in IntelliJ, follow
+the [local development guide](docs/LOCAL_DEVELOPMENT.md).
+
 First ensure all repositories are downloaded in the same parent directory.
 To do this automatically you can run the following command from the opal-shared-infrastructure directory:
 ```bash / zsh
@@ -222,28 +225,10 @@ Run individual suites when focused feedback is more useful:
 
 Functional and smoke tests require a suitable running service and use `TEST_URL`, which defaults to `http://localhost:4551`. See [Testing](docs/TESTING.md) for suite details, focused commands, and evidence expectations.
 
-### Optional Bruno diagnostic checks
+### Optional Bruno API checks
 
-The tracked [Bruno collection](bruno) provides manual health, testing-support,
-and User Service requests without committing local credentials. Testing-support
-endpoints are disabled by default. To enable them for a local manual check,
-start the service with:
-
-```bash
-export TESTING_SUPPORT_ENDPOINTS_ENABLED=true
-./gradlew bootRun
-```
-
-Then create a local Bruno environment using repository-relative paths:
-
-```bash
-cd bruno
-cp environments/env.bru.template environments/local.bru
-```
-
-Open `bruno` in Bruno, run health and ping, and use the User Service request
-to obtain an access token only when performing the optional authenticated
-diagnostic check. Keep the token in the ignored local environment file.
+The [Bruno collection](bruno) contains requests for the service. See the
+[collection guide](bruno/README.md) for setup and use.
 
 ## Database migrations
 

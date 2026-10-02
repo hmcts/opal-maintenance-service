@@ -49,6 +49,24 @@ You can:
 - Run an entire folder as a suite
 - Pass environment variables using {{VAR_NAME}} syntax
 
+For authenticated local requests, run **Auth Token** first. It saves
+`BEARER_TOKEN` in the selected environment. Reference-data requests are under
+**Maintenance → Reference data**. Open a request's **Params** tab in Bruno to
+customise its inputs for your target environment:
+
+| Request | Parameter type | Parameter | Example value |
+| --- | --- | --- | --- |
+| Get maintenance applications | Query | `application_group` | `Create Casefile` |
+| Get major creditors | Query | `business_unit_id` | `44` |
+| Get result | Path | `resultId` | `MAT` |
+
+These non-secret examples are saved with each request. Use **Get results** to
+find an available `resultId`. Keep shared service URLs and authentication in
+the environment; request-specific inputs do not need environment variables.
+
+The **Ping** and **Auth check** requests require
+`TESTING_SUPPORT_ENDPOINTS_ENABLED=true`. **Auth check** also requires a token.
+
 Example:
 
 ```text
