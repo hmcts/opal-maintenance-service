@@ -218,48 +218,24 @@ pipeline is not evidence that every changed scenario ran.
 
 For Flyway or SQL changes, follow the fresh-database, upgrade-path, database-boundary, and evidence requirements in [Database Migrations](DATABASE_MIGRATIONS.md).
 
-## PO-10294 Central Authority fixtures
+## Major Creditor reference-data prerequisites
 
-The success scenario uses synthetic rows owned by `CentralAuthorityFixtures`.
-Provide `PO10294_FIXTURE_JDBC_URL`, `PO10294_FIXTURE_DB_USER`,
-`PO10294_FIXTURE_DB_PASSWORD` and `PO10294_FIXTURE_RUN_ID` explicitly. Never
-reuse application datasource defaults or a developer Compose volume. The JDBC
-URL must name a loopback host (`localhost`, `127.0.0.1` or `[::1]`), an explicit
-port and a database beginning `po10294_`, with no query options or alternate hosts.
-The HTTP service selected by `TEST_URL` must use that same disposable PostgreSQL
-17 target; verify its datasource before running scenarios. Keep real User
-Service authentication configuration.
+PO-10294 and PO-10297 use authenticated HTTP requests against existing
+Maintenance reference data, following the Fines seeded-data test pattern.
+Use the normal `TEST_URL` and `OPAL_USER_SERVICE_API_URL` configuration
+described above. No functional fixture database, JDBC credentials, owner
+table, sequence, test inserts or cleanup hooks are required.
 
-The executor must create this target and provision the following test-only
-objects before fixtures connect (these are not application migrations):
+The target must contain the approved BU 44 Central Authority seed from
+`V1_10__insert_major_creditors_reference_data.sql`, including code `0001`.
+Central Authority checks require a nonempty result and verify the seeded
+record's casefile details; they do not assume generated identifiers or
+exactly ten records.
 
-```sql
-CREATE TABLE public.po10294_fixture_owner (run_id UUID PRIMARY KEY);
-CREATE SEQUENCE public.po10294_fixture_business_unit_id_seq
-    MINVALUE 30000 MAXVALUE 32767 START WITH 30000 NO CYCLE;
-```
-
-Insert the freshly generated run UUID into the marker through a bound parameter,
-and pass it through `PO10294_FIXTURE_RUN_ID`. The helper verifies ownership before
-mutation and never creates or repairs ownership objects. Do not restart or replace
-the allocation sequence while the HTTP service remains alive: nontransactional
-sequence allocation prevents cleaned-up or rolled-back business-unit IDs from
-being reused as cached response keys. Exhaustion fails the test. Fixtures use the
-unique `Q294` business-unit code, so run scenarios sequentially per target.
-
-Setup commits one allocated unit and four synthetic creditors; cleanup commits
-deletion of only that unit's creditors and unit. The scenario After hook must
-close the fixture even after failure and retain both scenario and cleanup failures.
-Destroy the disposable target after execution, including failed cleanup; never
-run broad cleanup against a shared or developer database. Malformed-filter and
-unauthenticated scenarios create no fixture rows.
-
-The fixture lifecycle and guard tests own a separate Testcontainers PostgreSQL 17
-target, apply existing DDL migrations, and require Docker but no HTTP service:
-
-```bash
-./gradlew functionalOpal --tests 'uk.gov.hmcts.opal.steps.CentralAuthorityFixturesTest'
-```
-
-Do not add a Cucumber tag property to this JUnit-only selection: supplying that
-property restricts the task to `OpalTestRunner`.
+The current seed contains only active Central Authorities. PO-10297 checks
+the empty result for active non-Central Authority creditors, malformed
+active-filter rejection and authentication. Its positive creditor retrieval
+acceptance criterion remains uncovered until approved non-Central Authority
+data exists. The seed also lacks inactive comparison rows, so these tests
+cannot prove exclusion using those rows. See the feature comment before
+the PO-10297 scenarios. Do not modify shared data to make these checks pass.
