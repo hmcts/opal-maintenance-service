@@ -97,7 +97,7 @@ class DraftCasefileAuthenticationIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
-    void signedJwtAndMatchingUserServiceIdentityWithEmptyPermissionsCreateDraft() throws Exception {
+    void signedJwtAndMatchingUserServicePermissionCreateDraft() throws Exception {
         stubUserState(1);
         String response = mockMvc.perform(post("/draft-casefiles")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + signedToken(Instant.now().plusSeconds(300)))
@@ -110,6 +110,28 @@ class DraftCasefileAuthenticationIntegrationTest extends BaseIntegrationTest {
         assertThat(repository.findById(id)).isPresent();
         verify(logging, times(2)).personalDataAccessLogAsync(any());
         WIRE_MOCK.verify(1, getRequestedFor(urlEqualTo(USER_STATE_PATH)));
+    }
+
+    @Test
+    void signedJwtWithoutCreatorPermissionIsForbidden() throws Exception {
+        stubUserState(1, "[]");
+        mockMvc.perform(post("/draft-casefiles")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + signedToken(Instant.now().plusSeconds(300)))
+                .contentType(MediaType.APPLICATION_JSON).content(DraftCasefileHttpFixture.requestBody()))
+            .andExpect(status().isForbidden());
+        assertThat(repository.count()).isZero();
+        verifyNoInteractions(logging);
+    }
+
+    @Test
+    void signedJwtWithOnlyCheckerPermissionIsForbidden() throws Exception {
+        stubUserState(1, "[{\"permission_id\":22,\"permission_name\":\"Check and validate draft Casefiles\"}]");
+        mockMvc.perform(post("/draft-casefiles")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + signedToken(Instant.now().plusSeconds(300)))
+                .contentType(MediaType.APPLICATION_JSON).content(DraftCasefileHttpFixture.requestBody()))
+            .andExpect(status().isForbidden());
+        assertThat(repository.count()).isZero();
+        verifyNoInteractions(logging);
     }
 
     @Test
@@ -136,11 +158,16 @@ class DraftCasefileAuthenticationIntegrationTest extends BaseIntegrationTest {
     }
 
     private static void stubUserState(int businessUnitId) {
+        stubUserState(businessUnitId,
+            "[{\"permission_id\":21,\"permission_name\":\"Create and Manage Draft Casefiles\"}]");
+    }
+
+    private static void stubUserState(int businessUnitId, String permissions) {
         WIRE_MOCK.stubFor(get(USER_STATE_PATH).willReturn(okJson("""
             {"user_id":123,"username":"synthetic-user@example.invalid","name":"Synthetic Authenticated Submitter",
              "status":"ACTIVE","version":1,"domains":{"maintenance":{"business_unit_users":[{
-              "business_unit_user_id":"BUU-1","business_unit_id":%d,"permissions":[]}]}}}
-            """.formatted(businessUnitId))));
+              "business_unit_user_id":"BUU-1","business_unit_id":%d,"permissions":%s}]}}}
+            """.formatted(businessUnitId, permissions))));
     }
 
     private static String signedToken(Instant expiration) throws JOSEException {

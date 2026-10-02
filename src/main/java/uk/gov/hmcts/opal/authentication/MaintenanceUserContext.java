@@ -16,7 +16,7 @@ import java.util.Optional;
 @Component
 public class MaintenanceUserContext {
 
-    public MaintenanceUser forBusinessUnit(Short businessUnitId) {
+    public MaintenanceUser forBusinessUnit(Short businessUnitId, MaintenancePermission requiredPermission) {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (!(authentication instanceof OpalJwtAuthenticationToken token) || token.getUserState() == null) {
             throw new AccessDeniedException("Authenticated user state is unavailable");
@@ -35,6 +35,9 @@ public class MaintenanceUserContext {
 
         if (state.getUserId() == null || isBlank(state.getName()) || isBlank(unit.getBusinessUnitUserId())) {
             throw new AccessDeniedException("Authenticated user identity is incomplete");
+        }
+        if (unit.getPermissions() == null || !unit.hasPermission(requiredPermission)) {
+            throw new AccessDeniedException(requiredPermission.getDescription() + " permission is required");
         }
 
         return new MaintenanceUser(state.getUserId(), unit.getBusinessUnitUserId(),
