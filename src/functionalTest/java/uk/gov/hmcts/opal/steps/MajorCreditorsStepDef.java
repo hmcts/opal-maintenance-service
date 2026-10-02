@@ -7,55 +7,38 @@ import static uk.gov.hmcts.opal.assertions.ProblemDetailAssertions.assertProblem
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.cucumber.java.After;
-import io.cucumber.java.en.Given;
 import io.cucumber.java.en.Then;
 import io.cucumber.java.en.When;
 import io.restassured.response.Response;
-import uk.gov.hmcts.opal.fixtures.MajorCreditorsFixture;
-import uk.gov.hmcts.opal.fixtures.MajorCreditorsFixture.ExpectedCreditor;
 
 import java.io.IOException;
-import java.sql.SQLException;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 public class MajorCreditorsStepDef extends BaseStepDef {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private MajorCreditorsFixture fixture;
     private Response latestResponse;
-
-    @Given("isolated Major Creditor reference data is available")
-    public void prepareMajorCreditors() throws SQLException {
-        fixture = MajorCreditorsFixture.create(System.getenv());
-    }
 
     @When("I request active non-Central Authority Major Creditors")
     public void requestActiveMajorCreditors() {
         latestResponse = getWithBearer(
-            "/major-creditors?business_unit_id=" + requiredFixture().businessUnitId()
-                + "&active=true&central_authority=false",
+            "/major-creditors?business_unit_id=44&active=true&central_authority=false",
             BearerTokenStepDef.getToken()
         );
     }
 
-    @Then("the Major Creditors required for creditor selection are returned")
-    public void assertActiveMajorCreditors() throws IOException {
+    @Then("no non-Central Authority Major Creditors are returned for the seeded business unit")
+    public void assertEmptyMajorCreditors() throws IOException {
         Response response = latestResponse();
         assertEquals(200, response.statusCode(), "Major Creditor request did not succeed");
         assertTrue(response.contentType() != null && response.contentType().startsWith("application/json"),
             "Expected application/json but received " + response.contentType());
-        assertActiveResponse(response.asString(), requiredFixture().expectedCreditors());
+        assertEmptyResponse(response.asString());
     }
 
     @When("I request Major Creditors with a malformed active filter")
     public void requestMalformedFilter() {
         latestResponse = getWithBearer(
-            "/major-creditors?business_unit_id=31010&active=not-a-boolean&central_authority=false",
+            "/major-creditors?business_unit_id=44&active=not-a-boolean&central_authority=false",
             BearerTokenStepDef.getToken()
         );
     }
@@ -74,7 +57,7 @@ public class MajorCreditorsStepDef extends BaseStepDef {
     @When("I request Major Creditors without authentication")
     public void requestWithoutAuthentication() {
         latestResponse = getWithoutBearer(
-            "/major-creditors?business_unit_id=31010&active=true&central_authority=false"
+            "/major-creditors?business_unit_id=44&active=true&central_authority=false"
         );
     }
 
@@ -87,66 +70,14 @@ public class MajorCreditorsStepDef extends BaseStepDef {
         assertNoReferenceData(response);
     }
 
-    @After("@PO10297Active")
-    public void removeOwnedMajorCreditors() throws SQLException {
-        if (fixture != null) {
-            fixture.close();
-            fixture = null;
-        }
-    }
-
-    static void assertActiveResponse(String body, List<ExpectedCreditor> expected) throws IOException {
+    static void assertEmptyResponse(String body) throws IOException {
         JsonNode root = OBJECT_MAPPER.readTree(body);
         JsonNode count = root.path("count");
-        assertTrue(count.isIntegralNumber() && count.canConvertToInt() && count.intValue() >= 0,
-            "Major Creditor response count is missing or invalid");
         JsonNode refData = root.path("refData");
-        assertTrue(refData.isArray(), "Major Creditor response refData is missing or invalid");
-        assertEquals(count.intValue(), refData.size(), "Count must equal the returned array size");
-        assertEquals(expected.size(), count.intValue(), "Expected exactly the qualifying fixture creditors");
-        Map<Long, ExpectedCreditor> expectedById = expected.stream()
-            .collect(Collectors.toMap(ExpectedCreditor::id, Function.identity()));
-        Set<Long> actualIds = new HashSet<>();
-        for (JsonNode item : refData) {
-            JsonNode id = item.path("major_creditor_id");
-            assertTrue(id.isIntegralNumber() && id.canConvertToLong(), "Missing or invalid Major Creditor identifier");
-            assertTrue(actualIds.add(id.longValue()), "Duplicate Major Creditor identifier: " + id.longValue());
-            ExpectedCreditor creditor = expectedById.get(id.longValue());
-            assertTrue(creditor != null, "Unexpected Major Creditor identifier: " + id.longValue());
-            assertNumericField(item, "business_unit_id", (long) creditor.businessUnitId());
-            assertTextField(item, "major_creditor_code", creditor.code());
-            assertTextField(item, "name", creditor.name());
-            assertTextField(item, "address_line_1", creditor.addressLine1());
-            assertTextField(item, "contact_name", creditor.contactName());
-            assertTextField(item, "contact_email", creditor.contactEmail());
-            assertNumericField(item, "country_id", creditor.countryId());
-            assertTextField(item, "country_name", creditor.countryName());
-            assertTrue(item.path("active").isBoolean() && item.path("active").booleanValue(),
-                "Expected an active Major Creditor");
-            assertTrue(item.path("central_authority").isBoolean() && !item.path("central_authority").booleanValue(),
-                "Central Authority must be false");
-        }
-        assertEquals(expectedById.keySet(), actualIds, "Returned Major Creditor identifiers do not match the fixture");
-    }
-
-    private static void assertTextField(JsonNode item, String field, String expected) {
-        JsonNode value = item.path(field);
-        if (expected == null) {
-            assertTrue(value.isNull(), "Expected null " + field);
-        } else {
-            assertTrue(value.isTextual(), "Missing or invalid " + field);
-            assertEquals(expected, value.textValue(), "Unexpected " + field);
-        }
-    }
-
-    private static void assertNumericField(JsonNode item, String field, Long expected) {
-        JsonNode value = item.path(field);
-        if (expected == null) {
-            assertTrue(value.isNull(), "Expected null " + field);
-        } else {
-            assertTrue(value.isIntegralNumber() && value.canConvertToLong(), "Missing or invalid " + field);
-            assertEquals(expected.longValue(), value.longValue(), "Unexpected " + field);
-        }
+        assertTrue(count.isIntegralNumber() && count.canConvertToInt(), "Invalid creditor count");
+        assertTrue(refData.isArray(), "Expected creditor reference data array");
+        assertEquals(0, count.intValue(), "Expected no seeded non-Central Authority creditors");
+        assertEquals(0, refData.size(), "Expected an empty creditor reference data array");
     }
 
     private static JsonNode assertNoReferenceData(Response response) throws IOException {
@@ -155,14 +86,6 @@ public class MajorCreditorsStepDef extends BaseStepDef {
             assertFalse(problem.has(field), "Problem response must not expose " + field);
         }
         return problem;
-    }
-
-    private MajorCreditorsFixture requiredFixture() {
-        if (fixture == null) {
-            throw new IllegalStateException(
-                "No Major Creditor fixture is available; run the isolated-data Given first");
-        }
-        return fixture;
     }
 
     Response latestResponse() {

@@ -239,37 +239,3 @@ acceptance criterion remains uncovered until approved non-Central Authority
 data exists. The seed also lacks inactive comparison rows, so these tests
 cannot prove exclusion using those rows. See the feature comment before
 the PO-10297 scenarios. Do not modify shared data to make these checks pass.
-
-## Major Creditors scenario fixtures
-
-The PO-10297 Major Creditors scenario creates five synthetic creditors and
-owns their cleanup. It requires a dedicated disposable local PostgreSQL
-17 database named `opal_major_creditors_functional`, with existing `ddl` and
-`data/allEnvs` Flyway migrations applied. Existing fixture parent IDs cause a
-failure; the fixture never deletes pre-existing rows to make room.
-
-Configure all six variables from the disposable container/runtime environment:
-
-- `FUNCTIONAL_FIXTURE_DB_HOST`: `localhost` or `127.0.0.1`.
-- `FUNCTIONAL_FIXTURE_DB_PORT`: the mapped PostgreSQL port (1–65535).
-- `FUNCTIONAL_FIXTURE_DB_NAME`: `opal_major_creditors_functional`.
-- `FUNCTIONAL_FIXTURE_DB_USERNAME`: runtime-generated database username.
-- `FUNCTIONAL_FIXTURE_DB_PASSWORD`: runtime-generated database password.
-- `FUNCTIONAL_FIXTURE_DB_DISPOSABLE`: explicitly `true`.
-
-Do not put credentials in command literals, tracked files, or evidence.
-Start a fresh service process with `opal.redis.enabled=false` and all
-`OPAL_MAINTENANCE_DB_*` settings pointing to that exact disposable database.
-Set `TEST_URL` to this service. An unavailable or misconfigured target fails
-the scenario; it must never become a successful skip. Destroy the disposable
-container after verification.
-
-The fixture's guard and JDBC lifecycle tests own fresh PostgreSQL 17 containers
-and need Docker, but require no running service:
-
-```bash
-./gradlew functionalOpal --tests 'uk.gov.hmcts.opal.fixtures.MajorCreditorsFixtureTest'
-```
-
-Do not supply a Cucumber tag for this command: a tag restricts discovery to
-`OpalTestRunner` and excludes the fixture JUnit tests.
