@@ -300,6 +300,7 @@ SELECT throws_ok('SELECT pg_temp.insert_result(p_result_id => ''NEXT02'', p_enf_
 -- Scenario: Permitted actions may be absent on new and existing Results.
 -- Setup: Insert a NULL value and clear the existing 100-character NEXT01 value.
 -- Expected: Both writes succeed and the existing row stores SQL NULL.
+-- -----------------------------------------------------------------------------
 SELECT lives_ok('SELECT pg_temp.insert_result(p_result_id => ''NUL001'', p_enf_next_permitted_actions => NULL)',
                 'NULL permitted actions can be inserted');
 SELECT lives_ok($$UPDATE public.results SET enf_next_permitted_actions=NULL
