@@ -2,7 +2,7 @@ package uk.gov.hmcts.opal.support;
 
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.security.oauth2.jwt.Jwt;
-import uk.gov.hmcts.opal.authentication.MaintenancePermission;
+import uk.gov.hmcts.opal.authorisation.MaintenancePermission;
 import uk.gov.hmcts.opal.common.spring.security.OpalJwtAuthenticationToken;
 import uk.gov.hmcts.opal.common.user.authorisation.model.BusinessUnitUser;
 import uk.gov.hmcts.opal.common.user.authorisation.model.Domain;

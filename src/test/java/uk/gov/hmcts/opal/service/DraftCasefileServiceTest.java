@@ -6,8 +6,8 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.security.access.AccessDeniedException;
 import tools.jackson.databind.json.JsonMapper;
-import uk.gov.hmcts.opal.authentication.MaintenanceUser;
-import uk.gov.hmcts.opal.authentication.MaintenanceUserContext;
+import uk.gov.hmcts.opal.authorisation.MaintenanceUser;
+import uk.gov.hmcts.opal.authorisation.MaintenanceUserService;
 import uk.gov.hmcts.opal.common.exception.OpalApiException;
 import uk.gov.hmcts.opal.entity.DraftCasefileEntity;
 import uk.gov.hmcts.opal.event.DraftCasefileSubmittedEvent;
@@ -26,7 +26,7 @@ import java.util.Arrays;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static uk.gov.hmcts.opal.authentication.MaintenancePermission.CREATE_MANAGE_DRAFT_CASEFILES;
+import static uk.gov.hmcts.opal.authorisation.MaintenancePermission.CREATE_MANAGE_DRAFT_CASEFILES;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -36,7 +36,7 @@ import static org.mockito.Mockito.when;
 
 class DraftCasefileServiceTest {
 
-    private final MaintenanceUserContext userContext = mock(MaintenanceUserContext.class);
+    private final MaintenanceUserService userService = mock(MaintenanceUserService.class);
     private final DraftCasefileValidator validator = mock(DraftCasefileValidator.class);
     private final DraftCasefileRepository repository = mock(DraftCasefileRepository.class);
     private final ApplicationEventPublisher events = mock(ApplicationEventPublisher.class);
@@ -48,18 +48,18 @@ class DraftCasefileServiceTest {
               "individual_details":{"surname":"Synthetic"}}}},"applicant":{"party_details":{
               "organisation":false,"individual_details":{"surname":"Synthetic"}}}}
             """));
-    private final DraftCasefileService service = new DraftCasefileService(userContext, validator, repository,
+    private final DraftCasefileService service = new DraftCasefileService(userService, validator, repository,
         new DraftCasefileMapper(new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules()),
         new DraftCasefileParticipantCategoryResolver(), events, clock);
 
     @BeforeEach
     void setUp() {
-        when(userContext.forBusinessUnit((short) 1, CREATE_MANAGE_DRAFT_CASEFILES)).thenReturn(user);
+        when(userService.requireAuthorisedUser((short) 1, CREATE_MANAGE_DRAFT_CASEFILES)).thenReturn(user);
     }
 
     @Test
     void identityFailureDoesNotValidatePersistOrPublish() {
-        when(userContext.forBusinessUnit((short) 1, CREATE_MANAGE_DRAFT_CASEFILES))
+        when(userService.requireAuthorisedUser((short) 1, CREATE_MANAGE_DRAFT_CASEFILES))
             .thenThrow(new AccessDeniedException("No identity"));
         assertThatThrownBy(() -> service.addDraftCasefile(request)).isInstanceOf(AccessDeniedException.class);
         verifyNoInteractions(validator, repository, events, clock);
