@@ -35,7 +35,7 @@ paths:
               illustrative:
                 summary: Illustrative REMO In submission
                 description: >-
-                  Illustrative payload showing the response structure.
+                  Illustrative payload showing the request structure.
                 value:
                   business_unit_id: 1
                   casefile_type: REMO In
