@@ -1,9 +1,9 @@
-package uk.gov.hmcts.opal.authentication;
+package uk.gov.hmcts.opal.authorisation;
 
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.stereotype.Component;
+import org.springframework.stereotype.Service;
 import uk.gov.hmcts.opal.common.logging.LogUtil;
 import uk.gov.hmcts.opal.common.spring.security.OpalJwtAuthenticationToken;
 import uk.gov.hmcts.opal.common.user.authorisation.model.BusinessUnitUser;
@@ -13,35 +13,47 @@ import uk.gov.hmcts.opal.common.user.authorisation.model.UserStateV2;
 
 import java.util.Optional;
 
-@Component
-public class MaintenanceUserContext {
+@Service
+public class MaintenanceUserService {
 
-    public MaintenanceUser forBusinessUnit(Short businessUnitId, MaintenancePermission requiredPermission) {
+    /**
+     * Reads the authenticated user's details from the security context,
+     * supplied by User Service, and checks they hold the required permission
+     * within the requested Maintenance business unit.
+     *
+     * <p>Each user has a separate set of permissions for each business unit they belong to.
+     * A business unit user represents that link and its permission set.
+     *
+     * @return the authorised user's IDs, display name and IP address
+     * @throws AccessDeniedException if the required user details or permission are missing
+     */
+    public MaintenanceUser requireAuthorisedUser(Short businessUnitId, MaintenancePermission requiredPermission) {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (!(authentication instanceof OpalJwtAuthenticationToken token) || token.getUserState() == null) {
             throw new AccessDeniedException("Authenticated user state is unavailable");
         }
 
-        UserStateV2 state = token.getUserState();
-        if (state.getDomains() == null) {
+        UserStateV2 userState = token.getUserState();
+        if (userState.getDomains() == null) {
             throw new AccessDeniedException("Authenticated user state is unavailable");
         }
 
-        DomainBusinessUnitUsers units = state.getDomains().get(Domain.MAINTENANCE);
-        BusinessUnitUser unit = Optional.ofNullable(units)
+        DomainBusinessUnitUsers maintenanceBusinessUnitUsers = userState.getDomains().get(Domain.MAINTENANCE);
+        BusinessUnitUser businessUnitUser = Optional.ofNullable(maintenanceBusinessUnitUsers)
             .filter(value -> value.getBusinessUnitUsers() != null && businessUnitId != null)
             .flatMap(value -> value.getBusinessUnitUserForBusinessUnit(businessUnitId))
             .orElseThrow(() -> new AccessDeniedException("No user identity for the requested Business Unit"));
 
-        if (state.getUserId() == null || isBlank(state.getName()) || isBlank(unit.getBusinessUnitUserId())) {
+        if (userState.getUserId() == null || isBlank(userState.getName())
+            || isBlank(businessUnitUser.getBusinessUnitUserId())) {
             throw new AccessDeniedException("Authenticated user identity is incomplete");
         }
-        if (unit.getPermissions() == null || !unit.hasPermission(requiredPermission)) {
+        if (businessUnitUser.getPermissions() == null || !businessUnitUser.hasPermission(requiredPermission)) {
             throw new AccessDeniedException(requiredPermission.getDescription() + " permission is required");
         }
 
-        return new MaintenanceUser(state.getUserId(), unit.getBusinessUnitUserId(),
-            state.getName(), LogUtil.getIpAddress());
+        return new MaintenanceUser(userState.getUserId(), businessUnitUser.getBusinessUnitUserId(),
+            userState.getName(), LogUtil.getIpAddress());
     }
 
     private boolean isBlank(String value) {
