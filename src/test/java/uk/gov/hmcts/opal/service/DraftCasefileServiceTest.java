@@ -26,6 +26,7 @@ import java.util.Arrays;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static uk.gov.hmcts.opal.authentication.MaintenancePermission.CREATE_MANAGE_DRAFT_CASEFILES;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -53,12 +54,13 @@ class DraftCasefileServiceTest {
 
     @BeforeEach
     void setUp() {
-        when(userContext.forBusinessUnit((short) 1)).thenReturn(user);
+        when(userContext.forBusinessUnit((short) 1, CREATE_MANAGE_DRAFT_CASEFILES)).thenReturn(user);
     }
 
     @Test
     void identityFailureDoesNotValidatePersistOrPublish() {
-        when(userContext.forBusinessUnit((short) 1)).thenThrow(new AccessDeniedException("No identity"));
+        when(userContext.forBusinessUnit((short) 1, CREATE_MANAGE_DRAFT_CASEFILES))
+            .thenThrow(new AccessDeniedException("No identity"));
         assertThatThrownBy(() -> service.addDraftCasefile(request)).isInstanceOf(AccessDeniedException.class);
         verifyNoInteractions(validator, repository, events, clock);
     }

@@ -17,8 +17,8 @@ paths:
       description: >-
         Validates and persists the complete RM Casefile as a submitted Draft Casefile. The service derives the
         identifier, submitter, timestamps, Casefile Snapshot, lifecycle status and initial Timeline Data.
-        The authenticated user must have a matching Maintenance Business Unit User identity for the owning Business Unit.
-        Create and Manage Draft Casefiles permission enforcement is deferred in this initial delivery.
+        The authenticated user must have a matching Maintenance Business Unit User identity with
+        Create and Manage Draft Casefiles permission for the owning Business Unit.
         Account creation and publication are separate operations.
       externalDocs:
         description: Add Draft Casefile logical API specification
@@ -134,7 +134,7 @@ paths:
               schema:
                 $ref: './common.yaml#/components/schemas/ProblemDetail'
         '403':
-          description: The authenticated user has no matching Maintenance Business Unit User identity
+          description: The authenticated user has no matching Maintenance Business Unit User identity or permission
           content:
             application/problem+json:
               schema:

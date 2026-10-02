@@ -19,6 +19,8 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 
+import static uk.gov.hmcts.opal.authentication.MaintenancePermission.CREATE_MANAGE_DRAFT_CASEFILES;
+
 @Service
 @RequiredArgsConstructor
 public class DraftCasefileService {
@@ -33,7 +35,7 @@ public class DraftCasefileService {
 
     @Transactional
     public DraftCasefileAddResponse addDraftCasefile(DraftCasefileAddRequest request) {
-        MaintenanceUser user = userContext.forBusinessUnit(request.getBusinessUnitId());
+        MaintenanceUser user = userContext.forBusinessUnit(request.getBusinessUnitId(), CREATE_MANAGE_DRAFT_CASEFILES);
         validator.validate(request);
         Instant submittedAt = clock.instant().truncatedTo(ChronoUnit.MICROS);
         DraftCasefileEntity entity = repository.save(mapper.toEntity(request, user, submittedAt));
