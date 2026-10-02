@@ -1,4 +1,4 @@
-package uk.gov.hmcts.opal.authentication;
+package uk.gov.hmcts.opal.authorisation;
 
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;

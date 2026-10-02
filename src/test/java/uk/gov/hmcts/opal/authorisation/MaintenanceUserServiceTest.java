@@ -1,4 +1,4 @@
-package uk.gov.hmcts.opal.authentication;
+package uk.gov.hmcts.opal.authorisation;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -20,11 +20,11 @@ import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static uk.gov.hmcts.opal.authentication.MaintenancePermission.CREATE_MANAGE_DRAFT_CASEFILES;
+import static uk.gov.hmcts.opal.authorisation.MaintenancePermission.CREATE_MANAGE_DRAFT_CASEFILES;
 
-class MaintenanceUserContextTest {
+class MaintenanceUserServiceTest {
 
-    private final MaintenanceUserContext userContext = new MaintenanceUserContext();
+    private final MaintenanceUserService userService = new MaintenanceUserService();
 
     @AfterEach
     void clearSecurityContext() {
@@ -33,12 +33,12 @@ class MaintenanceUserContextTest {
 
     @Test
     void resolvesTheRequestedBusinessUnitIdentityWithPermission() {
-        authenticate(state(Map.of(Domain.MAINTENANCE, units(
+        authenticate(state(Map.of(Domain.MAINTENANCE, businessUnitUsers(
             permittedUser("BUU-1", (short) 1),
             permittedUser("BUU-2", (short) 2)))), Domain.MAINTENANCE);
 
-        MaintenanceUser unitOne = userContext.forBusinessUnit((short) 1, CREATE_MANAGE_DRAFT_CASEFILES);
-        MaintenanceUser unitTwo = userContext.forBusinessUnit((short) 2, CREATE_MANAGE_DRAFT_CASEFILES);
+        MaintenanceUser unitOne = userService.requireAuthorisedUser((short) 1, CREATE_MANAGE_DRAFT_CASEFILES);
+        MaintenanceUser unitTwo = userService.requireAuthorisedUser((short) 2, CREATE_MANAGE_DRAFT_CASEFILES);
 
         assertThat(unitOne.userId()).isEqualTo(123L);
         assertThat(unitOne.businessUnitUserId()).isEqualTo("BUU-1");
@@ -49,80 +49,81 @@ class MaintenanceUserContextTest {
 
     @Test
     void deniesWhenPermissionIsAbsentForRequestedBusinessUnit() {
-        authenticate(state(Map.of(Domain.MAINTENANCE, units(
+        authenticate(state(Map.of(Domain.MAINTENANCE, businessUnitUsers(
             new BusinessUnitUser("BUU-1", (short) 1, Set.of()),
             permittedUser("BUU-2", (short) 2)))), Domain.MAINTENANCE);
 
-        assertThatThrownBy(() -> userContext.forBusinessUnit((short) 1, CREATE_MANAGE_DRAFT_CASEFILES))
+        assertThatThrownBy(() -> userService.requireAuthorisedUser((short) 1, CREATE_MANAGE_DRAFT_CASEFILES))
             .isInstanceOf(AccessDeniedException.class)
             .hasMessage("Create and Manage Draft Casefiles permission is required");
-        assertThat(userContext.forBusinessUnit((short) 2, CREATE_MANAGE_DRAFT_CASEFILES).businessUnitUserId())
+        assertThat(userService.requireAuthorisedUser((short) 2, CREATE_MANAGE_DRAFT_CASEFILES)
+            .businessUnitUserId())
             .isEqualTo("BUU-2");
     }
 
     @Test
     void deniesWhenUserHasOnlyCheckerPermission() {
-        authenticate(state(Map.of(Domain.MAINTENANCE, units(
+        authenticate(state(Map.of(Domain.MAINTENANCE, businessUnitUsers(
             new BusinessUnitUser("BUU-1", (short) 1,
                 Set.of(new Permission(22L, "Check and validate draft Casefiles")))))), Domain.MAINTENANCE);
 
-        assertThatThrownBy(() -> userContext.forBusinessUnit((short) 1, CREATE_MANAGE_DRAFT_CASEFILES))
+        assertThatThrownBy(() -> userService.requireAuthorisedUser((short) 1, CREATE_MANAGE_DRAFT_CASEFILES))
             .isInstanceOf(AccessDeniedException.class)
             .hasMessage("Create and Manage Draft Casefiles permission is required");
     }
 
     @Test
     void deniesBusinessUnitWithoutItsOwnIdentity() {
-        authenticate(state(Map.of(Domain.MAINTENANCE, units(
+        authenticate(state(Map.of(Domain.MAINTENANCE, businessUnitUsers(
             new BusinessUnitUser("BUU-1", (short) 1, Set.of())))), Domain.MAINTENANCE);
 
-        assertThatThrownBy(() -> userContext.forBusinessUnit((short) 2, CREATE_MANAGE_DRAFT_CASEFILES))
+        assertThatThrownBy(() -> userService.requireAuthorisedUser((short) 2, CREATE_MANAGE_DRAFT_CASEFILES))
             .isInstanceOf(AccessDeniedException.class)
             .hasMessage("No user identity for the requested Business Unit");
     }
 
     @Test
     void deniesWhenMaintenanceDomainIsAbsent() {
-        authenticate(state(Map.of(Domain.FINES, units(
+        authenticate(state(Map.of(Domain.FINES, businessUnitUsers(
             new BusinessUnitUser("FINES-1", (short) 1, Set.of())))), Domain.FINES);
 
-        assertThatThrownBy(() -> userContext.forBusinessUnit((short) 1, CREATE_MANAGE_DRAFT_CASEFILES))
+        assertThatThrownBy(() -> userService.requireAuthorisedUser((short) 1, CREATE_MANAGE_DRAFT_CASEFILES))
             .isInstanceOf(AccessDeniedException.class);
     }
 
     @Test
     void deniesWhenDomainsAreUnavailable() {
-        UserStateV2 userState = state(Map.of(Domain.MAINTENANCE, units(
+        UserStateV2 userState = state(Map.of(Domain.MAINTENANCE, businessUnitUsers(
             new BusinessUnitUser("BUU-1", (short) 1, Set.of()))));
         authenticate(userState, Domain.MAINTENANCE);
         userState.setDomains(null);
 
-        assertThatThrownBy(() -> userContext.forBusinessUnit((short) 1, CREATE_MANAGE_DRAFT_CASEFILES))
+        assertThatThrownBy(() -> userService.requireAuthorisedUser((short) 1, CREATE_MANAGE_DRAFT_CASEFILES))
             .isInstanceOf(AccessDeniedException.class)
             .hasMessage("No user identity for the requested Business Unit");
     }
 
     @Test
     void deniesIncompleteRequiredIdentity() {
-        UserStateV2 userState = state(Map.of(Domain.MAINTENANCE, units(
+        UserStateV2 userState = state(Map.of(Domain.MAINTENANCE, businessUnitUsers(
             new BusinessUnitUser("BUU-1", (short) 1, Set.of()))));
         authenticate(userState, Domain.MAINTENANCE);
         userState.setName(" ");
-        assertThatThrownBy(() -> userContext.forBusinessUnit((short) 1, CREATE_MANAGE_DRAFT_CASEFILES))
+        assertThatThrownBy(() -> userService.requireAuthorisedUser((short) 1, CREATE_MANAGE_DRAFT_CASEFILES))
             .isInstanceOf(AccessDeniedException.class)
             .hasMessage("Authenticated user identity is incomplete");
 
         userState.setName("Test User");
         userState.getDomains().get(Domain.MAINTENANCE).getBusinessUnitUsers().getFirst()
             .setBusinessUnitUserId(" ");
-        assertThatThrownBy(() -> userContext.forBusinessUnit((short) 1, CREATE_MANAGE_DRAFT_CASEFILES))
+        assertThatThrownBy(() -> userService.requireAuthorisedUser((short) 1, CREATE_MANAGE_DRAFT_CASEFILES))
             .isInstanceOf(AccessDeniedException.class)
             .hasMessage("Authenticated user identity is incomplete");
     }
 
     @Test
     void deniesWhenAuthenticationIsUnavailable() {
-        assertThatThrownBy(() -> userContext.forBusinessUnit((short) 1, CREATE_MANAGE_DRAFT_CASEFILES))
+        assertThatThrownBy(() -> userService.requireAuthorisedUser((short) 1, CREATE_MANAGE_DRAFT_CASEFILES))
             .isInstanceOf(AccessDeniedException.class)
             .hasMessage("Authenticated user state is unavailable");
     }
@@ -135,7 +136,7 @@ class MaintenanceUserContextTest {
             .build();
     }
 
-    private static DomainBusinessUnitUsers units(BusinessUnitUser... users) {
+    private static DomainBusinessUnitUsers businessUnitUsers(BusinessUnitUser... users) {
         return new DomainBusinessUnitUsers(List.of(users));
     }
 
