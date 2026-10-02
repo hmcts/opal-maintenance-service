@@ -232,10 +232,30 @@ Central Authority checks require a nonempty result and verify the seeded
 record's casefile details; they do not assume generated identifiers or
 exactly ten records.
 
-The current seed contains only active Central Authorities. PO-10297 checks
-the empty result for active non-Central Authority creditors, malformed
-active-filter rejection and authentication. Its positive creditor retrieval
-acceptance criterion remains uncovered until approved non-Central Authority
-data exists. The seed also lacks inactive comparison rows, so these tests
-cannot prove exclusion using those rows. See the feature comment before
-the PO-10297 scenarios. Do not modify shared data to make these checks pass.
+PO-10297 positive coverage requires the DEV-only
+`data/dev/V1_15__insert_major_creditors_dev_data.sql`, applied through normal
+Flyway migration with `ddl`, `data/allEnvs` and `data/dev` selected. It adds
+three synthetic BU 44 records: active non-Central Authority `T901`, inactive
+non-Central Authority `T902`, and active Central Authority `T903`. The positive
+scenario requires T901's exact casefile details, excludes T902/T903, and allows
+additional qualifying creditors without assuming generated IDs or an exact
+result count. Malformed-filter and authentication scenarios remain covered.
+
+The DEV-only synthetic reference-data contract was approved by the requester
+on 2 October 2026; see `src/dbUnitTest/majorCreditorsDevDataTest/README.md`.
+Local disposable verification does not establish shared-environment deployment
+or QA sign-off. Positive coverage requires both approved data and a passing
+live scenario; an empty response cannot satisfy the positive acceptance
+criterion. Apply the forward DEV migration before executing
+positive functional tests.
+When reference caching is enabled, refresh affected BU 44 Major Creditor cache
+entries during migration rollout so positive scenarios see the new data; this
+is a deployment action, not a test setup or cleanup hook.
+Targets that select `allEnvs` without `dev` need approved equivalent seed data;
+do not enable DEV data in production or staging to make a test pass. Tests make
+read-only HTTP requests and never insert, update or clean up reference data.
+The migration resolves the existing Czech Republic Country uniquely and fails
+on missing/ambiguous Country data or colliding creditor keys. Flyway applies it
+once; direct reruns fail safely rather than overwriting existing records.
+See `src/dbUnitTest/majorCreditorsDevDataTest/README.md` for fresh/upgrade scope
+and database-boundary assertions.
