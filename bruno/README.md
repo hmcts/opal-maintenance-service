@@ -75,7 +75,8 @@ migrations applied. These users have **Create and Manage Draft Casefiles**
 permission in business unit `44`.
 
 Expect **201 Created**, with a generated `draft_casefile_id` and
-`casefile_status` of `SUBMITTED` in the response body. Each successful run
+`casefile_status` of `SUBMITTED` in the response body, plus an `ETag` header
+identifying the saved draft version. Each successful run
 creates a new draft. Adjust the body if your environment uses different
 reference data or business units; keep both `business_unit_id` values equal.
 

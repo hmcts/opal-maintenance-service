@@ -21,6 +21,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.json.JsonMapper;
 import uk.gov.hmcts.opal.BaseIntegrationTest;
+import uk.gov.hmcts.opal.dto.DraftCasefileSubmission;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileAddRequest;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileAddResponse;
 import uk.gov.hmcts.opal.service.DraftCasefileService;
@@ -63,11 +64,14 @@ class DraftCasefileControllerIntegrationTest extends BaseIntegrationTest {
     @Test
     void acceptsRawCasefileAndArbitraryNamedStringsWithoutApplyingGeneratedDefaults() throws Exception {
         String body = validBody.replace("100.00", "arbitrary named string");
-        when(service.addDraftCasefile(any())).thenReturn(new DraftCasefileAddResponse().draftCasefileId(123L));
+        when(service.addDraftCasefile(any())).thenReturn(
+            new DraftCasefileSubmission(new DraftCasefileAddResponse().draftCasefileId(123L), 7L));
         mockMvc.perform(post("/draft-casefiles").with(authentication(DraftCasefileHttpFixture.token((short) 1)))
             .contentType(MediaType.APPLICATION_JSON).content(body))
             .andExpect(status().isCreated())
             .andExpect(header().doesNotExist("Location"))
+            .andExpect(header().string("ETag", "\"7\""))
+            .andExpect(jsonPath("$.version_number").doesNotExist())
             .andExpect(jsonPath("$.draft_casefile_id").value(123));
         ArgumentCaptor<DraftCasefileAddRequest> captured = ArgumentCaptor.forClass(DraftCasefileAddRequest.class);
         verify(service).addDraftCasefile(captured.capture());

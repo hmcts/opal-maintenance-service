@@ -9,6 +9,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -92,5 +93,6 @@ public class DraftCasefileEntity {
     private Long accountId;
 
     @Column(name = "version_number")
+    @Version
     private Long versionNumber;
 }
