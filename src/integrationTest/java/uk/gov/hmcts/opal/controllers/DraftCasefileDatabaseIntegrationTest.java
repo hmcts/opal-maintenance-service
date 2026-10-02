@@ -40,7 +40,6 @@ import java.time.ZoneOffset;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.hamcrest.Matchers.matchesPattern;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.times;
@@ -235,7 +234,7 @@ class DraftCasefileDatabaseIntegrationTest extends BaseIntegrationTest {
                 .with(authentication(DraftCasefileHttpFixture.token((short) 1)))
                 .contentType(MediaType.APPLICATION_JSON).content(body))
             .andExpect(status().isCreated())
-            .andExpect(header().string("Location", matchesPattern("/draft-casefiles/[0-9]+")))
+            .andExpect(header().doesNotExist("Location"))
             .andExpect(jsonPath("$.casefile_status").value("SUBMITTED"))
             .andExpect(jsonPath("$.timeline_data.length()").value(1))
             .andExpect(jsonPath("$.casefile").doesNotExist())
