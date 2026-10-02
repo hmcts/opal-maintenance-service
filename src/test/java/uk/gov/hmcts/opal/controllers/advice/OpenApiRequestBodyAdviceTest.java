@@ -1,6 +1,8 @@
 package uk.gov.hmcts.opal.controllers.advice;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.core.MethodParameter;
 import org.springframework.http.HttpInputMessage;
 import org.springframework.http.MediaType;
@@ -11,7 +13,9 @@ import uk.gov.hmcts.opal.exception.RequestValidationError;
 import uk.gov.hmcts.opal.validator.OpenApiRequest;
 import uk.gov.hmcts.opal.validator.OpenApiSchemaValidator;
 
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -23,7 +27,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 class OpenApiRequestBodyAdviceTest {
 
     private final OpenApiSchemaValidator validator = mock(OpenApiSchemaValidator.class);
-    private final OpenApiRequestBodyAdvice advice = new OpenApiRequestBodyAdvice(validator);
+    private final OpenApiRequestBodyAdvice advice = new OpenApiRequestBodyAdvice(validator, 128);
 
     @Test
     void selectsOnlyAnnotatedMethodsRegardlessOfBodyType() throws NoSuchMethodException {
@@ -70,6 +74,50 @@ class OpenApiRequestBodyAdviceTest {
         assertThat(advice.handleEmptyBody(null, new MockHttpInputMessage(new byte[0]), parameter("annotated"),
             String.class, StringHttpMessageConverter.class)).isNull();
         verifyNoInteractions(validator);
+    }
+
+    @Test
+    void acceptsExactlyTheConfiguredLimit() throws Exception {
+        byte[] body = new byte[128];
+        HttpInputMessage replay = advice.beforeBodyRead(new MockHttpInputMessage(body), parameter("annotated"),
+            String.class, StringHttpMessageConverter.class);
+        verify(validator).validate("DraftCasefileAddRequest", body);
+        assertThat(replay.getBody().readAllBytes()).isEqualTo(body);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void boundsStreamsWithAbsentOrMisleadingContentLength(boolean misleadingLength) throws Exception {
+        AtomicInteger readBytes = new AtomicInteger();
+        InputStream unboundedStream = new InputStream() {
+            @Override
+            public int read() {
+                readBytes.incrementAndGet();
+                return ' ';
+            }
+        };
+        MockHttpInputMessage input = new MockHttpInputMessage(unboundedStream);
+        if (misleadingLength) {
+            input.getHeaders().setContentLength(1);
+        }
+
+        assertThatThrownBy(() -> advice.beforeBodyRead(input, parameter("annotated"),
+            String.class, StringHttpMessageConverter.class))
+            .isInstanceOfSatisfying(OpalApiException.class,
+                exception -> assertThat(exception.getError()).isEqualTo(RequestValidationError.REQUEST_TOO_LARGE));
+        assertThat(readBytes.get()).isEqualTo(129);
+        verifyNoInteractions(validator);
+    }
+
+    @Test
+    void rejectsOversizedDeclaredLengthBeforeReading() throws Exception {
+        InputStream stream = mock(InputStream.class);
+        MockHttpInputMessage input = new MockHttpInputMessage(stream);
+        input.getHeaders().setContentLength(129);
+
+        assertThatThrownBy(() -> advice.beforeBodyRead(input, parameter("annotated"),
+            String.class, StringHttpMessageConverter.class)).isInstanceOf(OpalApiException.class);
+        verifyNoInteractions(stream, validator);
     }
 
     private static MethodParameter parameter(String name) throws NoSuchMethodException {

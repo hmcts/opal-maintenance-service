@@ -43,7 +43,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @TestPropertySource(properties = {
     "spring.flyway.locations=classpath:db/migration/ddl",
     "opal.redis.enabled=false",
-    "management.health.redis.enabled=false"
+    "management.health.redis.enabled=false",
+    "opal.openapi.max-request-body-bytes=4096"
 })
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class DraftCasefileControllerIntegrationTest extends BaseIntegrationTest {
@@ -101,6 +102,16 @@ class DraftCasefileControllerIntegrationTest extends BaseIntegrationTest {
         verifyNoInteractions(service);
         assertThat(response).doesNotContain("SYNTHETIC_PRIVATE_NAME", "SYNTHETIC_AUDIT", "Synthetic address", "100.00");
         assertThat(output).doesNotContain("SYNTHETIC_PRIVATE_NAME", "SYNTHETIC_AUDIT", "Synthetic address");
+    }
+
+    @Test
+    void oversizedRequestReturnsPayloadTooLargeBeforeServiceInvocation() throws Exception {
+        mockMvc.perform(post("/draft-casefiles").with(authentication(DraftCasefileHttpFixture.token((short) 1)))
+                .contentType(MediaType.APPLICATION_JSON).content(" ".repeat(4097)))
+            .andExpect(status().is(413))
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+            .andExpect(jsonPath("$.title").value("Content Too Large"));
+        verifyNoInteractions(service);
     }
 
     @ParameterizedTest

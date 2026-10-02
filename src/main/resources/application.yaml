@@ -123,6 +123,8 @@ launchdarkly:
     is-legacy-mode: ${IS_LEGACY_MODE:true}
 
 opal:
+  openapi:
+    max-request-body-bytes: ${OPAL_OPENAPI_MAX_REQUEST_BODY_BYTES:1048576}
   redis:
     enabled: ${OPAL_REDIS_ENABLED:false}
     ttl-duration: ${OPAL_REDIS_TTL_DURATION:8H}
