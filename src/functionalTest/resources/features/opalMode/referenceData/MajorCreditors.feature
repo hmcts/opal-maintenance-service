@@ -2,7 +2,7 @@
 Feature: Major Creditor reference data
 
   @JIRA-STORY:PO-10294 @JIRA-EPIC:PO-6506
-  Scenario: Retrieve active Central Authorities
+  Scenario: Retrieve active seeded Central Authorities
     Given I am testing as the "opal-test@dev.platform.hmcts.net" user
     When I request active Central Authorities for the seeded business unit
     Then the Central Authority details are available for casefile selection
@@ -18,20 +18,25 @@ Feature: Major Creditor reference data
     When I request Central Authorities without authentication
     Then authentication is required without exposing Central Authority data
 
-  @JIRA-STORY:PO-10297 @JIRA-EPIC:PO-6506 @PO10297Active
-  Scenario: Retrieve active Major Creditors
-    Given I am testing as the "opal-test@dev.platform.hmcts.net" user
-    And isolated Major Creditor reference data is available
-    When I request active non-Central Authority Major Creditors
-    Then the Major Creditors required for creditor selection are returned
+  # PO-10297 positive retrieval coverage is blocked by the current seed data.
+  # Business unit 44 contains active Central Authorities only; there are no
+  # seeded active non-Central Authority creditors or inactive comparison rows.
+  # The empty-result scenario below does not fulfil the positive retrieval AC.
+  # Add that scenario when approved non-Central Authority reference data exists.
 
-  @JIRA-STORY:PO-10297 @JIRA-EPIC:PO-6506 @PO10297Malformed
-  Scenario: Reject a malformed Major Creditor filter
+  @JIRA-STORY:PO-10297 @JIRA-EPIC:PO-6506
+  Scenario: No non-Central Authority creditors match the current seed
+    Given I am testing as the "opal-test@dev.platform.hmcts.net" user
+    When I request active non-Central Authority Major Creditors
+    Then no non-Central Authority Major Creditors are returned for the seeded business unit
+
+  @JIRA-STORY:PO-10297 @JIRA-EPIC:PO-6506
+  Scenario: Reject a malformed Major Creditor active filter
     Given I am testing as the "opal-test@dev.platform.hmcts.net" user
     When I request Major Creditors with a malformed active filter
     Then the Major Creditor validation response is correlated
 
-  @JIRA-STORY:PO-10297 @JIRA-EPIC:PO-6506 @PO10297Authentication
+  @JIRA-STORY:PO-10297 @JIRA-EPIC:PO-6506
   Scenario: Major Creditors require authentication
     When I request Major Creditors without authentication
     Then Major Creditor reference data is not disclosed
