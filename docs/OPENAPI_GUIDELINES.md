@@ -114,6 +114,12 @@ common object neutral enough for every API that legitimately shares it.
 
 ## Verification
 
+Runtime validation bounds annotated request bodies before buffering or parsing.
+The default limit is 1 MiB (1,048,576 bytes), configurable through
+`OPAL_OPENAPI_MAX_REQUEST_BODY_BYTES`. Oversized bodies return `413`, including
+requests with no Content-Length header or a misleading length. The byte limit
+is an operational safeguard, not a schema field-validation rule.
+
 After changing OpenAPI source files or bundler behaviour, run:
 
 ```bash

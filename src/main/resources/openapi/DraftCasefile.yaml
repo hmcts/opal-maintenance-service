@@ -145,6 +145,12 @@ paths:
             application/problem+json:
               schema:
                 $ref: './common.yaml#/components/schemas/ProblemDetail'
+        '413':
+          description: Request body exceeds the configured size limit
+          content:
+            application/problem+json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
         '500':
           description: Internal server error
           content:
