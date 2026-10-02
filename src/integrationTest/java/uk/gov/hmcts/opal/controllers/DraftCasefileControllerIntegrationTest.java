@@ -66,7 +66,8 @@ class DraftCasefileControllerIntegrationTest extends BaseIntegrationTest {
         mockMvc.perform(post("/draft-casefiles").with(authentication(DraftCasefileHttpFixture.token((short) 1)))
             .contentType(MediaType.APPLICATION_JSON).content(body))
             .andExpect(status().isCreated())
-            .andExpect(header().string("Location", "/draft-casefiles/123"));
+            .andExpect(header().doesNotExist("Location"))
+            .andExpect(jsonPath("$.draft_casefile_id").value(123));
         ArgumentCaptor<DraftCasefileAddRequest> captured = ArgumentCaptor.forClass(DraftCasefileAddRequest.class);
         verify(service).addDraftCasefile(captured.capture());
         assertThat(captured.getValue().getCasefile())
