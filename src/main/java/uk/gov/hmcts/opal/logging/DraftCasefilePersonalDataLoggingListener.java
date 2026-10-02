@@ -1,5 +1,6 @@
 package uk.gov.hmcts.opal.logging;
 
+import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -17,14 +18,11 @@ import java.time.ZoneOffset;
 import java.util.List;
 
 @Component
+@RequiredArgsConstructor
 public class DraftCasefilePersonalDataLoggingListener {
 
     private static final Logger LOG = LoggerFactory.getLogger(DraftCasefilePersonalDataLoggingListener.class);
-    private final LoggingService logging;
-
-    public DraftCasefilePersonalDataLoggingListener(LoggingService logging) {
-        this.logging = logging;
-    }
+    private final LoggingService loggingService;
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = false)
     public void onSubmitted(DraftCasefileSubmittedEvent event) {
@@ -46,7 +44,7 @@ public class DraftCasefilePersonalDataLoggingListener {
                 DraftIdentifierType.DRAFT_CASEFILE)))
             .build();
         try {
-            if (!logging.personalDataAccessLogAsync(details)) {
+            if (!loggingService.personalDataAccessLogAsync(details)) {
                 logFailure(category);
             }
         } catch (RuntimeException exception) {

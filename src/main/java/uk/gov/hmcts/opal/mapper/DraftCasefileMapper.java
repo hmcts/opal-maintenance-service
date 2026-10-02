@@ -3,6 +3,7 @@ package uk.gov.hmcts.opal.mapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.RequiredArgsConstructor;
 import org.openapitools.jackson.nullable.JsonNullable;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
@@ -26,13 +27,10 @@ import java.util.List;
 import java.util.Locale;
 
 @Component
+@RequiredArgsConstructor
 public class DraftCasefileMapper {
 
     private final ObjectMapper objectMapper;
-
-    public DraftCasefileMapper(ObjectMapper objectMapper) {
-        this.objectMapper = objectMapper;
-    }
 
     public DraftCasefileEntity toEntity(DraftCasefileAddRequest request, MaintenanceUser user, Instant submittedAt) {
         LocalDateTime timestamp = LocalDateTime.ofInstant(submittedAt, ZoneOffset.UTC);
