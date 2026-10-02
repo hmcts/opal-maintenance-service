@@ -217,3 +217,25 @@ scenario, the setup needed to execute it, and the expected result. A successful
 pipeline is not evidence that every changed scenario ran.
 
 For Flyway or SQL changes, follow the fresh-database, upgrade-path, database-boundary, and evidence requirements in [Database Migrations](DATABASE_MIGRATIONS.md).
+
+## Major Creditor reference-data prerequisites
+
+PO-10294 and PO-10297 use authenticated HTTP requests against existing
+Maintenance reference data, following the Fines seeded-data test pattern.
+Use the normal `TEST_URL` and `OPAL_USER_SERVICE_API_URL` configuration
+described above. No functional fixture database, JDBC credentials, owner
+table, sequence, test inserts or cleanup hooks are required.
+
+The target must contain the approved BU 44 Central Authority seed from
+`V1_10__insert_major_creditors_reference_data.sql`, including code `0001`.
+Central Authority checks require a nonempty result and verify the seeded
+record's casefile details; they do not assume generated identifiers or
+exactly ten records.
+
+The current seed contains only active Central Authorities. PO-10297 checks
+the empty result for active non-Central Authority creditors, malformed
+active-filter rejection and authentication. Its positive creditor retrieval
+acceptance criterion remains uncovered until approved non-Central Authority
+data exists. The seed also lacks inactive comparison rows, so these tests
+cannot prove exclusion using those rows. See the feature comment before
+the PO-10297 scenarios. Do not modify shared data to make these checks pass.
