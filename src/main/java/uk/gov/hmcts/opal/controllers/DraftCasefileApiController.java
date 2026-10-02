@@ -1,6 +1,7 @@
 package uk.gov.hmcts.opal.controllers;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 import uk.gov.hmcts.opal.generated.http.api.DraftCasefileApi;
@@ -8,8 +9,6 @@ import uk.gov.hmcts.opal.generated.model.DraftCasefileAddRequest;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileAddResponse;
 import uk.gov.hmcts.opal.service.DraftCasefileService;
 import uk.gov.hmcts.opal.validator.OpenApiRequest;
-
-import java.net.URI;
 
 @RestController
 @RequiredArgsConstructor
@@ -21,7 +20,6 @@ public class DraftCasefileApiController implements DraftCasefileApi {
     @OpenApiRequest("DraftCasefileAddRequest")
     public ResponseEntity<DraftCasefileAddResponse> addDraftCasefile(DraftCasefileAddRequest request) {
         DraftCasefileAddResponse response = service.addDraftCasefile(request);
-        return ResponseEntity.created(URI.create("/draft-casefiles/" + response.getDraftCasefileId()))
-            .body(response);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 }
