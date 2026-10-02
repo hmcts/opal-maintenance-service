@@ -87,13 +87,12 @@ paths:
         '201':
           description: Draft Casefile submitted successfully
           headers:
-            Location:
-              description: Relative URI of the created Draft Casefile.
+            ETag:
+              description: Strong entity tag identifying the saved draft version for later conditional updates.
               required: true
               schema:
                 type: string
-                format: uri-reference
-              example: /draft-casefiles/123
+                example: '"0"'
           content:
             application/json:
               schema:
