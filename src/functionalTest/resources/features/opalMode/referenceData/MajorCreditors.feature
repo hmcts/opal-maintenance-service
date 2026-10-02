@@ -18,17 +18,16 @@ Feature: Major Creditor reference data
     When I request Central Authorities without authentication
     Then authentication is required without exposing Central Authority data
 
-  # PO-10297 positive retrieval coverage is blocked by the current seed data.
-  # Business unit 44 contains active Central Authorities only; there are no
-  # seeded active non-Central Authority creditors or inactive comparison rows.
-  # The empty-result scenario below does not fulfil the positive retrieval AC.
-  # Add that scenario when approved non-Central Authority reference data exists.
+  # DEV-only V1_15 supplies T901 plus inactive T902 and Central Authority T903.
+  # Targets using allEnvs without dev need approved equivalent reference data
+  # before running this positive scenario. Functional steps never write data.
 
   @JIRA-STORY:PO-10297 @JIRA-EPIC:PO-6506
-  Scenario: No non-Central Authority creditors match the current seed
+  Scenario: Retrieve active non-Central Authority Major Creditors
     Given I am testing as the "opal-test@dev.platform.hmcts.net" user
+    And the Major Creditor selection and comparison records are available
     When I request active non-Central Authority Major Creditors
-    Then no non-Central Authority Major Creditors are returned for the seeded business unit
+    Then the Major Creditors required for creditor selection are returned
 
   @JIRA-STORY:PO-10297 @JIRA-EPIC:PO-6506
   Scenario: Reject a malformed Major Creditor active filter
