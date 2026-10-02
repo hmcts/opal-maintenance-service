@@ -1,0 +1,89 @@
+meta {
+  name: Add draft casefile
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseURL}}/draft-casefiles
+  body: json
+  auth: bearer
+}
+
+headers {
+  Content-Type: application/json
+}
+
+auth:bearer {
+  token: {{BEARER_TOKEN}}
+}
+
+body:json {
+  {
+    "business_unit_id": 44,
+    "casefile_type": "REMO In",
+    "casefile": {
+      "respondent_account": {
+        "business_unit_id": 44,
+        "application_code": "MO72003",
+        "casefile_type": "REMO In",
+        "respondent": {
+          "party_details": {
+            "organisation": false,
+            "individual_details": {
+              "surname": "Synthetic Respondent"
+            },
+            "address": {
+              "address_line_1": "Synthetic respondent address",
+              "cjs_code": 1
+            }
+          }
+        },
+        "order_details": {
+          "date_ordered": "2026-09-01",
+          "date_arrears_last_updated": "2026-09-01",
+          "interest_flag": false,
+          "indexation": "None",
+          "payment_arrangement": "Court",
+          "payment_period": "Monthly",
+          "order_terms": [
+            {
+              "result_id": "MAT",
+              "creditor_type": "Applicant",
+              "result_responses": [
+                {
+                  "parameter_name": "Amount",
+                  "response": "100.00"
+                },
+                {
+                  "parameter_name": "Frequency",
+                  "response": "monthly"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "applicant": {
+        "party_details": {
+          "organisation": false,
+          "individual_details": {
+            "surname": "Synthetic Applicant"
+          },
+          "address": {
+            "address_line_1": "Synthetic applicant address",
+            "cjs_code": 1
+          }
+        },
+        "bank_account_details": {
+          "bank_account_type": "None or not applicable"
+        }
+      }
+    }
+  }
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

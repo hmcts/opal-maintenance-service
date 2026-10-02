@@ -67,6 +67,18 @@ the environment; request-specific inputs do not need environment variables.
 The **Ping** and **Auth check** requests require
 `TESTING_SUPPORT_ENDPOINTS_ENABLED=true`. **Auth check** also requires a token.
 
+**Maintenance → Add draft casefile** submits synthetic data for business unit
+`44`, using application `MO72003`, result `MAT` and country CJS code `1` from
+the service's seeded reference data. Use a test environment and a token for
+`opal-test` or `opal-test-10`, with User Service's draft-casefile permission
+migrations applied. These users have **Create and Manage Draft Casefiles**
+permission in business unit `44`.
+
+Expect **201 Created**, with a generated `draft_casefile_id` and
+`casefile_status` of `SUBMITTED` in the response body. Each successful run
+creates a new draft. Adjust the body if your environment uses different
+reference data or business units; keep both `business_unit_id` values equal.
+
 Example:
 
 ```text
