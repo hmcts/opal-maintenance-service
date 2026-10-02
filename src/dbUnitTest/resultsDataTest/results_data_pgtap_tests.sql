@@ -6,6 +6,7 @@ SELECT plan(11);
 -- Scenario: independently supplied data and exact final values.
 -- Setup: retain CSV bytes; load all fields as text before explicit conversion.
 -- Expected: exact keys, 86 parameters, all 20 fields including JSON text match.
+-- -----------------------------------------------------------------------------
 CREATE TEMP TABLE expected_results_raw (
     result_id text, result_title text, order_term text, enforcement_result text,
     case_result text, case_result_type text, active text, order_accruing text,
@@ -60,6 +61,7 @@ SELECT pg_read_file('/tmp/opal-db-migrations/data/allEnvs/V1_16__refresh_results
 -- Scenario: repeat the actual refresh over changed target values and unrelated data.
 -- Setup: synthetic unrelated key and non-target target-column change; subtransaction.
 -- Expected: only approved fields change; replay preserves final values; fixtures roll back.
+-- -----------------------------------------------------------------------------
 CREATE FUNCTION pg_temp.refresh_preserves_scope() RETURNS boolean LANGUAGE plpgsql AS $f$
 DECLARE
     before_other jsonb;
@@ -108,6 +110,7 @@ SELECT ok(pg_temp.refresh_preserves_scope(),'actual refresh preserves scope and 
 -- Scenario: actual candidate failures are atomic.
 -- Setup: vary an early target row and reject the last UPDATE with a test constraint.
 -- Expected: SQLSTATE 23514 and unchanged pre-attempt rows; all earlier updates roll back.
+-- -----------------------------------------------------------------------------
 CREATE FUNCTION pg_temp.refresh_failure(setup_sql text, expected_state text,
                                          candidate_override text DEFAULT NULL)
 RETURNS boolean LANGUAGE plpgsql AS $f$
@@ -143,6 +146,7 @@ SELECT ok(pg_temp.refresh_failure(
 -- Scenario: immutable original seed still rejects duplicate existing keys.
 -- Setup: run the original INSERT in the same rollback-protected failure helper.
 -- Expected: unique violation, with no overwritten rows or filled missing keys.
+-- -----------------------------------------------------------------------------
 SELECT ok(pg_temp.refresh_failure('SELECT 1','23505',
  pg_read_file('/tmp/opal-db-migrations/data/allEnvs/V1_13__insert_results_reference_data.sql')),
  'original seed rejects existing keys');
