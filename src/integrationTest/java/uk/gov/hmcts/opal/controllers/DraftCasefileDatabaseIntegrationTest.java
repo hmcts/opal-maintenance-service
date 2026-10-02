@@ -153,6 +153,21 @@ class DraftCasefileDatabaseIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    void acceptsEscapedNullJsonWithoutLoggingSubmittedData(CapturedOutput output) throws Exception {
+        String body = validBody.replace("Example", "SYNTHETIC_PRIVATE_MARKER" + "\\" + "u0000");
+        String expectedSurname = "SYNTHETIC_PRIVATE_MARKER" + '\0';
+
+        JsonNode response = submit(body);
+        DraftCasefileEntity row = repository.findById(response.get("draft_casefile_id").longValue()).orElseThrow();
+        assertThat(JSON.readTree(row.getCasefile())
+            .at("/respondent_account/respondent/party_details/individual_details/surname").asString())
+            .isEqualTo(expectedSurname);
+        assertThat(response.at("/casefile_snapshot/respondent_account/respondent_name").asString())
+            .isEqualTo(expectedSurname);
+        assertThat(output).doesNotContain("SYNTHETIC_PRIVATE_MARKER");
+    }
+
+    @Test
     void deniesMissingBusinessUnitIdentityWithoutRowOrLog() throws Exception {
         mockMvc.perform(post("/draft-casefiles").with(authentication(DraftCasefileHttpFixture.token((short) 2)))
             .contentType(MediaType.APPLICATION_JSON).content(validBody)).andExpect(status().isForbidden());

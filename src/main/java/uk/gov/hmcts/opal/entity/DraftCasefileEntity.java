@@ -15,8 +15,8 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.ColumnTransformer;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
+import org.hibernate.annotations.JdbcType;
+import org.hibernate.dialect.type.PostgreSQLJsonPGObjectJsonType;
 
 import java.time.LocalDateTime;
 
@@ -57,11 +57,12 @@ public class DraftCasefileEntity {
     @Column(name = "validated_by_name", length = 100)
     private String validatedByName;
 
-    @JdbcTypeCode(SqlTypes.JSON)
+    // These columns use PostgreSQL json, which preserves escaped Unicode values rejected by jsonb.
+    @JdbcType(PostgreSQLJsonPGObjectJsonType.class)
     @Column(name = "casefile", nullable = false, columnDefinition = "json")
     private String casefile;
 
-    @JdbcTypeCode(SqlTypes.JSON)
+    @JdbcType(PostgreSQLJsonPGObjectJsonType.class)
     @Column(name = "casefile_snapshot", nullable = false, columnDefinition = "json")
     private String casefileSnapshot;
 
@@ -80,7 +81,7 @@ public class DraftCasefileEntity {
     @Column(name = "status_message", columnDefinition = "text")
     private String statusMessage;
 
-    @JdbcTypeCode(SqlTypes.JSON)
+    @JdbcType(PostgreSQLJsonPGObjectJsonType.class)
     @Column(name = "timeline_data", nullable = false, columnDefinition = "json")
     private String timelineData;
 
