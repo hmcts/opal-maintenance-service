@@ -20,6 +20,7 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.json.JsonMapper;
+import uk.gov.hmcts.common.exceptions.standard.UnauthorizedException;
 import uk.gov.hmcts.opal.BaseIntegrationTest;
 import uk.gov.hmcts.opal.dto.DraftCasefileSubmission;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileAddRequest;
@@ -119,9 +120,11 @@ class DraftCasefileControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(ints = {403, 409, 500, 503})
+    @ValueSource(ints = {401, 403, 409, 500, 503})
     void usesSharedProblemDetailsForServiceFailures(int expectedStatus) throws Exception {
         RuntimeException failure = switch (expectedStatus) {
+            case 401 -> new UnauthorizedException("Unauthorised",
+                "Current user is not authenticated with OpalJwtAuthenticationToken");
             case 403 -> new AccessDeniedException("No matching identity");
             case 409 -> new DataIntegrityViolationException("Synthetic constraint failure");
             case 503 -> new DataAccessResourceFailureException("Synthetic connection failure");

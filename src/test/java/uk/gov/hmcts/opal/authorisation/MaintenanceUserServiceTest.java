@@ -3,8 +3,10 @@ package uk.gov.hmcts.opal.authorisation;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
+import uk.gov.hmcts.common.exceptions.standard.UnauthorizedException;
 import uk.gov.hmcts.opal.common.logging.LogUtil;
 import uk.gov.hmcts.opal.common.spring.security.OpalJwtAuthenticationToken;
 import uk.gov.hmcts.opal.common.user.authorisation.model.BusinessUnitUser;
@@ -124,8 +126,16 @@ class MaintenanceUserServiceTest {
     @Test
     void deniesWhenAuthenticationIsUnavailable() {
         assertThatThrownBy(() -> userService.requireAuthorisedUser((short) 1, CREATE_MANAGE_DRAFT_CASEFILES))
-            .isInstanceOf(AccessDeniedException.class)
-            .hasMessage("Authenticated user state is unavailable");
+            .isInstanceOf(UnauthorizedException.class);
+    }
+
+    @Test
+    void deniesWhenAuthenticationIsNotAnOpalJwtToken() {
+        SecurityContextHolder.getContext().setAuthentication(
+            UsernamePasswordAuthenticationToken.authenticated("synthetic-user", null, List.of()));
+
+        assertThatThrownBy(() -> userService.requireAuthorisedUser((short) 1, CREATE_MANAGE_DRAFT_CASEFILES))
+            .isInstanceOf(UnauthorizedException.class);
     }
 
     private static UserStateV2 state(Map<Domain, DomainBusinessUnitUsers> domains) {
