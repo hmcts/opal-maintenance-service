@@ -1,5 +1,6 @@
 package uk.gov.hmcts.opal.controllers.advice;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -10,7 +11,10 @@ import jakarta.validation.ConstraintViolationException;
 import jakarta.validation.constraints.Min;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
@@ -24,6 +28,7 @@ import uk.gov.hmcts.common.exceptions.standard.UnauthorizedException;
 import uk.gov.hmcts.opal.BaseIntegrationTest;
 
 @AutoConfigureMockMvc
+@ExtendWith(OutputCaptureExtension.class)
 @Import(MaintenanceGlobalExceptionHandlerIntegrationTest.RequestValidationTestController.class)
 @TestPropertySource(properties = {
     "spring.flyway.locations=classpath:db/migration/ddl",
@@ -109,6 +114,28 @@ class MaintenanceGlobalExceptionHandlerIntegrationTest extends BaseIntegrationTe
             .andExpect(jsonPath("$.retriable").value(false));
     }
 
+    @Test
+    void returnsSafeCorrelatedServerProblemWithoutLoggingIllegalStateDetails(CapturedOutput output) throws Exception {
+        var result = mockMvc.perform(get("/test-support/illegal-state").with(user("test-user")))
+            .andExpect(status().isInternalServerError())
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+            .andExpect(jsonPath("$.type").value("https://hmcts.gov.uk/problems/internal-server-error"))
+            .andExpect(jsonPath("$.title").value("Internal Server Error"))
+            .andExpect(jsonPath("$.detail")
+                .value("An unexpected error occurred while processing your request"))
+            .andExpect(jsonPath("$.status").value(500))
+            .andExpect(jsonPath("$.instance").isNotEmpty())
+            .andExpect(jsonPath("$.operation_id").isNotEmpty())
+            .andExpect(jsonPath("$.retriable").value(false))
+            .andReturn();
+        String response = result.getResponse().getContentAsString();
+        String operationId = result.getResponse().getHeader("operation_id");
+        assertThat(operationId).isNotBlank();
+        assertThat(response).contains(operationId);
+        assertThat(response).doesNotContain("SYNTHETIC_PRIVATE_MESSAGE", "SYNTHETIC_PRIVATE_CAUSE");
+        assertThat(output).doesNotContain("SYNTHETIC_PRIVATE_MESSAGE", "SYNTHETIC_PRIVATE_CAUSE");
+    }
+
     @Validated
     @RestController
     static class RequestValidationTestController {
@@ -121,6 +148,12 @@ class MaintenanceGlobalExceptionHandlerIntegrationTest extends BaseIntegrationTe
         @GetMapping("/test-support/request-validation")
         String validate(@RequestParam(name = "value") @Min(1) Integer value) {
             return value.toString();
+        }
+
+        @GetMapping("/test-support/illegal-state")
+        String illegalState() {
+            throw new IllegalStateException("SYNTHETIC_PRIVATE_MESSAGE",
+                new IllegalArgumentException("SYNTHETIC_PRIVATE_CAUSE"));
         }
 
         @GetMapping("/test-support/internal-constraint")
