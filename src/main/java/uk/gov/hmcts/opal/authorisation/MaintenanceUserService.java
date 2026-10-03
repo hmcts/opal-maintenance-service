@@ -1,15 +1,15 @@
 package uk.gov.hmcts.opal.authorisation;
 
 import org.springframework.security.access.AccessDeniedException;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import uk.gov.hmcts.common.exceptions.standard.UnauthorizedException;
 import uk.gov.hmcts.opal.common.logging.LogUtil;
 import uk.gov.hmcts.opal.common.spring.security.OpalJwtAuthenticationToken;
 import uk.gov.hmcts.opal.common.user.authorisation.model.BusinessUnitUser;
 import uk.gov.hmcts.opal.common.user.authorisation.model.Domain;
 import uk.gov.hmcts.opal.common.user.authorisation.model.DomainBusinessUnitUsers;
 import uk.gov.hmcts.opal.common.user.authorisation.model.UserStateV2;
+import uk.gov.hmcts.opal.common.util.SecurityUtil;
 
 import java.util.Optional;
 
@@ -25,11 +25,12 @@ public class MaintenanceUserService {
      * A business unit user represents that link and its permission set.
      *
      * @return the authorised user's IDs, display name and IP address
+     * @throws UnauthorizedException if the current authentication is not an Opal JWT token
      * @throws AccessDeniedException if the required user details or permission are missing
      */
     public MaintenanceUser requireAuthorisedUser(Short businessUnitId, MaintenancePermission requiredPermission) {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (!(authentication instanceof OpalJwtAuthenticationToken token) || token.getUserState() == null) {
+        OpalJwtAuthenticationToken token = SecurityUtil.getOpalJwtAuthenticationTokenForCurrentUser();
+        if (token.getUserState() == null) {
             throw new AccessDeniedException("Authenticated user state is unavailable");
         }
 

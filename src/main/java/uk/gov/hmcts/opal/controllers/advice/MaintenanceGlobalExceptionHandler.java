@@ -18,13 +18,23 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import uk.gov.hmcts.common.exceptions.standard.UnauthorizedException;
 import uk.gov.hmcts.opal.common.controllers.advice.OpalProblemDetailFactory;
 
 @Order(Ordered.HIGHEST_PRECEDENCE)
 @RestControllerAdvice(basePackages = "uk.gov.hmcts.opal.controllers")
-public class RequestValidationExceptionHandler {
+public class MaintenanceGlobalExceptionHandler {
 
-    private static final Logger LOG = LoggerFactory.getLogger(RequestValidationExceptionHandler.class);
+    private static final Logger LOG = LoggerFactory.getLogger(MaintenanceGlobalExceptionHandler.class);
+
+    @ExceptionHandler(UnauthorizedException.class)
+    public ResponseEntity<ProblemDetail> handleUnauthorizedException(UnauthorizedException exception) {
+        ProblemDetail problemDetail = OpalProblemDetailFactory.createProblemDetail(
+            HttpStatus.UNAUTHORIZED, "Unauthorized", "Missing or invalid access token", "unauthorized",
+            false, null, LOG
+        );
+        return OpalProblemDetailFactory.responseWithProblemDetail(HttpStatus.UNAUTHORIZED, problemDetail);
+    }
 
     @ExceptionHandler(MissingServletRequestParameterException.class)
     public ResponseEntity<ProblemDetail> handleMissingServletRequestParameterException(
