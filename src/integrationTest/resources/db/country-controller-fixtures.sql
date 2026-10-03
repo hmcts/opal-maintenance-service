@@ -1,5 +1,8 @@
--- Reset the referencing table together with countries to preserve foreign-key integrity.
-TRUNCATE TABLE public.major_creditors, public.countries RESTART IDENTITY;
+-- Reset the reference rows in dependency order. The fresh DDL-only fixture uses
+-- explicit IDs; DELETE permits the new, empty account/party FK tables to remain
+-- intact instead of cascading TRUNCATE through their full dependency graph.
+DELETE FROM public.major_creditors;
+DELETE FROM public.countries;
 
 INSERT INTO public.countries (
     country_id,
