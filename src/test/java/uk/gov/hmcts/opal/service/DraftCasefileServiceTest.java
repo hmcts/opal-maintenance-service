@@ -10,7 +10,8 @@ import uk.gov.hmcts.opal.authorisation.MaintenanceUser;
 import uk.gov.hmcts.opal.authorisation.MaintenanceUserService;
 import uk.gov.hmcts.opal.common.exception.OpalApiException;
 import uk.gov.hmcts.opal.entity.DraftCasefileEntity;
-import uk.gov.hmcts.opal.event.DraftCasefileSubmittedEvent;
+import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent;
+import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent.Operation;
 import uk.gov.hmcts.opal.exception.DraftCasefileError;
 import uk.gov.hmcts.opal.generated.model.CasefileType;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileAddRequest;
@@ -103,9 +104,11 @@ class DraftCasefileServiceTest {
             .satisfies(entry -> assertThat(entry.getStatusDate()).isEqualTo(response.getCreatedDate()));
         verify(clock).instant();
         verify(validator).validate(request);
-        verify(events).publishEvent(new DraftCasefileSubmittedEvent(123L, 99L, "192.0.2.1", expected,
+        verify(userService).requireAuthorisedUser((short) 1, CREATE_MANAGE_DRAFT_CASEFILES);
+        verify(events).publishEvent(new DraftCasefilePersonalDataEvent(Operation.SUBMISSION,
+            123L, 99L, "192.0.2.1", expected,
             new DraftCasefileParticipantCategoryResolver().resolve(request.getCasefile())));
-        assertThat(Arrays.stream(DraftCasefileSubmittedEvent.class.getRecordComponents()).map(c -> c.getName()))
-            .containsExactly("draftId", "userId", "ipAddress", "submittedAt", "participantCategories");
+        assertThat(Arrays.stream(DraftCasefilePersonalDataEvent.class.getRecordComponents()).map(c -> c.getName()))
+            .containsExactly("operation", "draftId", "userId", "ipAddress", "occurredAt", "participantCategories");
     }
 }

@@ -5,8 +5,9 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
-import uk.gov.hmcts.opal.event.DraftCasefileSubmittedEvent;
-import uk.gov.hmcts.opal.event.DraftCasefileSubmittedEvent.ParticipantCategory;
+import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent;
+import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent.Operation;
+import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent.ParticipantCategory;
 
 import java.time.Instant;
 import java.util.EnumSet;
@@ -70,14 +71,15 @@ class DraftCasefileParticipantCategoryResolverTest {
               "uk_bank_details":{"account_name":"SYNTHETIC_BANK_MARKER"}}}}
             """);
         Set<ParticipantCategory> categories = EnumSet.copyOf(resolver.resolve(casefile));
-        DraftCasefileSubmittedEvent event = new DraftCasefileSubmittedEvent(123L, 99L, "192.0.2.1",
+        DraftCasefilePersonalDataEvent event = new DraftCasefilePersonalDataEvent(Operation.SUBMISSION,
+            123L, 99L, "192.0.2.1",
             Instant.parse("2026-10-01T12:00:00.123456Z"), categories);
         categories.clear();
         assertThat(event.participantCategories()).hasSize(3);
         assertThatThrownBy(() -> event.participantCategories().clear())
             .isInstanceOf(UnsupportedOperationException.class);
-        assertThat(DraftCasefileSubmittedEvent.class.getRecordComponents()).extracting("name")
-            .containsExactly("draftId", "userId", "ipAddress", "submittedAt", "participantCategories");
+        assertThat(DraftCasefilePersonalDataEvent.class.getRecordComponents()).extracting("name")
+            .containsExactly("operation", "draftId", "userId", "ipAddress", "occurredAt", "participantCategories");
         assertThat(event.toString()).doesNotContain("SYNTHETIC_NAME_MARKER", "SYNTHETIC_ADDRESS_MARKER",
             "SYNTHETIC_BANK_MARKER");
     }
