@@ -8,6 +8,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
@@ -25,11 +26,13 @@ import tools.jackson.databind.json.JsonMapper;
 import uk.gov.hmcts.opal.BaseIntegrationTest;
 import uk.gov.hmcts.opal.authorisation.MaintenanceUser;
 import uk.gov.hmcts.opal.entity.DraftCasefileEntity;
-import uk.gov.hmcts.opal.event.DraftCasefileSubmittedEvent;
-import uk.gov.hmcts.opal.event.DraftCasefileSubmittedEvent.ParticipantCategory;
+import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent;
+import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent.Operation;
+import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent.ParticipantCategory;
 import uk.gov.hmcts.opal.generated.model.CasefileType;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileAddRequest;
 import uk.gov.hmcts.opal.logging.integration.config.PdpoAsyncProperties;
+import uk.gov.hmcts.opal.logging.integration.dto.PersonalDataProcessingCategory;
 import uk.gov.hmcts.opal.logging.integration.dto.PersonalDataProcessingLogDetails;
 import uk.gov.hmcts.opal.logging.integration.mapper.PdpoQueueLogDetailsMapperImpl;
 import uk.gov.hmcts.opal.logging.integration.service.LoggingService;
@@ -128,6 +131,42 @@ class DraftCasefilePersonalDataLoggingTransactionIntegrationTest extends BaseInt
     }
 
     @Test
+    void viewPublishesOnlyAfterReadOnlyTransactionCommits() {
+        when(logging.personalDataAccessLogAsync(any())).thenReturn(true);
+        TransactionTemplate readOnly = new TransactionTemplate(transactionManager);
+        readOnly.setReadOnly(true);
+        readOnly.executeWithoutResult(transaction -> {
+            events.publishEvent(viewEvent());
+            verifyNoInteractions(logging);
+        });
+        ArgumentCaptor<PersonalDataProcessingLogDetails> details =
+            ArgumentCaptor.forClass(PersonalDataProcessingLogDetails.class);
+        verify(logging, times(4)).personalDataAccessLogAsync(details.capture());
+        assertThat(details.getAllValues()).allSatisfy(entry -> {
+            assertThat(entry.getCategory()).isEqualTo(PersonalDataProcessingCategory.CONSULTATION);
+            assertThat(entry.getCreatedAt().toInstant()).isEqualTo(SUBMITTED);
+        });
+    }
+
+    @Test
+    void viewRollbackDoesNotPublish() {
+        TransactionTemplate readOnly = new TransactionTemplate(transactionManager);
+        readOnly.setReadOnly(true);
+        readOnly.executeWithoutResult(transaction -> {
+            events.publishEvent(viewEvent());
+            verifyNoInteractions(logging);
+            transaction.setRollbackOnly();
+        });
+        verifyNoInteractions(logging);
+    }
+
+    @Test
+    void viewOutsideTransactionDoesNotPublish() {
+        events.publishEvent(viewEvent());
+        verifyNoInteractions(logging);
+    }
+
+    @Test
     void eventOutsideTransactionDoesNotPublish() {
         events.publishEvent(event(123L));
         verifyNoInteractions(logging);
@@ -166,7 +205,8 @@ class DraftCasefilePersonalDataLoggingTransactionIntegrationTest extends BaseInt
         appender.start();
         root.addAppender(appender);
         try {
-            listener.onSubmitted(new DraftCasefileSubmittedEvent(987654321L, 987654322L, "192.0.2.77", SUBMITTED,
+            listener.onPersonalDataAccess(new DraftCasefilePersonalDataEvent(Operation.SUBMISSION,
+                987654321L, 987654322L, "192.0.2.77", SUBMITTED,
                 Set.of(ParticipantCategory.RESPONDENT)));
             verify(jms, times(properties.maxRetries())).convertAndSend(eq("synthetic-pdpo"), any(),
                 any(MessagePostProcessor.class));
@@ -203,8 +243,13 @@ class DraftCasefilePersonalDataLoggingTransactionIntegrationTest extends BaseInt
         events.publishEvent(event(savedId));
     }
 
-    private static DraftCasefileSubmittedEvent event(Long id) {
-        return new DraftCasefileSubmittedEvent(id, 99L, "192.0.2.1", SUBMITTED,
+    private static DraftCasefilePersonalDataEvent viewEvent() {
+        return new DraftCasefilePersonalDataEvent(Operation.VIEW, 123L, 99L, "192.0.2.1", SUBMITTED,
+            EnumSet.allOf(ParticipantCategory.class));
+    }
+
+    private static DraftCasefilePersonalDataEvent event(Long id) {
+        return new DraftCasefilePersonalDataEvent(Operation.SUBMISSION, id, 99L, "192.0.2.1", SUBMITTED,
             EnumSet.allOf(ParticipantCategory.class));
     }
 }

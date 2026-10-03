@@ -2,10 +2,13 @@ package uk.gov.hmcts.opal.authorisation;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.test.util.ReflectionTestUtils;
 import uk.gov.hmcts.common.exceptions.standard.UnauthorizedException;
 import uk.gov.hmcts.opal.common.logging.LogUtil;
 import uk.gov.hmcts.opal.common.spring.security.OpalJwtAuthenticationToken;
@@ -22,6 +25,7 @@ import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static uk.gov.hmcts.opal.authorisation.MaintenancePermission.CHECK_VALIDATE_DRAFT_CASEFILES;
 import static uk.gov.hmcts.opal.authorisation.MaintenancePermission.CREATE_MANAGE_DRAFT_CASEFILES;
 
 class MaintenanceUserServiceTest {
@@ -31,6 +35,47 @@ class MaintenanceUserServiceTest {
     @AfterEach
     void clearSecurityContext() {
         SecurityContextHolder.clearContext();
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs = {21L, 22L})
+    void acceptsEitherPermissionInTheRequestedBusinessUnit(long permissionId) {
+        authenticate(state(Map.of(Domain.MAINTENANCE, businessUnitUsers(
+            new BusinessUnitUser("BUU-1", (short) 1,
+                Set.of(new Permission(permissionId, "Synthetic permission")))))), Domain.MAINTENANCE);
+        assertThat(userService.requireAuthorisedUser((short) 1,
+            CREATE_MANAGE_DRAFT_CASEFILES, CHECK_VALIDATE_DRAFT_CASEFILES).businessUnitUserId())
+            .isEqualTo("BUU-1");
+    }
+
+    @Test
+    void cannotUsePermissionFromAnotherBusinessUnit() {
+        authenticate(state(Map.of(Domain.MAINTENANCE, businessUnitUsers(
+            new BusinessUnitUser("BUU-1", (short) 1, Set.of()),
+            new BusinessUnitUser("BUU-2", (short) 2, Set.of(new Permission(22L, "Synthetic permission")))))),
+            Domain.MAINTENANCE);
+        assertThatThrownBy(() -> userService.requireAuthorisedUser((short) 1,
+            CREATE_MANAGE_DRAFT_CASEFILES, CHECK_VALIDATE_DRAFT_CASEFILES))
+            .isInstanceOf(AccessDeniedException.class)
+            .hasMessage("Create and Manage Draft Casefiles or Check and validate draft Casefiles"
+                + " permission is required");
+    }
+
+    @Test
+    void rejectsAnEmptyAcceptedPermissionArray() {
+        assertThatThrownBy(() -> userService.requireAuthorisedUser((short) 1))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessage("At least one permission is required");
+    }
+
+    @Test
+    void deniesWhenPermissionSetIsUnavailable() {
+        BusinessUnitUser unitUser = new BusinessUnitUser("BUU-1", (short) 1, Set.of());
+        authenticate(state(Map.of(Domain.MAINTENANCE, businessUnitUsers(unitUser))), Domain.MAINTENANCE);
+        ReflectionTestUtils.setField(unitUser, "permissions", null);
+        assertThatThrownBy(() -> userService.requireAuthorisedUser((short) 1,
+            CREATE_MANAGE_DRAFT_CASEFILES, CHECK_VALIDATE_DRAFT_CASEFILES))
+            .isInstanceOf(AccessDeniedException.class);
     }
 
     @Test
