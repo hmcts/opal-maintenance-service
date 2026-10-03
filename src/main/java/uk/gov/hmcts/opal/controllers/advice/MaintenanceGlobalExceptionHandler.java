@@ -62,6 +62,17 @@ public class MaintenanceGlobalExceptionHandler {
         return OpalProblemDetailFactory.responseWithProblemDetail(HttpStatus.BAD_REQUEST, problem);
     }
 
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<ProblemDetail> handleIllegalStateException(IllegalStateException exception) {
+        return problemResponse(
+            HttpStatus.INTERNAL_SERVER_ERROR,
+            "Internal Server Error",
+            "An unexpected error occurred while processing your request",
+            "internal-server-error",
+            null
+        );
+    }
+
     @ExceptionHandler(ConstraintViolationException.class)
     public ResponseEntity<ProblemDetail> handleConstraintViolationException(
         ConstraintViolationException exception
