@@ -1,6 +1,7 @@
 package uk.gov.hmcts.opal.authentication.config;
 
 import jakarta.servlet.DispatcherType;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -15,6 +16,7 @@ import org.springframework.security.web.SecurityFilterChain;
 import uk.gov.hmcts.opal.common.user.authentication.exception.CustomAuthenticationExceptions;
 
 @Configuration
+@RequiredArgsConstructor
 public class SecurityConfig {
 
     private static final String[] PUBLIC_GET_ENDPOINTS = {
@@ -24,13 +26,6 @@ public class SecurityConfig {
 
     private final CustomAuthenticationExceptions customAuthenticationExceptions;
     private final PrivacyPreservingOauth2AuthenticationEntryPoint oauth2AuthenticationEntryPoint;
-
-    public SecurityConfig(
-        CustomAuthenticationExceptions customAuthenticationExceptions,
-        PrivacyPreservingOauth2AuthenticationEntryPoint oauth2AuthenticationEntryPoint) {
-        this.customAuthenticationExceptions = customAuthenticationExceptions;
-        this.oauth2AuthenticationEntryPoint = oauth2AuthenticationEntryPoint;
-    }
 
     // CSRF does not apply: this stateless API authenticates only explicit bearer credentials.
     @Bean

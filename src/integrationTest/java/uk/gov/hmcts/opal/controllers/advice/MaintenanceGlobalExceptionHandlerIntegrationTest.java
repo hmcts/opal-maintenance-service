@@ -20,18 +20,32 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import uk.gov.hmcts.common.exceptions.standard.UnauthorizedException;
 import uk.gov.hmcts.opal.BaseIntegrationTest;
 
 @AutoConfigureMockMvc
-@Import(RequestValidationExceptionHandlerIntegrationTest.RequestValidationTestController.class)
+@Import(MaintenanceGlobalExceptionHandlerIntegrationTest.RequestValidationTestController.class)
 @TestPropertySource(properties = {
     "spring.flyway.locations=classpath:db/migration/ddl",
     "management.health.redis.enabled=false"
 })
-class RequestValidationExceptionHandlerIntegrationTest extends BaseIntegrationTest {
+class MaintenanceGlobalExceptionHandlerIntegrationTest extends BaseIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Test
+    void returnsUnauthorizedProblemDetailWithoutDisclosingExceptionDetails() throws Exception {
+        mockMvc.perform(get("/test-support/unauthorized").with(user("test-user")))
+            .andExpect(status().isUnauthorized())
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+            .andExpect(jsonPath("$.type").value("https://hmcts.gov.uk/problems/unauthorized"))
+            .andExpect(jsonPath("$.title").value("Unauthorized"))
+            .andExpect(jsonPath("$.detail").value("Missing or invalid access token"))
+            .andExpect(jsonPath("$.status").value(401))
+            .andExpect(jsonPath("$.operation_id").isNotEmpty())
+            .andExpect(jsonPath("$.retriable").value(false));
+    }
 
     @Test
     void returnsBadRequestProblemDetailWhenRequiredParameterIsMissing() throws Exception {
@@ -98,6 +112,11 @@ class RequestValidationExceptionHandlerIntegrationTest extends BaseIntegrationTe
     @Validated
     @RestController
     static class RequestValidationTestController {
+
+        @GetMapping("/test-support/unauthorized")
+        String unauthorized() {
+            throw new UnauthorizedException("Unauthorized", "Synthetic internal authentication details");
+        }
 
         @GetMapping("/test-support/request-validation")
         String validate(@RequestParam(name = "value") @Min(1) Integer value) {

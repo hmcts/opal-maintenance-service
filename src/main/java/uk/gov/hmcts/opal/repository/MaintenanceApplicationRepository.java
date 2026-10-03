@@ -1,6 +1,7 @@
 package uk.gov.hmcts.opal.repository;
 
 import java.util.List;
+import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -10,6 +11,8 @@ import uk.gov.hmcts.opal.entity.MaintenanceApplicationEntity;
 
 @Repository
 public interface MaintenanceApplicationRepository extends JpaRepository<MaintenanceApplicationEntity, Short> {
+
+    Optional<MaintenanceApplicationEntity> findByApplicationCode(String code);
 
     @Query("""
         SELECT application
