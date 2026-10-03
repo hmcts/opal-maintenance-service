@@ -8,7 +8,8 @@ import uk.gov.hmcts.opal.authorisation.MaintenanceUser;
 import uk.gov.hmcts.opal.authorisation.MaintenanceUserService;
 import uk.gov.hmcts.opal.dto.DraftCasefileSubmission;
 import uk.gov.hmcts.opal.entity.DraftCasefileEntity;
-import uk.gov.hmcts.opal.event.DraftCasefileSubmittedEvent;
+import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent;
+import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent.Operation;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileAddRequest;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileAddResponse;
 import uk.gov.hmcts.opal.logging.DraftCasefileParticipantCategoryResolver;
@@ -42,7 +43,7 @@ public class DraftCasefileService {
         Instant submittedAt = clock.instant().truncatedTo(ChronoUnit.MICROS);
         DraftCasefileEntity entity = repository.save(mapper.toEntity(request, user, submittedAt));
         DraftCasefileAddResponse response = mapper.toResponse(entity);
-        eventPublisher.publishEvent(new DraftCasefileSubmittedEvent(
+        eventPublisher.publishEvent(new DraftCasefilePersonalDataEvent(Operation.SUBMISSION,
             entity.getDraftCasefileId(), user.userId(), user.ipAddress(), submittedAt,
             participantCategoryResolver.resolve(request.getCasefile())));
         return new DraftCasefileSubmission(response, entity.getVersionNumber());

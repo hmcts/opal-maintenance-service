@@ -11,14 +11,16 @@ import uk.gov.hmcts.opal.common.user.authorisation.model.DomainBusinessUnitUsers
 import uk.gov.hmcts.opal.common.user.authorisation.model.UserStateV2;
 import uk.gov.hmcts.opal.common.util.SecurityUtil;
 
+import java.util.Arrays;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 public class MaintenanceUserService {
 
     /**
      * Reads the authenticated user's details from the security context,
-     * supplied by User Service, and checks they hold the required permission
+     * supplied by User Service, and checks they hold at least one accepted permission
      * within the requested Maintenance business unit.
      *
      * <p>Each user has a separate set of permissions for each business unit they belong to.
@@ -28,7 +30,10 @@ public class MaintenanceUserService {
      * @throws UnauthorizedException if the current authentication is not an Opal JWT token
      * @throws AccessDeniedException if the required user details or permission are missing
      */
-    public MaintenanceUser requireAuthorisedUser(Short businessUnitId, MaintenancePermission requiredPermission) {
+    public MaintenanceUser requireAuthorisedUser(Short businessUnitId, MaintenancePermission... acceptedPermissions) {
+        if (acceptedPermissions.length == 0) {
+            throw new IllegalArgumentException("At least one permission is required");
+        }
         OpalJwtAuthenticationToken token = SecurityUtil.getOpalJwtAuthenticationTokenForCurrentUser();
         if (token.getUserState() == null) {
             throw new AccessDeniedException("Authenticated user state is unavailable");
@@ -49,8 +54,11 @@ public class MaintenanceUserService {
             || isBlank(businessUnitUser.getBusinessUnitUserId())) {
             throw new AccessDeniedException("Authenticated user identity is incomplete");
         }
-        if (businessUnitUser.getPermissions() == null || !businessUnitUser.hasPermission(requiredPermission)) {
-            throw new AccessDeniedException(requiredPermission.getDescription() + " permission is required");
+        if (businessUnitUser.getPermissions() == null
+            || Arrays.stream(acceptedPermissions).noneMatch(businessUnitUser::hasPermission)) {
+            String descriptions = Arrays.stream(acceptedPermissions)
+                .map(MaintenancePermission::getDescription).collect(Collectors.joining(" or "));
+            throw new AccessDeniedException(descriptions + " permission is required");
         }
 
         return new MaintenanceUser(userState.getUserId(), businessUnitUser.getBusinessUnitUserId(),
