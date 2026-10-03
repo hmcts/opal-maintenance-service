@@ -17,6 +17,7 @@ import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -136,6 +137,30 @@ class MaintenanceGlobalExceptionHandlerIntegrationTest extends BaseIntegrationTe
         assertThat(output).doesNotContain("SYNTHETIC_PRIVATE_MESSAGE", "SYNTHETIC_PRIVATE_CAUSE");
     }
 
+    @Test
+    void returnsExistingDatabaseUnavailableProblemWithoutLoggingExceptionDetails(CapturedOutput output)
+        throws Exception {
+        final int outputStart = output.getAll().length();
+        var result = mockMvc.perform(get("/test-support/database-unavailable").with(user("test-user")))
+            .andExpect(status().isServiceUnavailable())
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+            .andExpect(jsonPath("$.type").value("https://hmcts.gov.uk/problems/database-unavailable"))
+            .andExpect(jsonPath("$.title").value("Service Unavailable"))
+            .andExpect(jsonPath("$.detail").value("Opal database is currently unavailable"))
+            .andExpect(jsonPath("$.status").value(503))
+            .andExpect(jsonPath("$.instance").isNotEmpty())
+            .andExpect(jsonPath("$.operation_id").isNotEmpty())
+            .andExpect(jsonPath("$.retriable").value(true))
+            .andReturn();
+        String response = result.getResponse().getContentAsString();
+        String operationId = result.getResponse().getHeader("operation_id");
+        assertThat(operationId).isNotBlank();
+        assertThat(response).contains(operationId);
+        assertThat(response).doesNotContain("SYNTHETIC_PRIVATE_DATABASE_MESSAGE", "SYNTHETIC_PRIVATE_DATABASE_CAUSE");
+        assertThat(output.getAll().substring(outputStart))
+            .doesNotContain("SYNTHETIC_PRIVATE_DATABASE_MESSAGE", "SYNTHETIC_PRIVATE_DATABASE_CAUSE");
+    }
+
     @Validated
     @RestController
     static class RequestValidationTestController {
@@ -154,6 +179,12 @@ class MaintenanceGlobalExceptionHandlerIntegrationTest extends BaseIntegrationTe
         String illegalState() {
             throw new IllegalStateException("SYNTHETIC_PRIVATE_MESSAGE",
                 new IllegalArgumentException("SYNTHETIC_PRIVATE_CAUSE"));
+        }
+
+        @GetMapping("/test-support/database-unavailable")
+        String databaseUnavailable() {
+            throw new DataAccessResourceFailureException("SYNTHETIC_PRIVATE_DATABASE_MESSAGE",
+                new IllegalArgumentException("SYNTHETIC_PRIVATE_DATABASE_CAUSE"));
         }
 
         @GetMapping("/test-support/internal-constraint")
