@@ -8,16 +8,15 @@ Permission in another Business Unit does not grant access. Add still requires 21
 The response contains the complete stored `casefile`, `casefile_snapshot`,
 `timeline_data`, submission and validation audit fields, status and status message.
 The snapshot carries respondent, applicant and minor-creditor account IDs and
-numbers; each minor creditor retains its source `creditor_sequence`. The legacy
+numbers; each minor creditor retains its source `creditor_sequence`. The
 respondent link columns are not separate top-level response fields. GET maps the
 persisted data after authorisation and does not rebuild the snapshot, validate the
 payload again, append timeline entries, clear validation, or update any row column.
 
 A successful response has a quoted numeric `ETag` containing the current JPA
 version, for example `"0"` after Add. The version is absent from the JSON body and
-GET never increments it. Add-created rows have numeric versions. Nullable legacy
-versions require a deliberate backfill before use; GET fails safely instead of
-writing a version during retrieval.
+GET never increments it. Add-created rows have numeric versions. A missing stored
+version is treated as invalid data; GET fails safely without writing a replacement.
 
 Under TD.44, `casefile_status` is the persisted uppercase code, such as
 `PUBLISHING_PENDING`, and `casefile_status_name` is its display label, such as
@@ -30,7 +29,7 @@ The endpoint uses the shared Problem Details handling and `operation_id`
 correlation: 400 for invalid IDs, 401 for missing or invalid authentication, 403
 for denied own-BU access, 404 for a missing draft, 406 for unsupported Accept,
 503 for an unavailable database, and safe 500 for unreadable stored metadata or
-an unavailable legacy version. Failed retrievals do not publish PDPO events.
+a missing stored version. Failed retrievals do not publish PDPO events.
 
 ## Personal Data Processing Operations (PDPO)
 
