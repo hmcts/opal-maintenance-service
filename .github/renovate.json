@@ -10,6 +10,12 @@
       "allowedVersions": "/^21(?:[.+-]|$)/"
     },
     {
+      "description": "Keep the base Java Docker image on Java 21 until the service is deliberately migrated to a newer Java runtime",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["hmctsprod.azurecr.io/base/java"],
+      "allowedVersions": "/^21(?:-|$)/"
+    },
+    {
       "matchDatasources": ["docker"],
       "matchPackageNames": ["postgres"],
       "enabled": false
