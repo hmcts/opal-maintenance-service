@@ -7,9 +7,9 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 import uk.gov.hmcts.opal.event.DraftCasefileListPersonalDataEvent;
-import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent;
 import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent.Operation;
 import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent.ParticipantCategory;
+import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent;
 import uk.gov.hmcts.opal.logging.integration.dto.IdentifierType;
 import uk.gov.hmcts.opal.logging.integration.dto.ParticipantIdentifier;
 import uk.gov.hmcts.opal.logging.integration.dto.PersonalDataProcessingCategory;
@@ -67,6 +67,7 @@ public class DraftCasefilePersonalDataLoggingListener {
                 logFailure(category);
             }
         } catch (RuntimeException exception) {
+            // Preserve the committed result and omit sensitive publisher diagnostics.
             logFailure(category);
         }
     }

@@ -44,6 +44,11 @@ public interface DraftCasefileRepository extends JpaRepository<DraftCasefileEnti
         @Param("fromInclusive") LocalDateTime fromInclusive,
         @Param("toExclusive") LocalDateTime toExclusive);
 
+    default List<DraftCasefileSummaryProjection> findSummaries(DraftCasefileFilter filter) {
+        return findSummaries(filter.businessUnitId(), filter.submittedBy(), filter.notSubmittedBy(),
+            filter.statuses().isEmpty(), statusCodes(filter), filter.fromInclusive(), filter.toExclusive());
+    }
+
     @Query(value = "SELECT COUNT(*) " + FILTER_SQL, nativeQuery = true)
     long countMatching(
         @Param("businessUnitId") Short businessUnitId,
@@ -53,11 +58,6 @@ public interface DraftCasefileRepository extends JpaRepository<DraftCasefileEnti
         @Param("statuses") List<String> statuses,
         @Param("fromInclusive") LocalDateTime fromInclusive,
         @Param("toExclusive") LocalDateTime toExclusive);
-
-    default List<DraftCasefileSummaryProjection> findSummaries(DraftCasefileFilter filter) {
-        return findSummaries(filter.businessUnitId(), filter.submittedBy(), filter.notSubmittedBy(),
-            filter.statuses().isEmpty(), statusCodes(filter), filter.fromInclusive(), filter.toExclusive());
-    }
 
     default long countMatching(DraftCasefileFilter filter) {
         return countMatching(filter.businessUnitId(), filter.submittedBy(), filter.notSubmittedBy(),

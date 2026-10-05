@@ -13,8 +13,8 @@ import uk.gov.hmcts.opal.authorisation.MaintenanceUserService;
 import uk.gov.hmcts.opal.common.exception.OpalApiException;
 import uk.gov.hmcts.opal.dto.VersionedResponse;
 import uk.gov.hmcts.opal.entity.DraftCasefileEntity;
-import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent;
 import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent.Operation;
+import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent;
 import uk.gov.hmcts.opal.exception.DraftCasefileError;
 import uk.gov.hmcts.opal.generated.model.CasefileType;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileAddRequest;
@@ -34,8 +34,6 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static uk.gov.hmcts.opal.authorisation.MaintenancePermission.CHECK_VALIDATE_DRAFT_CASEFILES;
-import static uk.gov.hmcts.opal.authorisation.MaintenancePermission.CREATE_MANAGE_DRAFT_CASEFILES;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
@@ -44,6 +42,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static uk.gov.hmcts.opal.authorisation.MaintenancePermission.CHECK_VALIDATE_DRAFT_CASEFILES;
+import static uk.gov.hmcts.opal.authorisation.MaintenancePermission.CREATE_MANAGE_DRAFT_CASEFILES;
 
 class DraftCasefileServiceTest {
 
@@ -61,7 +61,8 @@ class DraftCasefileServiceTest {
               "organisation":false,"individual_details":{"surname":"Synthetic"}}}}
             """));
     private final DraftCasefileService service = new DraftCasefileService(userService, validator, repository,
-        new DraftCasefileMapper(new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules()), getMapper, mock(DraftCasefileSummaryMapper.class),
+        new DraftCasefileMapper(new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules()), getMapper,
+        mock(DraftCasefileSummaryMapper.class),
         new DraftCasefileParticipantCategoryResolver(), events, clock);
 
     @BeforeEach

@@ -1,9 +1,9 @@
 package uk.gov.hmcts.opal.validator;
 
 import org.junit.jupiter.api.Test;
+import uk.gov.hmcts.opal.common.exception.OpalApiException;
 import uk.gov.hmcts.opal.entity.DraftCasefileStatus;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileLifecycleStatus;
-import uk.gov.hmcts.opal.common.exception.OpalApiException;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
