@@ -507,7 +507,7 @@ dependencies {
   implementation 'com.networknt:json-schema-validator:3.0.7'
   implementation 'com.jayway.jsonpath:json-path:3.0.0'
 
-  implementation 'org.openapitools:jackson-databind-nullable:0.2.11'
+  implementation 'org.openapitools:jackson-databind-nullable:0.2.12'
   implementation 'org.flywaydb:flyway-core:13.5.0'
   runtimeOnly 'org.flywaydb:flyway-database-postgresql:13.5.0', {
     exclude group: 'org.flywaydb', module: 'flyway-core'
