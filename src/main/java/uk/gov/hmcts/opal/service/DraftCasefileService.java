@@ -11,9 +11,9 @@ import uk.gov.hmcts.opal.dto.DraftCasefileFilter;
 import uk.gov.hmcts.opal.dto.VersionedResponse;
 import uk.gov.hmcts.opal.entity.DraftCasefileEntity;
 import uk.gov.hmcts.opal.event.DraftCasefileListPersonalDataEvent;
-import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent;
-import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent.ParticipantCategory;
 import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent.Operation;
+import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent.ParticipantCategory;
+import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileAddRequest;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileAddResponse;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileGetResponse;
@@ -107,7 +107,8 @@ public class DraftCasefileService {
     ) {
         Map<ParticipantCategory, Set<Long>> grouped = new EnumMap<>(ParticipantCategory.class);
         for (DraftCasefileSummary summary : summaries) {
-            Set<ParticipantCategory> categories = participantCategoryResolver.resolveSummary(summary.getCasefileSnapshot());
+            Set<ParticipantCategory> categories =
+                participantCategoryResolver.resolveSummary(summary.getCasefileSnapshot());
             for (ParticipantCategory category : categories) {
                 grouped.computeIfAbsent(category, unused -> new LinkedHashSet<>()).add(summary.getDraftCasefileId());
             }
