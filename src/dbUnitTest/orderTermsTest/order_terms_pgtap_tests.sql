@@ -1,3 +1,17 @@
+/**
+ * OPAL Program
+ *
+ * MODULE      : order_terms_pgtap_tests.sql
+ *
+ * DESCRIPTION : Verify the Order Terms schema, integrity rules and account interactions.
+ *
+ * CHANGE HISTORY:
+ *
+ * Date        Author        Ticket        Nature of Change
+ * ----------  ------------  ------------  ----------------------------------------
+ * 03/10/2026  Chris Larkin  PO-10653      Initial pgTAP test suite.
+ */
+
 -- PO-10653: V1_27__create_order_terms_table.sql; Tasks 14 and 16.
 -- Boundary applicability: fresh DB-01; direct PostgreSQL catalogue and behaviour.
 -- Existing-state validation: Not run - user-approved initial-schema scope exception.

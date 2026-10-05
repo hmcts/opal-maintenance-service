@@ -1,3 +1,18 @@
+/**
+ * OPAL Program
+ *
+ * MODULE      : draft_casefiles_pgtap_tests.sql
+ *
+ * DESCRIPTION : Verify the Draft Casefiles schema, integrity rules and caller rollback.
+ *
+ * CHANGE HISTORY:
+ *
+ * Date        Author        Ticket        Nature of Change
+ * ----------  ------------  ------------  ----------------------------------------
+ * 26/09/2026  Chris Larkin  PO-10299      Initial pgTAP test suite.
+ * 03/10/2026  Chris Larkin  PO-10659      Update coverage for the account foreign key and unrelated-row preservation.
+ */
+
 -- PO-10299: physical contract, synthetic integrity cases and caller rollback.
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap;

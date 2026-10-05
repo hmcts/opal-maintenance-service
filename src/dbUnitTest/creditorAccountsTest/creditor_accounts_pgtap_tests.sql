@@ -1,3 +1,17 @@
+/**
+ * OPAL Program
+ *
+ * MODULE      : creditor_accounts_pgtap_tests.sql
+ *
+ * DESCRIPTION : Verify the Creditor Accounts schema and integrity rules.
+ *
+ * CHANGE HISTORY:
+ *
+ * Date        Author        Ticket        Nature of Change
+ * ----------  ------------  ------------  ----------------------------------------
+ * 03/10/2026  Chris Larkin  PO-10639      Initial pgTAP test suite.
+ */
+
 -- PO-10639: V1_25__create_creditor_accounts_table.sql
 -- DB-04 contract: columns, comments, owned enum/sequence, defaults, keys and indexes;
 -- required/nullable fields, boundaries, generated IDs and native integrity failures.
@@ -51,6 +65,7 @@ CREATE TEMP TABLE cv_major AS WITH inserted AS (
 -- Scenario: The delivered schema matches the promoted TDIA.
 -- Setup: Read the PostgreSQL catalogues against independent literal expectations.
 -- Expected: Exact columns, comments, keys, indexes, enum labels and owned sequence; no extra rules.
+-- -----------------------------------------------------------------------------
 SELECT has_table('public', 'creditor_accounts', 'creditor_accounts exists');
 SELECT is((SELECT jsonb_agg(jsonb_build_array(attname::text,
         format_type(atttypid, atttypmod), attnotnull,
@@ -150,6 +165,7 @@ SELECT is((SELECT jsonb_agg(enumlabel::text ORDER BY enumsortorder)
 -- Scenario: All three creditor types create accounts without type/identity coupling.
 -- Setup: Insert MN, MJ and CF accounts with optional identity fields omitted.
 -- Expected: Each insert succeeds and uses its owned generated identifier.
+-- -----------------------------------------------------------------------------
 SELECT lives_ok($sql$WITH inserted AS (INSERT INTO public.creditor_accounts
  (business_unit_id, account_number, creditor_account_type, from_suspense, hold_payout, pay_by_bacs)
  VALUES (32061, 'CV-CREDITOR-MN', 'MN', false, false, false) RETURNING creditor_account_id)
@@ -171,6 +187,7 @@ SELECT is((SELECT count(DISTINCT id) FROM (SELECT id FROM cv_subject UNION ALL
 -- Scenario: Each column preserves its declared NULL contract.
 -- Setup: Update the captured minimal valid row one column at a time.
 -- Expected: Required columns reject NULL with 23502; nullable columns accept NULL.
+-- -----------------------------------------------------------------------------
 SELECT throws_ok($sql$UPDATE public.creditor_accounts SET creditor_account_id = NULL
  WHERE creditor_account_id = (SELECT id FROM cv_subject)$sql$, '23502', NULL, 'creditor_account_id rejects NULL');
 SELECT throws_ok($sql$UPDATE public.creditor_accounts SET business_unit_id = NULL
@@ -210,6 +227,7 @@ SELECT lives_ok($sql$UPDATE public.creditor_accounts SET version_number = NULL
 -- Scenario: account_number accepts its exact length and rejects overflow.
 -- Setup: Use the valid subject and isolate the VARCHAR boundary.
 -- Expected: 20 characters succeed; 21 characters fail with 22001.
+-- -----------------------------------------------------------------------------
 SELECT lives_ok($sql$UPDATE public.creditor_accounts SET account_number = repeat('x', 20)
  WHERE creditor_account_id = (SELECT id FROM cv_subject)$sql$, 'account_number accepts 20 characters');
 SELECT throws_ok($sql$UPDATE public.creditor_accounts SET account_number = repeat('x', 21)
@@ -219,6 +237,7 @@ SELECT throws_ok($sql$UPDATE public.creditor_accounts SET account_number = repea
 -- Scenario: bank_sort_code accepts its exact length and rejects overflow.
 -- Setup: Use the valid subject and isolate the VARCHAR boundary.
 -- Expected: 6 characters succeed; 7 characters fail with 22001.
+-- -----------------------------------------------------------------------------
 SELECT lives_ok($sql$UPDATE public.creditor_accounts SET bank_sort_code = repeat('x', 6)
  WHERE creditor_account_id = (SELECT id FROM cv_subject)$sql$, 'bank_sort_code accepts 6 characters');
 SELECT throws_ok($sql$UPDATE public.creditor_accounts SET bank_sort_code = repeat('x', 7)
@@ -228,6 +247,7 @@ SELECT throws_ok($sql$UPDATE public.creditor_accounts SET bank_sort_code = repea
 -- Scenario: bank_account_number accepts its exact length and rejects overflow.
 -- Setup: Use the valid subject and isolate the VARCHAR boundary.
 -- Expected: 10 characters succeed; 11 characters fail with 22001.
+-- -----------------------------------------------------------------------------
 SELECT lives_ok($sql$UPDATE public.creditor_accounts SET bank_account_number = repeat('x', 10)
  WHERE creditor_account_id = (SELECT id FROM cv_subject)$sql$, 'bank_account_number accepts 10 characters');
 SELECT throws_ok($sql$UPDATE public.creditor_accounts SET bank_account_number = repeat('x', 11)
@@ -237,6 +257,7 @@ SELECT throws_ok($sql$UPDATE public.creditor_accounts SET bank_account_number = 
 -- Scenario: bank_account_name accepts its exact length and rejects overflow.
 -- Setup: Use the valid subject and isolate the VARCHAR boundary.
 -- Expected: 18 characters succeed; 19 characters fail with 22001.
+-- -----------------------------------------------------------------------------
 SELECT lives_ok($sql$UPDATE public.creditor_accounts SET bank_account_name = repeat('x', 18)
  WHERE creditor_account_id = (SELECT id FROM cv_subject)$sql$, 'bank_account_name accepts 18 characters');
 SELECT throws_ok($sql$UPDATE public.creditor_accounts SET bank_account_name = repeat('x', 19)
@@ -246,6 +267,7 @@ SELECT throws_ok($sql$UPDATE public.creditor_accounts SET bank_account_name = re
 -- Scenario: bank_account_reference accepts its exact length and rejects overflow.
 -- Setup: Use the valid subject and isolate the VARCHAR boundary.
 -- Expected: 18 characters succeed; 19 characters fail with 22001.
+-- -----------------------------------------------------------------------------
 SELECT lives_ok($sql$UPDATE public.creditor_accounts SET bank_account_reference = repeat('x', 18)
  WHERE creditor_account_id = (SELECT id FROM cv_subject)$sql$, 'bank_account_reference accepts 18 characters');
 SELECT throws_ok($sql$UPDATE public.creditor_accounts SET bank_account_reference = repeat('x', 19)
@@ -257,6 +279,7 @@ SELECT lives_ok($sql$UPDATE public.creditor_accounts SET account_number = 'CV-CR
 -- Scenario: creditor_account_type accepts only its controlled values.
 -- Setup: Update the subject using every literal label, then an unsupported label.
 -- Expected: Each supported value succeeds; the unsupported value fails with 22P02.
+-- -----------------------------------------------------------------------------
 SELECT lives_ok($sql$UPDATE public.creditor_accounts SET creditor_account_type = 'MN'
  WHERE creditor_account_id = (SELECT id FROM cv_subject)$sql$, 'creditor_account_type accepts MN');
 SELECT lives_ok($sql$UPDATE public.creditor_accounts SET creditor_account_type = 'MJ'
@@ -270,6 +293,7 @@ SELECT throws_ok($sql$UPDATE public.creditor_accounts SET creditor_account_type 
 -- Scenario: business_unit_id enforces the declared parent relationship.
 -- Setup: Use a captured synthetic parent and prove the missing key is absent.
 -- Expected: Valid reference succeeds; missing reference and deletion of the referenced parent fail with 23503.
+-- -----------------------------------------------------------------------------
 SELECT ok(NOT EXISTS(SELECT 1 FROM public.business_units WHERE business_unit_id = -32061),
     'business_unit_id missing fixture key is absent');
 SELECT lives_ok($sql$UPDATE public.creditor_accounts SET business_unit_id = 32062
@@ -282,6 +306,7 @@ SELECT throws_ok($sql$DELETE FROM public.business_units WHERE business_unit_id =
 -- Scenario: major_creditor_id enforces the declared parent relationship.
 -- Setup: Use a captured synthetic parent and prove the missing key is absent.
 -- Expected: Valid reference succeeds; missing reference and deletion of the referenced parent fail with 23503.
+-- -----------------------------------------------------------------------------
 SELECT ok(NOT EXISTS(SELECT 1 FROM public.major_creditors WHERE major_creditor_id = -990061),
     'major_creditor_id missing fixture key is absent');
 SELECT lives_ok($sql$UPDATE public.creditor_accounts SET major_creditor_id = (SELECT major_creditor_id FROM cv_major)
@@ -294,6 +319,7 @@ SELECT throws_ok($sql$DELETE FROM public.major_creditors WHERE major_creditor_id
 -- Scenario: minor_creditor_party_id enforces the declared parent relationship.
 -- Setup: Use a captured synthetic parent and prove the missing key is absent.
 -- Expected: Valid reference succeeds; missing reference and deletion of the referenced parent fail with 23503.
+-- -----------------------------------------------------------------------------
 SELECT ok(NOT EXISTS(SELECT 1 FROM public.parties WHERE party_id = -990061),
     'minor_creditor_party_id missing fixture key is absent');
 SELECT lives_ok($sql$UPDATE public.creditor_accounts SET minor_creditor_party_id = (SELECT party_id FROM cv_party)
@@ -306,6 +332,7 @@ SELECT throws_ok($sql$DELETE FROM public.parties WHERE party_id = (SELECT party_
 -- Scenario: third_party_contact_id enforces the declared parent relationship.
 -- Setup: Use a captured synthetic parent and prove the missing key is absent.
 -- Expected: Valid reference succeeds; missing reference and deletion of the referenced parent fail with 23503.
+-- -----------------------------------------------------------------------------
 SELECT ok(NOT EXISTS(SELECT 1 FROM public.third_party_contact WHERE third_party_contact_id = -990061),
     'third_party_contact_id missing fixture key is absent');
 SELECT lives_ok($sql$UPDATE public.creditor_accounts SET third_party_contact_id = (SELECT third_party_contact_id FROM cv_contact)
@@ -320,6 +347,7 @@ SELECT lives_ok($sql$UPDATE public.creditor_accounts SET business_unit_id = 3206
 -- Scenario: Creditor identities follow only the declared primary/scoped unique keys.
 -- Setup: Reuse subject IDs/numbers and then move the second account to another unit.
 -- Expected: Same IDs/pairs fail 23505; the same number in another unit succeeds.
+-- -----------------------------------------------------------------------------
 SELECT throws_ok($sql$UPDATE public.creditor_accounts SET creditor_account_id = (SELECT id FROM cv_subject)
  WHERE creditor_account_id = (SELECT id FROM cv_second)$sql$, '23505', NULL, 'duplicate creditor primary key rejected');
 SELECT throws_ok($sql$UPDATE public.creditor_accounts SET account_number = 'CV-CREDITOR-MN'
@@ -331,6 +359,7 @@ SELECT lives_ok($sql$UPDATE public.creditor_accounts SET business_unit_id = 3206
 -- Scenario: Optional bank details and identity fields remain independent.
 -- Setup: The subject already has both Major Creditor and Minor Party references; supply JSON, date and flags.
 -- Expected: No mutual-exclusion/type pairing rule; structured JSON and UTC-convention values persist.
+-- -----------------------------------------------------------------------------
 SELECT lives_ok($sql$UPDATE public.creditor_accounts SET creditor_account_type = 'CF', from_suspense = true, hold_payout = true, pay_by_bacs = true, non_uk_bank_detail = '{"bank":"Synthetic bank","routing":["x",null]}', version_number = -1, last_changed_date = TIMESTAMP '2026-01-02 03:04:05.123456'
  WHERE creditor_account_id = (SELECT id FROM cv_subject)$sql$, 'both identity references and nullable banking/version fields accepted for CF');
 SELECT is((SELECT non_uk_bank_detail::jsonb FROM public.creditor_accounts
@@ -344,6 +373,7 @@ SELECT is((SELECT last_changed_date FROM public.creditor_accounts
 -- Scenario: Native creditor types reject malformed and overflowing input.
 -- Setup: Update the valid captured row one field at a time.
 -- Expected: Physical types return 22P02 or 22003 without custom business validation.
+-- -----------------------------------------------------------------------------
 SELECT throws_ok($sql$UPDATE public.creditor_accounts SET non_uk_bank_detail = '{invalid}'
  WHERE creditor_account_id = (SELECT id FROM cv_subject)$sql$, '22P02', NULL, 'non_uk_bank_detail rejects invalid native input');
 SELECT throws_ok($sql$UPDATE public.creditor_accounts SET from_suspense = 'invalid'

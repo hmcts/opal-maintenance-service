@@ -9,7 +9,7 @@
  *
  * Date        Author        Ticket        Nature of Change
  * ----------  ------------  ------------  ----------------------------------------
- * 03/10/2026  Codex         PO-10638      Create approved database object.
+ * 03/10/2026  Chris Larkin  PO-10638      Create approved database object.
  */
 
 CREATE SEQUENCE public.configuration_item_id_seq AS BIGINT START WITH 1 INCREMENT BY 1 NO CYCLE CACHE 1;

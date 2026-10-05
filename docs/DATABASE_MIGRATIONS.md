@@ -55,6 +55,11 @@ Every file-level and embedded header must contain:
 - `DESCRIPTION`, stating the purpose and scope of the migration or routine.
 - `CHANGE HISTORY`, with `Date`, `Author`, `Ticket`, and `Nature of Change` columns.
 
+`Author` must identify the responsible human contributor. For agent-assisted
+changes, use the human owner confirmed for the work, never `Codex` or another
+agent name. Ask if that owner is unknown. Preserve trustworthy historical
+attribution; this rule does not authorise rewriting applied migrations.
+
 Do not add a manual `Version` field; the Flyway filename is the migration version. An embedded stored procedure or function header must also contain `PARAMETERS`, documenting every `IN`, `OUT`, and `INOUT` parameter in signature order. Update the parameter documentation whenever a parameter's signature or meaning changes. File-level headers, including headers for view migrations, do not contain `PARAMETERS`.
 
 ### Carry-forward history rules

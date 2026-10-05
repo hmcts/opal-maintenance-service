@@ -10,7 +10,7 @@
  *
  * Date        Author        Ticket        Nature of Change
  * ----------  ------------  ------------  ----------------------------------------
- * 03/10/2026  Codex         PO-10659      Enforce published Respondent Account link.
+ * 03/10/2026  Chris Larkin  PO-10659      Enforce published Respondent Account link.
  */
 
 ALTER TABLE public.draft_casefiles

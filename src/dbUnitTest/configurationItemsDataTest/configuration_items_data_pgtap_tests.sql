@@ -1,3 +1,17 @@
+/**
+ * OPAL Program
+ *
+ * MODULE      : configuration_items_data_pgtap_tests.sql
+ *
+ * DESCRIPTION : Verify approved configuration data, generated IDs, replay and preservation.
+ *
+ * CHANGE HISTORY:
+ *
+ * Date        Author        Ticket        Nature of Change
+ * ----------  ------------  ------------  ----------------------------------------
+ * 03/10/2026  Chris Larkin  PO-10636      Initial pgTAP test suite.
+ */
+
 -- PO-10636 / M03 / V1_17: two approved global configuration records.
 -- Source: rm/common/reference-data/configuration-items.csv; independent literal expectations.
 -- Fresh DB-01, plus actual-file replay inside this rolled-back synthetic transaction.
@@ -10,9 +24,11 @@ SET LOCAL search_path=public,pg_temp;
 SET LOCAL TIME ZONE 'UTC';
 SELECT plan(28);
 
+-- ---------------------------------------------------------------------------
 -- Scenario: Source/target agreement and generated identifiers.
 -- Setup: Load an independent two-row expected relation from the approved CSV contract.
 -- Expected: Exact selected rows in both directions, distinct generated IDs, scalar values and NULL JSON.
+-- ---------------------------------------------------------------------------
 CREATE TEMP TABLE cv_expected_config(item_name text,business_unit_id smallint,item_value text,item_values text);
 INSERT INTO cv_expected_config VALUES
  ('DEFAULT_CHEQUE_CLEARANCE_PERIOD',NULL,'10',NULL),
@@ -28,9 +44,11 @@ SELECT is(pg_typeof((SELECT item_value FROM public.configuration_items WHERE ite
 SELECT is((SELECT count(*) FROM public.flyway_schema_history WHERE script='V1_17__insert_configuration_items_data.sql' AND success),1::bigint,'allocated allEnvs file appears in successful Flyway history');
 CREATE TEMP TABLE cv_original AS SELECT item_name,configuration_item_id,xmin::text AS xmin_value FROM public.configuration_items WHERE business_unit_id IS NULL AND item_name IN (SELECT item_name FROM cv_expected_config);
 
+-- ---------------------------------------------------------------------------
 -- Scenario: Replay preserves unrelated data and Business Unit overrides.
 -- Setup: One synthetic Business Unit, one unrelated global JSON key and two overrides.
 -- Expected: Replaying the real migration writes no unchanged target rows and preserves every other row.
+-- ---------------------------------------------------------------------------
 DO $fixture$ BEGIN
  IF EXISTS (SELECT 1 FROM public.business_units WHERE business_unit_id=32061 OR business_unit_code='CV61') THEN RAISE EXCEPTION 'Synthetic configuration-test Business Unit collision'; END IF;
  IF EXISTS (SELECT 1 FROM public.configuration_items WHERE item_name='CV_UNRELATED') THEN RAISE EXCEPTION 'Synthetic configuration key collision'; END IF;
@@ -49,9 +67,11 @@ SELECT is((SELECT count(*) FROM cv_original o JOIN public.configuration_items c 
 SELECT is_empty($s$SELECT configuration_item_id,row_value FROM cv_unrelated EXCEPT SELECT configuration_item_id,to_jsonb(c) FROM public.configuration_items c WHERE NOT (business_unit_id IS NULL AND item_name IN (SELECT item_name FROM cv_expected_config))$s$,'no unrelated before-image changed after replay');
 SELECT is_empty($s$SELECT configuration_item_id,to_jsonb(c) FROM public.configuration_items c WHERE NOT (business_unit_id IS NULL AND item_name IN (SELECT item_name FROM cv_expected_config)) EXCEPT SELECT configuration_item_id,row_value FROM cv_unrelated$s$,'no unexplained unrelated row after replay');
 
+-- ---------------------------------------------------------------------------
 -- Scenario: Correct only the approved target values.
 -- Setup: Change one scalar to 99 and the other structured value to a non-NULL object.
 -- Expected: Real-file replay corrects exactly two rows, preserving IDs and all unrelated rows.
+-- ---------------------------------------------------------------------------
 UPDATE public.configuration_items SET item_value='99' WHERE item_name='DEFAULT_CHEQUE_CLEARANCE_PERIOD' AND business_unit_id IS NULL;
 UPDATE public.configuration_items SET item_values='{}'::json WHERE item_name='DEFAULT_CREDIT_TRANS_CLEARANCE_PERIOD' AND business_unit_id IS NULL;
 \i :cv_configuration_migration
@@ -63,9 +83,11 @@ SELECT is((SELECT count(*) FROM cv_original o JOIN public.configuration_items c 
 SELECT is_empty($s$SELECT configuration_item_id,row_value FROM cv_unrelated EXCEPT SELECT configuration_item_id,to_jsonb(c) FROM public.configuration_items c WHERE NOT (business_unit_id IS NULL AND item_name IN (SELECT item_name FROM cv_expected_config))$s$,'correction preserves unrelated before-images');
 SELECT is_empty($s$SELECT configuration_item_id,to_jsonb(c) FROM public.configuration_items c WHERE NOT (business_unit_id IS NULL AND item_name IN (SELECT item_name FROM cv_expected_config)) EXCEPT SELECT configuration_item_id,row_value FROM cv_unrelated$s$,'correction creates no unexplained unrelated data');
 
+-- ---------------------------------------------------------------------------
 -- Scenario: Restore a missing approved key without copying identifiers.
 -- Setup: Delete one selected global row in this transaction, retaining the other and all overrides.
 -- Expected: Replay inserts exactly one generated row; another replay is a no-op.
+-- ---------------------------------------------------------------------------
 DELETE FROM public.configuration_items WHERE item_name='DEFAULT_CHEQUE_CLEARANCE_PERIOD' AND business_unit_id IS NULL;
 \i :cv_configuration_migration
 \set cv_affected :ROW_COUNT

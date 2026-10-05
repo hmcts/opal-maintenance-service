@@ -1,3 +1,17 @@
+/**
+ * OPAL Program
+ *
+ * MODULE      : debtor_detail_pgtap_tests.sql
+ *
+ * DESCRIPTION : Verify the Debtor Detail schema and approved employer nullability.
+ *
+ * CHANGE HISTORY:
+ *
+ * Date        Author        Ticket        Nature of Change
+ * ----------  ------------  ------------  ----------------------------------------
+ * 03/10/2026  Chris Larkin  PO-10641      Initial pgTAP test suite.
+ */
+
 -- PO-10641: V1_19__create_debtor_detail_table.sql
 -- Boundary applicability: fresh DB-01; direct PostgreSQL catalogue and behaviour.
 -- Existing-state validation: Not run - user-approved initial-schema scope exception.

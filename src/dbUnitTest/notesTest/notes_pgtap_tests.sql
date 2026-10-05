@@ -1,3 +1,17 @@
+/**
+ * OPAL Program
+ *
+ * MODULE      : notes_pgtap_tests.sql
+ *
+ * DESCRIPTION : Verify the Notes schema, shared record type and integrity rules.
+ *
+ * CHANGE HISTORY:
+ *
+ * Date        Author        Ticket        Nature of Change
+ * ----------  ------------  ------------  ----------------------------------------
+ * 03/10/2026  Chris Larkin  PO-10652      Initial pgTAP test suite.
+ */
+
 \set ON_ERROR_STOP on
 -- PO-10652: catalogue and behavioural contract for the approved initial schema.
 -- Applicability: fresh DB-01 path. Existing-state validation is not run under

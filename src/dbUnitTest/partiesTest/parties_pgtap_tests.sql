@@ -1,3 +1,17 @@
+/**
+ * OPAL Program
+ *
+ * MODULE      : parties_pgtap_tests.sql
+ *
+ * DESCRIPTION : Verify the Parties schema and integrity rules.
+ *
+ * CHANGE HISTORY:
+ *
+ * Date        Author        Ticket        Nature of Change
+ * ----------  ------------  ------------  ----------------------------------------
+ * 03/10/2026  Chris Larkin  PO-10654      Initial pgTAP test suite.
+ */
+
 -- PO-10654: V1_18__create_parties_table.sql
 -- Boundary applicability: fresh DB-01; direct PostgreSQL catalogue and behaviour.
 -- Existing-state validation: Not run - user-approved initial-schema scope exception.

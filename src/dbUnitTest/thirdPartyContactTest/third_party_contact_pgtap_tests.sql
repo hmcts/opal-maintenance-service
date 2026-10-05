@@ -1,3 +1,17 @@
+/**
+ * OPAL Program
+ *
+ * MODULE      : third_party_contact_pgtap_tests.sql
+ *
+ * DESCRIPTION : Verify the Third Party Contact schema and integrity rules.
+ *
+ * CHANGE HISTORY:
+ *
+ * Date        Author        Ticket        Nature of Change
+ * ----------  ------------  ------------  ----------------------------------------
+ * 03/10/2026  Chris Larkin  PO-10658      Initial pgTAP test suite.
+ */
+
 -- PO-10658: V1_20__create_third_party_contact_table.sql
 -- Boundary applicability: fresh DB-01; direct PostgreSQL catalogue and behaviour.
 -- Existing-state validation: Not run - user-approved initial-schema scope exception.

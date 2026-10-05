@@ -12,7 +12,7 @@
  *
  * Date        Author        Ticket        Nature of Change
  * ----------  ------------  ------------  ----------------------------------------
- * 03/10/2026  Codex         PO-10636      Load global clearance configuration.
+ * 03/10/2026  Chris Larkin  PO-10636      Load global clearance configuration.
  */
 
 INSERT INTO public.configuration_items AS current_item

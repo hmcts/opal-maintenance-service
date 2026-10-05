@@ -1,3 +1,17 @@
+/**
+ * OPAL Program
+ *
+ * MODULE      : respondent_account_parties_pgtap_tests.sql
+ *
+ * DESCRIPTION : Verify the Respondent Account Parties schema and polymorphic links.
+ *
+ * CHANGE HISTORY:
+ *
+ * Date        Author        Ticket        Nature of Change
+ * ----------  ------------  ------------  ----------------------------------------
+ * 03/10/2026  Chris Larkin  PO-10656      Initial pgTAP test suite.
+ */
+
 -- PO-10656: V1_26__create_respondent_account_parties_table.sql
 -- DB-04 contract: columns, comments, owned enum/sequence, defaults, keys and indexes;
 -- required/nullable fields, boundaries, generated IDs and native integrity failures.
@@ -41,6 +55,7 @@ CREATE TEMP TABLE cv_central (id bigint PRIMARY KEY);
 -- Scenario: The delivered schema matches the promoted TDIA.
 -- Setup: Read the PostgreSQL catalogues against independent literal expectations.
 -- Expected: Exact columns, comments, keys, indexes, enum labels and owned sequence; no extra rules.
+-- -----------------------------------------------------------------------------
 SELECT has_table('public', 'respondent_account_parties', 'respondent_account_parties exists');
 SELECT is((SELECT jsonb_agg(jsonb_build_array(attname::text,
         format_type(atttypid, atttypmod), attnotnull,
@@ -117,6 +132,7 @@ SELECT is((SELECT jsonb_agg(enumlabel::text ORDER BY enumsortorder)
 -- Scenario: Every association label accepts an unconstrained polymorphic target.
 -- Setup: Use a synthetic Respondent Account and a negative ID absent from all possible target tables.
 -- Expected: Each association inserts; this proves no polymorphic FK while the later helper remains out of scope.
+-- -----------------------------------------------------------------------------
 SELECT ok(NOT EXISTS (SELECT 1 FROM public.parties WHERE party_id = -990061)
     AND NOT EXISTS (SELECT 1 FROM public.creditor_accounts WHERE creditor_account_id = -990061)
     AND NOT EXISTS (SELECT 1 FROM public.major_creditors WHERE major_creditor_id = -990061),
@@ -141,6 +157,7 @@ SELECT is((SELECT count(DISTINCT id) FROM (SELECT id FROM cv_subject UNION ALL
 -- Scenario: Each column preserves its declared NULL contract.
 -- Setup: Update the captured minimal valid row one column at a time.
 -- Expected: Required columns reject NULL with 23502; nullable columns accept NULL.
+-- -----------------------------------------------------------------------------
 SELECT throws_ok($sql$UPDATE public.respondent_account_parties SET respondent_account_party_id = NULL
  WHERE respondent_account_party_id = (SELECT id FROM cv_subject)$sql$, '23502', NULL, 'respondent_account_party_id rejects NULL');
 SELECT throws_ok($sql$UPDATE public.respondent_account_parties SET respondent_account_id = NULL
@@ -154,6 +171,7 @@ SELECT throws_ok($sql$UPDATE public.respondent_account_parties SET association_t
 -- Scenario: association_type accepts only its controlled values.
 -- Setup: Update the subject using every literal label, then an unsupported label.
 -- Expected: Each supported value succeeds; the unsupported value fails with 22P02.
+-- -----------------------------------------------------------------------------
 SELECT lives_ok($sql$UPDATE public.respondent_account_parties SET association_type = 'Respondent'
  WHERE respondent_account_party_id = (SELECT id FROM cv_subject)$sql$, 'association_type accepts Respondent');
 SELECT lives_ok($sql$UPDATE public.respondent_account_parties SET association_type = 'Applicant'
@@ -167,6 +185,7 @@ SELECT throws_ok($sql$UPDATE public.respondent_account_parties SET association_t
 -- Scenario: respondent_account_id enforces the declared parent relationship.
 -- Setup: Use a captured synthetic parent and prove the missing key is absent.
 -- Expected: Valid reference succeeds; missing reference and deletion of the referenced parent fail with 23503.
+-- -----------------------------------------------------------------------------
 SELECT ok(NOT EXISTS(SELECT 1 FROM public.respondent_accounts WHERE respondent_account_id = -990061),
     'respondent_account_id missing fixture key is absent');
 SELECT lives_ok($sql$UPDATE public.respondent_account_parties SET respondent_account_id = (SELECT respondent_account_id FROM cv_respondent)
@@ -179,6 +198,7 @@ SELECT throws_ok($sql$DELETE FROM public.respondent_accounts WHERE respondent_ac
 -- Scenario: The association table enforces its PK without inventing scoped uniqueness.
 -- Setup: Attempt a duplicate ID, then insert a repeated association with a generated ID.
 -- Expected: The ID collision fails 23505; the repeated association succeeds.
+-- -----------------------------------------------------------------------------
 SELECT throws_ok($sql$UPDATE public.respondent_account_parties SET respondent_account_party_id = (SELECT id FROM cv_subject)
  WHERE respondent_account_party_id = (SELECT id FROM cv_second)$sql$, '23505', NULL, 'duplicate association primary key rejected');
 SELECT lives_ok($sql$INSERT INTO public.respondent_account_parties(respondent_account_id, associated_account_id, association_type)
@@ -188,6 +208,7 @@ SELECT lives_ok($sql$INSERT INTO public.respondent_account_parties(respondent_ac
 -- Scenario: Association identifiers retain native BIGINT input validation.
 -- Setup: Update a valid association with malformed or overflowing identifiers.
 -- Expected: Native casts reject malformed input with 22P02 and overflow with 22003.
+-- -----------------------------------------------------------------------------
 SELECT throws_ok($sql$UPDATE public.respondent_account_parties SET associated_account_id = 'invalid'
  WHERE respondent_account_party_id = (SELECT id FROM cv_subject)$sql$, '22P02', NULL, 'associated ID rejects malformed BIGINT');
 SELECT throws_ok($sql$UPDATE public.respondent_account_parties SET associated_account_id = '9223372036854775808'

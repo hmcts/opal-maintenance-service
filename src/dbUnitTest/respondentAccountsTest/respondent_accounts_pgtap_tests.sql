@@ -1,3 +1,17 @@
+/**
+ * OPAL Program
+ *
+ * MODULE      : respondent_accounts_pgtap_tests.sql
+ *
+ * DESCRIPTION : Verify the Respondent Accounts schema and approved constraint boundaries.
+ *
+ * CHANGE HISTORY:
+ *
+ * Date        Author        Ticket        Nature of Change
+ * ----------  ------------  ------------  ----------------------------------------
+ * 03/10/2026  Chris Larkin  PO-10657      Initial pgTAP test suite.
+ */
+
 -- PO-10657: V1_24__create_respondent_accounts_table.sql
 -- DB-04 contract: columns, comments, owned enum/sequence, defaults, keys and indexes;
 -- required/nullable fields, boundaries, generated IDs and native integrity failures.
@@ -65,6 +79,7 @@ VALUES ('CVR001', 'Synthetic Result', false, true, false, true, false, false, fa
 -- Scenario: The delivered schema matches the promoted TDIA.
 -- Setup: Read the PostgreSQL catalogues against independent literal expectations.
 -- Expected: Exact columns, comments, keys, indexes, enum labels and owned sequence; no extra rules.
+-- -----------------------------------------------------------------------------
 SELECT has_table('public', 'respondent_accounts', 'respondent_accounts exists');
 SELECT is((SELECT jsonb_agg(jsonb_build_array(attname::text,
         format_type(atttypid, atttypmod), attnotnull,
@@ -195,6 +210,7 @@ SELECT is((SELECT jsonb_agg(enumlabel::text ORDER BY enumsortorder)
 -- Scenario: A minimal live account generates its identifier.
 -- Setup: Supply required financial, boolean, clearance and version values explicitly.
 -- Expected: The insert succeeds with no business defaults or account allocator dependency.
+-- -----------------------------------------------------------------------------
 SELECT lives_ok($sql$WITH inserted AS (INSERT INTO public.respondent_accounts(business_unit_id, account_number, application_id, account_balance, orders_balance, orders_amount, payment_period, total_arrears, account_status, last_movement_date, date_arrears_last_updated, allow_cheques, cheque_clearance_period, credit_trans_clearance_period, casefile_type, interest_flag, indexation, payment_arrangement, version_number)
  SELECT 32061, 'CV-RESPONDENT', application_id, 0, 0, 0, 'Weekly', 0, 'L', TIMESTAMP '2026-01-01 12:00:00', TIMESTAMP '2026-01-01 12:00:00', true, 10, 0, 'REMO In', false, 'None', 'Court', 1 FROM cv_application RETURNING respondent_account_id)
  INSERT INTO cv_subject SELECT respondent_account_id FROM inserted$sql$, 'minimal valid Respondent Account');
@@ -203,6 +219,7 @@ SELECT lives_ok($sql$WITH inserted AS (INSERT INTO public.respondent_accounts(bu
 -- Scenario: Each column preserves its declared NULL contract.
 -- Setup: Update the captured minimal valid row one column at a time.
 -- Expected: Required columns reject NULL with 23502; nullable columns accept NULL.
+-- -----------------------------------------------------------------------------
 SELECT throws_ok($sql$UPDATE public.respondent_accounts SET respondent_account_id = NULL
  WHERE respondent_account_id = (SELECT id FROM cv_subject)$sql$, '23502', NULL, 'respondent_account_id rejects NULL');
 SELECT throws_ok($sql$UPDATE public.respondent_accounts SET business_unit_id = NULL
@@ -272,6 +289,7 @@ SELECT throws_ok($sql$UPDATE public.respondent_accounts SET version_number = NUL
 -- Scenario: account_number accepts its exact length and rejects overflow.
 -- Setup: Use the valid subject and isolate the VARCHAR boundary.
 -- Expected: 20 characters succeed; 21 characters fail with 22001.
+-- -----------------------------------------------------------------------------
 SELECT lives_ok($sql$UPDATE public.respondent_accounts SET account_number = repeat('x', 20)
  WHERE respondent_account_id = (SELECT id FROM cv_subject)$sql$, 'account_number accepts 20 characters');
 SELECT throws_ok($sql$UPDATE public.respondent_accounts SET account_number = repeat('x', 21)
@@ -281,6 +299,7 @@ SELECT throws_ok($sql$UPDATE public.respondent_accounts SET account_number = rep
 -- Scenario: last_enforcement_result_id accepts its exact length and rejects overflow.
 -- Setup: Use the valid subject and isolate the VARCHAR boundary.
 -- Expected: 6 characters succeed; 7 characters fail with 22001.
+-- -----------------------------------------------------------------------------
 SELECT lives_ok($sql$UPDATE public.respondent_accounts SET last_enforcement_result_id = 'CVLENA'
  WHERE respondent_account_id = (SELECT id FROM cv_subject)$sql$, 'last_enforcement_result_id accepts 6 characters');
 SELECT throws_ok($sql$UPDATE public.respondent_accounts SET last_enforcement_result_id = repeat('x', 7)
@@ -290,6 +309,7 @@ SELECT throws_ok($sql$UPDATE public.respondent_accounts SET last_enforcement_res
 -- Scenario: originator_name accepts its exact length and rejects overflow.
 -- Setup: Use the valid subject and isolate the VARCHAR boundary.
 -- Expected: 200 characters succeed; 201 characters fail with 22001.
+-- -----------------------------------------------------------------------------
 SELECT lives_ok($sql$UPDATE public.respondent_accounts SET originator_name = repeat('x', 200)
  WHERE respondent_account_id = (SELECT id FROM cv_subject)$sql$, 'originator_name accepts 200 characters');
 SELECT throws_ok($sql$UPDATE public.respondent_accounts SET originator_name = repeat('x', 201)
@@ -299,6 +319,7 @@ SELECT throws_ok($sql$UPDATE public.respondent_accounts SET originator_name = re
 -- Scenario: remo_reference accepts its exact length and rejects overflow.
 -- Setup: Use the valid subject and isolate the VARCHAR boundary.
 -- Expected: 20 characters succeed; 21 characters fail with 22001.
+-- -----------------------------------------------------------------------------
 SELECT lives_ok($sql$UPDATE public.respondent_accounts SET remo_reference = repeat('x', 20)
  WHERE respondent_account_id = (SELECT id FROM cv_subject)$sql$, 'remo_reference accepts 20 characters');
 SELECT throws_ok($sql$UPDATE public.respondent_accounts SET remo_reference = repeat('x', 21)
@@ -308,6 +329,7 @@ SELECT throws_ok($sql$UPDATE public.respondent_accounts SET remo_reference = rep
 -- Scenario: ca_reference accepts its exact length and rejects overflow.
 -- Setup: Use the valid subject and isolate the VARCHAR boundary.
 -- Expected: 50 characters succeed; 51 characters fail with 22001.
+-- -----------------------------------------------------------------------------
 SELECT lives_ok($sql$UPDATE public.respondent_accounts SET ca_reference = repeat('x', 50)
  WHERE respondent_account_id = (SELECT id FROM cv_subject)$sql$, 'ca_reference accepts 50 characters');
 SELECT throws_ok($sql$UPDATE public.respondent_accounts SET ca_reference = repeat('x', 51)
@@ -319,6 +341,7 @@ SELECT lives_ok($sql$UPDATE public.respondent_accounts SET account_number = 'CV-
 -- Scenario: payment_period accepts only its controlled values.
 -- Setup: Update the subject using every literal label, then an unsupported label.
 -- Expected: Each supported value succeeds; the unsupported value fails with 22P02.
+-- -----------------------------------------------------------------------------
 SELECT lives_ok($sql$UPDATE public.respondent_accounts SET payment_period = 'Weekly'
  WHERE respondent_account_id = (SELECT id FROM cv_subject)$sql$, 'payment_period accepts Weekly');
 SELECT lives_ok($sql$UPDATE public.respondent_accounts SET payment_period = 'Fortnightly'
@@ -336,6 +359,7 @@ SELECT throws_ok($sql$UPDATE public.respondent_accounts SET payment_period = 'Un
 -- Scenario: account_status accepts only its controlled values.
 -- Setup: Update the subject using every literal label, then an unsupported label.
 -- Expected: Each supported value succeeds; the unsupported value fails with 22P02.
+-- -----------------------------------------------------------------------------
 SELECT lives_ok($sql$UPDATE public.respondent_accounts SET account_status = 'L'
  WHERE respondent_account_id = (SELECT id FROM cv_subject)$sql$, 'account_status accepts L');
 SELECT lives_ok($sql$UPDATE public.respondent_accounts SET account_status = 'C'
@@ -347,6 +371,7 @@ SELECT throws_ok($sql$UPDATE public.respondent_accounts SET account_status = 'Un
 -- Scenario: indexation accepts only its controlled values.
 -- Setup: Update the subject using every literal label, then an unsupported label.
 -- Expected: Each supported value succeeds; the unsupported value fails with 22P02.
+-- -----------------------------------------------------------------------------
 SELECT lives_ok($sql$UPDATE public.respondent_accounts SET indexation = 'RPI'
  WHERE respondent_account_id = (SELECT id FROM cv_subject)$sql$, 'indexation accepts RPI');
 SELECT lives_ok($sql$UPDATE public.respondent_accounts SET indexation = 'CPI'
@@ -362,6 +387,7 @@ SELECT throws_ok($sql$UPDATE public.respondent_accounts SET indexation = 'Unsupp
 -- Scenario: payment_arrangement accepts only its controlled values.
 -- Setup: Update the subject using every literal label, then an unsupported label.
 -- Expected: Each supported value succeeds; the unsupported value fails with 22P02.
+-- -----------------------------------------------------------------------------
 SELECT lives_ok($sql$UPDATE public.respondent_accounts SET payment_arrangement = 'Court'
  WHERE respondent_account_id = (SELECT id FROM cv_subject)$sql$, 'payment_arrangement accepts Court');
 SELECT lives_ok($sql$UPDATE public.respondent_accounts SET payment_arrangement = 'Direct'
@@ -373,6 +399,7 @@ SELECT throws_ok($sql$UPDATE public.respondent_accounts SET payment_arrangement 
 -- Scenario: casefile_type accepts only its controlled values.
 -- Setup: Update the subject using every literal label, then an unsupported label.
 -- Expected: Each supported value succeeds; the unsupported value fails with 22P02.
+-- -----------------------------------------------------------------------------
 SELECT lives_ok($sql$UPDATE public.respondent_accounts SET casefile_type = 'REMO In'
  WHERE respondent_account_id = (SELECT id FROM cv_subject)$sql$, 'casefile_type accepts REMO In');
 SELECT lives_ok($sql$UPDATE public.respondent_accounts SET casefile_type = 'REMO Out'
@@ -386,6 +413,7 @@ SELECT throws_ok($sql$UPDATE public.respondent_accounts SET casefile_type = 'Uns
 -- Scenario: business_unit_id enforces the declared parent relationship.
 -- Setup: Use a captured synthetic parent and prove the missing key is absent.
 -- Expected: Valid reference succeeds; missing reference and deletion of the referenced parent fail with 23503.
+-- -----------------------------------------------------------------------------
 SELECT ok(NOT EXISTS(SELECT 1 FROM public.business_units WHERE business_unit_id = -32061),
     'business_unit_id missing fixture key is absent');
 SELECT lives_ok($sql$UPDATE public.respondent_accounts SET business_unit_id = 32062
@@ -398,6 +426,7 @@ SELECT throws_ok($sql$DELETE FROM public.business_units WHERE business_unit_id =
 -- Scenario: application_id enforces the declared parent relationship.
 -- Setup: Use a captured synthetic parent and prove the missing key is absent.
 -- Expected: Valid reference succeeds; missing reference and deletion of the referenced parent fail with 23503.
+-- -----------------------------------------------------------------------------
 SELECT ok(NOT EXISTS(SELECT 1 FROM public.maintenance_applications WHERE application_id = -32061),
     'application_id missing fixture key is absent');
 SELECT lives_ok($sql$UPDATE public.respondent_accounts SET application_id = (SELECT application_id FROM cv_application)
@@ -410,6 +439,7 @@ SELECT throws_ok($sql$DELETE FROM public.maintenance_applications WHERE applicat
 -- Scenario: debtor_detail_id enforces the declared parent relationship.
 -- Setup: Use a captured synthetic parent and prove the missing key is absent.
 -- Expected: Valid reference succeeds; missing reference and deletion of the referenced parent fail with 23503.
+-- -----------------------------------------------------------------------------
 SELECT ok(NOT EXISTS(SELECT 1 FROM public.debtor_detail WHERE debtor_detail_id = -990061),
     'debtor_detail_id missing fixture key is absent');
 SELECT lives_ok($sql$UPDATE public.respondent_accounts SET debtor_detail_id = (SELECT debtor_detail_id FROM cv_debtor)
@@ -422,6 +452,7 @@ SELECT throws_ok($sql$DELETE FROM public.debtor_detail WHERE debtor_detail_id = 
 -- Scenario: last_enforcement_result_id enforces the declared parent relationship.
 -- Setup: Use a captured synthetic parent and prove the missing key is absent.
 -- Expected: Valid reference succeeds; missing reference and deletion of the referenced parent fail with 23503.
+-- -----------------------------------------------------------------------------
 SELECT ok(NOT EXISTS(SELECT 1 FROM public.results WHERE result_id = 'CVMISS'),
     'last_enforcement_result_id missing fixture key is absent');
 SELECT lives_ok($sql$UPDATE public.respondent_accounts SET last_enforcement_result_id = 'CVR001'
@@ -434,6 +465,7 @@ SELECT throws_ok($sql$DELETE FROM public.results WHERE result_id = 'CVR001'$sql$
 -- Scenario: third_party_contact_id enforces the declared parent relationship.
 -- Setup: Use a captured synthetic parent and prove the missing key is absent.
 -- Expected: Valid reference succeeds; missing reference and deletion of the referenced parent fail with 23503.
+-- -----------------------------------------------------------------------------
 SELECT ok(NOT EXISTS(SELECT 1 FROM public.third_party_contact WHERE third_party_contact_id = -990061),
     'third_party_contact_id missing fixture key is absent');
 SELECT lives_ok($sql$UPDATE public.respondent_accounts SET third_party_contact_id = (SELECT third_party_contact_id FROM cv_contact)
@@ -448,6 +480,7 @@ SELECT lives_ok($sql$UPDATE public.respondent_accounts SET business_unit_id = 32
 -- Scenario: Account identity is unique within each Business Unit.
 -- Setup: Create a second generated ID and attempt PK and scoped-identity collisions.
 -- Expected: Duplicate IDs/pairs fail with 23505; the same number in another unit succeeds.
+-- -----------------------------------------------------------------------------
 SELECT lives_ok($sql$WITH inserted AS (INSERT INTO public.respondent_accounts(business_unit_id, account_number, application_id, account_balance, orders_balance, orders_amount, payment_period, total_arrears, account_status, last_movement_date, date_arrears_last_updated, allow_cheques, cheque_clearance_period, credit_trans_clearance_period, casefile_type, interest_flag, indexation, payment_arrangement, version_number)
  SELECT 32061, 'CV-RESPONDENT-2', application_id, 0, 0, 0, 'Weekly', 0, 'L', TIMESTAMP '2026-01-01 12:00:00', TIMESTAMP '2026-01-01 12:00:00', true, 10, 0, 'REMO In', false, 'None', 'Court', 1 FROM cv_application
  RETURNING respondent_account_id) INSERT INTO cv_second SELECT respondent_account_id FROM inserted$sql$, 'second account generates a distinct ID');
@@ -464,6 +497,7 @@ SELECT lives_ok($sql$UPDATE public.respondent_accounts SET business_unit_id = 32
 -- Scenario: The hearing-court FK is deferred and no extra business CHECK exists.
 -- Setup: Use arbitrary hearing-court ID and negative financial/clearance/version values.
 -- Expected: Supplied values succeed without Courts or invented positivity/locking rules.
+-- -----------------------------------------------------------------------------
 SELECT lives_ok($sql$UPDATE public.respondent_accounts SET last_hearing_court_id = -990061
  WHERE respondent_account_id = (SELECT id FROM cv_subject)$sql$, 'arbitrary non-null hearing-court ID accepted without deferred FK');
 SELECT is((SELECT count(*) FROM pg_constraint WHERE conrelid = 'public.respondent_accounts'::regclass
@@ -479,6 +513,7 @@ SELECT is((SELECT jsonb_build_array(account_balance, orders_balance, orders_amou
 -- Scenario: UTC-convention TIMESTAMP values are stored unchanged.
 -- Setup: Supply explicit TIMESTAMP literals to every date column under local UTC.
 -- Expected: Stored values equal the supplied timestamps without claiming timezone conversion.
+-- -----------------------------------------------------------------------------
 SELECT lives_ok($sql$UPDATE public.respondent_accounts SET imposed_hearing_date = TIMESTAMP '2026-01-02 03:04:05.123456', last_hearing_date = TIMESTAMP '2026-01-02 03:04:05.123456', completed_date = TIMESTAMP '2026-01-02 03:04:05.123456', last_movement_date = TIMESTAMP '2026-01-02 03:04:05.123456', date_arrears_last_updated = TIMESTAMP '2026-01-02 03:04:05.123456', last_enforcement_date = TIMESTAMP '2026-01-02 03:04:05.123456'
  WHERE respondent_account_id = (SELECT id FROM cv_subject)$sql$, 'set explicit UTC-convention dates');
 SELECT is((SELECT imposed_hearing_date FROM public.respondent_accounts WHERE respondent_account_id = (SELECT id FROM cv_subject)),
@@ -498,6 +533,7 @@ SELECT is((SELECT last_enforcement_date FROM public.respondent_accounts WHERE re
 -- Scenario: Native physical types reject invalid input.
 -- Setup: Update a valid account with malformed or overflowing values.
 -- Expected: PostgreSQL returns exact native SQLSTATEs; no custom validation is implied.
+-- -----------------------------------------------------------------------------
 SELECT throws_ok($sql$UPDATE public.respondent_accounts SET account_balance = 'invalid'
  WHERE respondent_account_id = (SELECT id FROM cv_subject)$sql$, '22P02', NULL, 'account_balance rejects invalid native input');
 SELECT throws_ok($sql$UPDATE public.respondent_accounts SET allow_cheques = 'invalid'

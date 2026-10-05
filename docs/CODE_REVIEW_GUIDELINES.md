@@ -25,12 +25,16 @@ Optional improvements are not findings unless advisory feedback was requested.
   and data integrity.
 - Flyway ordering, immutability, environment scope, deployment compatibility,
   and the safety checks in [Database Migrations](DATABASE_MIGRATIONS.md).
+  Check [migration header authors](DATABASE_MIGRATIONS.md#required-header-fields)
+  identify the confirmed responsible human contributor rather than an agent.
 - Secret handling, log safety, configuration defaults, operational endpoints,
   and dependency suppressions.
 - Test coverage for likely regressions and evidence for required checks.
-- Check [SQL layout](DATABASE_MIGRATIONS.md#sql-readability) and
+- Check [SQL layout](DATABASE_MIGRATIONS.md#sql-readability),
+  [pgTAP file headers](TESTING.md#pgtap-file-headers), and
   [pgTAP scenario introductions](TESTING.md#pgtap-scenario-introductions),
-  including unchanged definitions, authoritative comment wording, assertion
+  including responsible human authors, matching scenario separators,
+  unchanged definitions, authoritative comment wording, assertion
   descriptions, and accurate fixture dependencies and expected outcomes.
   Formatting alone remains outside defect findings under the review objective.
 

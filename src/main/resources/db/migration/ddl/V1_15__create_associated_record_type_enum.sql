@@ -9,7 +9,7 @@
  *
  * Date        Author        Ticket        Nature of Change
  * ----------  ------------  ------------  ----------------------------------------
- * 03/10/2026  Codex         PO-10635      Create approved database object.
+ * 03/10/2026  Chris Larkin  PO-10635      Create approved database object.
  */
 
 CREATE TYPE public.t_associated_record_type_enum AS ENUM (
