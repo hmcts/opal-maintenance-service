@@ -1,7 +1,7 @@
 /**
  * OPAL Program
  *
- * MODULE      : V1_27__create_order_terms_table.sql
+ * MODULE      : V1_29__create_order_terms_table.sql
  * DESCRIPTION : Create the RM ORDER_TERMS table, account and Result FKs, indexes and owned sequence.
  *
  * CHANGE HISTORY:

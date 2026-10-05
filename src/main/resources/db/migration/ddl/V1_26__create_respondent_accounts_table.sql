@@ -1,7 +1,7 @@
 /**
  * OPAL Program
  *
- * MODULE      : V1_24__create_respondent_accounts_table.sql
+ * MODULE      : V1_26__create_respondent_accounts_table.sql
  *
  * DESCRIPTION : Create the RM RESPONDENT_ACCOUNTS table bundle defined by the
  *               promoted Check & Validate Case TDIA.

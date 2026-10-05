@@ -1,7 +1,7 @@
 /**
  * OPAL Program
  *
- * MODULE      : V1_26__create_respondent_account_parties_table.sql
+ * MODULE      : V1_28__create_respondent_account_parties_table.sql
  *
  * DESCRIPTION : Create the RM RESPONDENT_ACCOUNT_PARTIES table bundle defined
  *               by the promoted Check & Validate Case TDIA.

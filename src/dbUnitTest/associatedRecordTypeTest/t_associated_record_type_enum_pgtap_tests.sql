@@ -13,7 +13,7 @@
  * 03/10/2026  Chris Larkin  PO-10635      Initial pgTAP test suite.
  */
 
--- Check & Validate: PO-10635 / M01 / V1_15
+-- Check & Validate: PO-10635 / M01 / V1_17
 -- Fresh DB-01; existing-state validation not run: user-approved initial-schema exception.
 -- All fixtures synthetic and rolled back; no shared or deployed target.
 

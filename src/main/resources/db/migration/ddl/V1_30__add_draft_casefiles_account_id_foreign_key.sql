@@ -1,7 +1,7 @@
 /**
  * OPAL Program
  *
- * MODULE      : V1_28__add_draft_casefiles_account_id_foreign_key.sql
+ * MODULE      : V1_30__add_draft_casefiles_account_id_foreign_key.sql
  *
  * DESCRIPTION : Add the nullable Draft Casefile publication link to
  *               Respondent Accounts, retaining the existing unique index.

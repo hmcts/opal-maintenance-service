@@ -12,7 +12,7 @@
  * 03/10/2026  Chris Larkin  PO-10653      Initial pgTAP test suite.
  */
 
--- PO-10653: V1_27__create_order_terms_table.sql; Tasks 14 and 16.
+-- PO-10653: V1_29__create_order_terms_table.sql; Tasks 14 and 16.
 -- Boundary applicability: fresh DB-01; direct PostgreSQL catalogue and behaviour.
 -- Existing-state validation: Not run - user-approved initial-schema scope exception.
 -- Initial delivery assumes no established affected account workflow; no upgrade path is claimed.

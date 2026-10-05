@@ -12,7 +12,7 @@
  * 03/10/2026  Chris Larkin  PO-10641      Initial pgTAP test suite.
  */
 
--- PO-10641: V1_19__create_debtor_detail_table.sql
+-- PO-10641: V1_21__create_debtor_detail_table.sql
 -- Boundary applicability: fresh DB-01; direct PostgreSQL catalogue and behaviour.
 -- Existing-state validation: Not run - user-approved initial-schema scope exception.
 -- Initial delivery assumes no established affected account workflow; no upgrade path is claimed.

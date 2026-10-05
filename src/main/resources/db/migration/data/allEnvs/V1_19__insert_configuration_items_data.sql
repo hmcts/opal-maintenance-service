@@ -1,7 +1,7 @@
 /**
  * OPAL Program
  *
- * MODULE      : V1_17__insert_configuration_items_data.sql
+ * MODULE      : V1_19__insert_configuration_items_data.sql
  *
  * DESCRIPTION : Load the two approved global clearance settings from
  *               rm/common/reference-data/configuration-items.csv.

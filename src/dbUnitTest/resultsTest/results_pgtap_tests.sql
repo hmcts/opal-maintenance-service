@@ -1,7 +1,7 @@
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap;
 
-SELECT plan(91);
+SELECT plan(93);
 
 -- All assertions apply to fresh DB-01; catalog and behavioural assertions also
 -- describe the required post-upgrade state, but the current Gradle dbUnitTest task does not execute DB-03.
@@ -97,7 +97,7 @@ SELECT col_not_null('public', 'results', 'lists_monies', 'lists_monies is not nu
 SELECT col_is_null('public', 'results', 'result_parameters', 'result_parameters is nullable');
 SELECT col_not_null('public', 'results', 'requires_employment_data', 'requires_employment_data is not nullable');
 SELECT col_not_null('public', 'results', 'allow_additional_action', 'allow_additional_action is not nullable');
-SELECT col_not_null('public', 'results', 'enf_next_permitted_actions', 'enf_next_permitted_actions is not nullable');
+SELECT col_is_null('public', 'results', 'enf_next_permitted_actions', 'enf_next_permitted_actions is nullable');
 SELECT col_not_null('public', 'results', 'manual_enforcement', 'manual_enforcement is not nullable');
 SELECT col_not_null('public', 'results', 'auto_enforcement', 'auto_enforcement is not nullable');
 
@@ -163,7 +163,7 @@ SELECT is((SELECT count(*) FROM pg_constraint WHERE conrelid = 'public.results':
 SELECT is(
     (SELECT count(*) FROM public.results WHERE result_id IN (
         'BASE01', 'TYPE00', 'ENUM01', 'ENUM02', 'ENUM03', 'ENUM04',
-        'JSON00', 'JSON01', 'JSON02', 'ID0001', 'TITLE1', 'TITLE2', 'NEXT01', 'NEXT02'
+        'JSON00', 'JSON01', 'JSON02', 'ID0001', 'TITLE1', 'TITLE2', 'NEXT01', 'NEXT02', 'NUL001'
     )),
     0::bigint,
     'Results schema fixture keys are unused before fixtures'
@@ -260,7 +260,6 @@ SELECT throws_ok('SELECT pg_temp.insert_result(p_generates_warrant => NULL)', '2
 SELECT throws_ok('SELECT pg_temp.insert_result(p_lists_monies => NULL)', '23502', NULL, 'a null lists_monies is rejected');
 SELECT throws_ok('SELECT pg_temp.insert_result(p_requires_employment_data => NULL)', '23502', NULL, 'a null requires_employment_data is rejected');
 SELECT throws_ok('SELECT pg_temp.insert_result(p_allow_additional_action => NULL)', '23502', NULL, 'a null allow_additional_action is rejected');
-SELECT throws_ok('SELECT pg_temp.insert_result(p_enf_next_permitted_actions => NULL)', '23502', NULL, 'a null enf_next_permitted_actions is rejected');
 SELECT throws_ok('SELECT pg_temp.insert_result(p_manual_enforcement => NULL)', '23502', NULL, 'a null manual_enforcement is rejected');
 SELECT throws_ok('SELECT pg_temp.insert_result(p_auto_enforcement => NULL)', '23502', NULL, 'a null auto_enforcement is rejected');
 
@@ -296,6 +295,19 @@ SELECT lives_ok('SELECT pg_temp.insert_result(p_result_id => ''TITLE1'', p_resul
 SELECT throws_ok('SELECT pg_temp.insert_result(p_result_id => ''TITLE2'', p_result_title => repeat(''T'', 61))', '22001', NULL, 'a sixty-one-character result_title is rejected');
 SELECT lives_ok('SELECT pg_temp.insert_result(p_result_id => ''NEXT01'', p_enf_next_permitted_actions => repeat(''A'', 100))', 'a one-hundred-character enf_next_permitted_actions value is accepted');
 SELECT throws_ok('SELECT pg_temp.insert_result(p_result_id => ''NEXT02'', p_enf_next_permitted_actions => repeat(''A'', 101))', '22001', NULL, 'a one-hundred-and-one-character enf_next_permitted_actions value is rejected');
+
+-- -----------------------------------------------------------------------------
+-- Scenario: Permitted actions may be absent on new and existing Results.
+-- Setup: Insert a NULL value and clear the existing 100-character NEXT01 value.
+-- Expected: Both writes succeed and the existing row stores SQL NULL.
+-- -----------------------------------------------------------------------------
+SELECT lives_ok('SELECT pg_temp.insert_result(p_result_id => ''NUL001'', p_enf_next_permitted_actions => NULL)',
+                'NULL permitted actions can be inserted');
+SELECT lives_ok($$UPDATE public.results SET enf_next_permitted_actions=NULL
+                  WHERE result_id='NEXT01'$$,
+                'existing permitted actions can be updated to NULL');
+SELECT is((SELECT enf_next_permitted_actions::text FROM public.results WHERE result_id='NEXT01'),
+          NULL::text, 'NULL update is stored');
 
 SELECT * FROM finish();
 ROLLBACK;

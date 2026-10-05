@@ -12,12 +12,12 @@
  * 03/10/2026  Chris Larkin  PO-10636      Initial pgTAP test suite.
  */
 
--- PO-10636 / M03 / V1_17: two approved global configuration records.
+-- PO-10636 / M03 / V1_19: two approved global configuration records.
 -- Source: rm/common/reference-data/configuration-items.csv; independent literal expectations.
 -- Fresh DB-01, plus actual-file replay inside this rolled-back synthetic transaction.
 -- This is not predecessor/upgrade evidence; unrelated scopes must remain unchanged.
 \set ON_ERROR_STOP on
-\set cv_configuration_migration /tmp/opal-db-migrations/data/allEnvs/V1_17__insert_configuration_items_data.sql
+\set cv_configuration_migration /tmp/opal-db-migrations/data/allEnvs/V1_19__insert_configuration_items_data.sql
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap;
 SET LOCAL search_path=public,pg_temp;
@@ -41,7 +41,7 @@ SELECT is((SELECT count(DISTINCT configuration_item_id) FROM public.configuratio
 SELECT is_empty($s$SELECT configuration_item_id FROM public.configuration_items WHERE business_unit_id IS NULL AND item_name IN (SELECT item_name FROM cv_expected_config) AND configuration_item_id IN (60000000000012,60000000000013)$s$,'Fines identifiers are not copied');
 SELECT ok((SELECT bool_and(item_values IS NULL) FROM public.configuration_items WHERE business_unit_id IS NULL AND item_name IN (SELECT item_name FROM cv_expected_config)),'both structured values remain SQL NULL');
 SELECT is(pg_typeof((SELECT item_value FROM public.configuration_items WHERE item_name='DEFAULT_CHEQUE_CLEARANCE_PERIOD' AND business_unit_id IS NULL))::text,'text','scalar value is stored as text');
-SELECT is((SELECT count(*) FROM public.flyway_schema_history WHERE script='V1_17__insert_configuration_items_data.sql' AND success),1::bigint,'allocated allEnvs file appears in successful Flyway history');
+SELECT is((SELECT count(*) FROM public.flyway_schema_history WHERE script='V1_19__insert_configuration_items_data.sql' AND success),1::bigint,'allocated allEnvs file appears in successful Flyway history');
 CREATE TEMP TABLE cv_original AS SELECT item_name,configuration_item_id,xmin::text AS xmin_value FROM public.configuration_items WHERE business_unit_id IS NULL AND item_name IN (SELECT item_name FROM cv_expected_config);
 
 -- ---------------------------------------------------------------------------

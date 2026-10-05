@@ -1,7 +1,7 @@
 /**
  * OPAL Program
  *
- * MODULE      : V1_19__create_debtor_detail_table.sql
+ * MODULE      : V1_21__create_debtor_detail_table.sql
  * DESCRIPTION : Create the RM DEBTOR_DETAIL table, Country FK, index and owned sequence.
  *
  * CHANGE HISTORY:

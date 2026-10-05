@@ -1,7 +1,7 @@
 /**
  * OPAL Program
  *
- * MODULE      : V1_25__create_creditor_accounts_table.sql
+ * MODULE      : V1_27__create_creditor_accounts_table.sql
  *
  * DESCRIPTION : Create the RM CREDITOR_ACCOUNTS table bundle defined by the
  *               promoted Check & Validate Case TDIA.

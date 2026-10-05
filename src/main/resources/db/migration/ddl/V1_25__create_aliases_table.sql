@@ -1,7 +1,7 @@
 /**
  * OPAL Program
  *
- * MODULE      : V1_23__create_aliases_table.sql
+ * MODULE      : V1_25__create_aliases_table.sql
  *
  * DESCRIPTION : Create the RM ALIASES physical table bundle.
  *

@@ -1,7 +1,7 @@
 /**
  * OPAL Program
  *
- * MODULE      : V1_18__create_parties_table.sql
+ * MODULE      : V1_20__create_parties_table.sql
  * DESCRIPTION : Create the RM PARTIES table, account type enum, keys, index and owned sequence.
  *
  * CHANGE HISTORY:

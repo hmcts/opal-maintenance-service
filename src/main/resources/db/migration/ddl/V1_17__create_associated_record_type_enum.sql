@@ -1,7 +1,7 @@
 /**
  * OPAL Program
  *
- * MODULE      : V1_15__create_associated_record_type_enum.sql
+ * MODULE      : V1_17__create_associated_record_type_enum.sql
  *
  * DESCRIPTION : Create the shared associated record type enum.
  *

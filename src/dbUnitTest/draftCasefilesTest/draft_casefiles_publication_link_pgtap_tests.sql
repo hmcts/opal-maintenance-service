@@ -12,7 +12,7 @@
  * 03/10/2026  Chris Larkin  PO-10659      Initial pgTAP test suite.
  */
 
--- PO-10659 / M14 / V1_28: Draft Casefile publication link integrity.
+-- PO-10659 / M14 / V1_30: Draft Casefile publication link integrity.
 -- Fresh DB-01 only; separate existing-state validation not run under the
 -- user-approved initial-schema exception. No publication procedure is invoked.
 \set ON_ERROR_STOP on

@@ -1,7 +1,7 @@
 /**
  * OPAL Program
  *
- * MODULE      : V1_21__create_account_number_index_table.sql
+ * MODULE      : V1_23__create_account_number_index_table.sql
  *
  * DESCRIPTION : Create the RM ACCOUNT_NUMBER_INDEX physical table bundle.
  *

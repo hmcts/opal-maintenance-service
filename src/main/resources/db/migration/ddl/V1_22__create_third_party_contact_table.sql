@@ -1,7 +1,7 @@
 /**
  * OPAL Program
  *
- * MODULE      : V1_20__create_third_party_contact_table.sql
+ * MODULE      : V1_22__create_third_party_contact_table.sql
  * DESCRIPTION : Create the RM THIRD_PARTY_CONTACT table, primary key and owned sequence.
  *
  * CHANGE HISTORY:

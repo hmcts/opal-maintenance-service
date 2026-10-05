@@ -1,7 +1,7 @@
 /**
  * OPAL Program
  *
- * MODULE      : V1_22__create_notes_table.sql
+ * MODULE      : V1_24__create_notes_table.sql
  *
  * DESCRIPTION : Create the RM NOTES physical table bundle.
  *

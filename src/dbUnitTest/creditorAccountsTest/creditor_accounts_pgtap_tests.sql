@@ -12,7 +12,7 @@
  * 03/10/2026  Chris Larkin  PO-10639      Initial pgTAP test suite.
  */
 
--- PO-10639: V1_25__create_creditor_accounts_table.sql
+-- PO-10639: V1_27__create_creditor_accounts_table.sql
 -- DB-04 contract: columns, comments, owned enum/sequence, defaults, keys and indexes;
 -- required/nullable fields, boundaries, generated IDs and native integrity failures.
 -- DB-01 fresh path: applicable. This is initial-schema delivery before account use.

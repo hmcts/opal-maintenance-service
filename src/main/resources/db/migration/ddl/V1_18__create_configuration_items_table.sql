@@ -1,7 +1,7 @@
 /**
  * OPAL Program
  *
- * MODULE      : V1_16__create_configuration_items_table.sql
+ * MODULE      : V1_18__create_configuration_items_table.sql
  *
  * DESCRIPTION : Create global and Business Unit-scoped configuration items.
  *

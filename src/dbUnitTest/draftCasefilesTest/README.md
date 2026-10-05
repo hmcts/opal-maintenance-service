@@ -50,7 +50,7 @@ Human SQL review, QA, deployment and ticket closure are separate delivery states
 
 ## Check & Validate publication link — PO-10659
 
-`ddl/V1_28__add_draft_casefiles_account_id_foreign_key.sql` adds
+`ddl/V1_30__add_draft_casefiles_account_id_foreign_key.sql` adds
 `dcf_account_id_fk` to `respondent_accounts.respondent_account_id`. It retains
 nullable BIGINT `account_id`, `draft_casefiles_account_id_uk`, and the existing
 three indexes. Only the separate Respondent Accounts hearing-court FK remains
