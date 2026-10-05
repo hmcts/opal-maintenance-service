@@ -26,6 +26,7 @@ import tools.jackson.databind.json.JsonMapper;
 import uk.gov.hmcts.opal.BaseIntegrationTest;
 import uk.gov.hmcts.opal.authorisation.MaintenanceUser;
 import uk.gov.hmcts.opal.entity.DraftCasefileEntity;
+import uk.gov.hmcts.opal.event.DraftCasefileListPersonalDataEvent;
 import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent;
 import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent.Operation;
 import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent.ParticipantCategory;
@@ -47,6 +48,8 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.EnumSet;
 import java.util.Set;
+import java.util.Map;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -252,4 +255,33 @@ class DraftCasefilePersonalDataLoggingTransactionIntegrationTest extends BaseInt
         return new DraftCasefilePersonalDataEvent(Operation.SUBMISSION, id, 99L, "192.0.2.1", SUBMITTED,
             EnumSet.allOf(ParticipantCategory.class));
     }
+
+    @Test
+    void listEventPublishesOnlyAfterReadOnlyCommit() {
+        when(logging.personalDataAccessLogAsync(any())).thenReturn(true);
+        var event = new DraftCasefileListPersonalDataEvent(99L, "192.0.2.1", SUBMITTED,
+            Map.of(ParticipantCategory.RESPONDENT, List.of(123L, 456L)));
+        TransactionTemplate readOnly = new TransactionTemplate(transactionManager);
+        readOnly.setReadOnly(true);
+        readOnly.executeWithoutResult(transaction -> {
+            events.publishEvent(event);
+            verifyNoInteractions(logging);
+        });
+        verify(logging).personalDataAccessLogAsync(any());
+    }
+
+    @Test
+    void listEventRollbackAndOutsideTransactionDoNotPublish() {
+        var event = new DraftCasefileListPersonalDataEvent(99L, "192.0.2.1", SUBMITTED,
+            Map.of(ParticipantCategory.RESPONDENT, List.of(123L)));
+        TransactionTemplate readOnly = new TransactionTemplate(transactionManager);
+        readOnly.setReadOnly(true);
+        readOnly.executeWithoutResult(transaction -> {
+            events.publishEvent(event);
+            transaction.setRollbackOnly();
+        });
+        events.publishEvent(event);
+        verifyNoInteractions(logging);
+    }
+
 }
