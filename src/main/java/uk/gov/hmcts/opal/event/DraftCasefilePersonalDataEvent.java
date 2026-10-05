@@ -12,7 +12,8 @@ public record DraftCasefilePersonalDataEvent(Operation operation, Long draftId, 
 
     public enum Operation {
         SUBMISSION,
-        VIEW
+        VIEW,
+        LIST_VIEW
     }
 
     public enum ParticipantCategory {
