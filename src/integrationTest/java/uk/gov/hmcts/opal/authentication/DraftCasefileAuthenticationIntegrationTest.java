@@ -6,6 +6,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.system.CapturedOutput;
@@ -254,5 +255,71 @@ class DraftCasefileAuthenticationIntegrationTest extends BaseIntegrationTest {
              "status":"ACTIVE","version":1,"domains":{"maintenance":{"business_unit_users":[{
               "business_unit_user_id":"BUU-1","business_unit_id":%d,"permissions":%s}]}}}
             """.formatted(businessUnitId, permissions))));
+    }
+
+    @ParameterizedTest
+    @CsvSource({"21,false", "22,false", "21,true", "22,true"})
+    void signedJwtWithEitherPermissionCanListOrCount(int permission, boolean counts) throws Exception {
+        long id = submitDraft();
+        stubUserState(1, "[{\"permission_id\":%d,\"permission_name\":\"Synthetic permission\"}]".formatted(permission));
+        var request = org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/draft-casefiles")
+            .param("business_unit_id", "1")
+            .header(HttpHeaders.AUTHORIZATION, "Bearer " + AUTH.signedToken(Instant.now().plusSeconds(300)));
+        if (counts) {
+            request.param("restrict", "counts");
+        }
+        String raw = mockMvc.perform(request).andExpect(status().isOk())
+            .andExpect(jsonPath("$.count").value(1))
+            .andReturn().getResponse().getContentAsString();
+        var body = JsonMapper.builder().build().readTree(raw);
+        if (counts) {
+            assertThat(body.propertyNames()).containsExactly("count");
+            verifyNoInteractions(logging);
+        } else {
+            assertThat(body.get("summaries").get(0).get("draft_casefile_id").longValue()).isEqualTo(id);
+            verify(logging, times(2)).personalDataAccessLogAsync(any());
+        }
+        WIRE_MOCK.verify(1, getRequestedFor(urlEqualTo(USER_STATE_PATH)));
+    }
+
+    @ParameterizedTest
+    @CsvSource({"false,false", "false,true", "true,false", "true,true"})
+    void invalidOrExpiredJwtCannotListBeforeUserLookup(boolean expired, boolean counts) throws Exception {
+        String token = expired ? AUTH.signedToken(Instant.now().minusSeconds(120)) : "not-a-jwt";
+        var request = org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/draft-casefiles")
+            .param("business_unit_id", "1").header(HttpHeaders.AUTHORIZATION, "Bearer " + token);
+        if (counts) {
+            request.param("restrict", "counts");
+        }
+        mockMvc.perform(request).andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.operation_id").isNotEmpty());
+        verifyNoInteractions(logging);
+        WIRE_MOCK.verify(0, getRequestedFor(urlEqualTo(USER_STATE_PATH)));
+    }
+
+    @ParameterizedTest
+    @CsvSource({"empty,false", "other-unit,false", "missing-identity,false",
+        "empty,true", "other-unit,true", "missing-identity,true"})
+    void signedJwtWithoutRequestedUnitPermissionCannotList(String failure, boolean counts) throws Exception {
+        stubUserState(failure.equals("missing-identity") ? 2 : 1, "[]");
+        if (failure.equals("other-unit")) {
+            WIRE_MOCK.stubFor(get(USER_STATE_PATH).willReturn(okJson("""
+                {"user_id":123,"username":"synthetic-user@example.invalid",
+                 "name":"Synthetic Submitter","status":"ACTIVE","version":1,
+                 "domains":{"maintenance":{"business_unit_users":[
+                  {"business_unit_user_id":"BUU-1","business_unit_id":1,"permissions":[]},
+                  {"business_unit_user_id":"BUU-2","business_unit_id":2,
+                   "permissions":[{"permission_id":22,"permission_name":"Synthetic checker"}]}]}}}
+                """)));
+        }
+        var request = org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/draft-casefiles")
+            .param("business_unit_id", "1")
+            .header(HttpHeaders.AUTHORIZATION, "Bearer " + AUTH.signedToken(Instant.now().plusSeconds(300)));
+        if (counts) {
+            request.param("restrict", "counts");
+        }
+        mockMvc.perform(request).andExpect(status().isForbidden()).andExpect(jsonPath("$.operation_id").isNotEmpty());
+        verifyNoInteractions(logging);
+        WIRE_MOCK.verify(1, getRequestedFor(urlEqualTo(USER_STATE_PATH)));
     }
 }

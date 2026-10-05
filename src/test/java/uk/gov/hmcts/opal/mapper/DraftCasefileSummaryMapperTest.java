@@ -56,7 +56,8 @@ class DraftCasefileSummaryMapperTest {
         assertThat(summary.getValidatedDate().isPresent()).isTrue();
         assertThat(summary.getValidatedDate().get()).isNull();
         var wire = compatible.readTree(compatible.writeValueAsString(summary));
-        assertThat(wire.get("casefile_snapshot")).isEqualTo(compatible.readTree((String) values.get("casefileSnapshot")));
+        assertThat(wire.get("casefile_snapshot"))
+            .isEqualTo(compatible.readTree((String) values.get("casefileSnapshot")));
     }
 
     @ParameterizedTest

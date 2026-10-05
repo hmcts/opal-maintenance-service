@@ -80,6 +80,13 @@ identifying the saved draft version. Each successful run
 creates a new draft. Adjust the body if your environment uses different
 reference data or business units; keep both `business_unit_id` values equal.
 
+**Get draft casefiles** returns all matching dashboard summaries and their count
+for business unit `44`. Add query filters in Bruno's Params tab as needed.
+**Count draft casefiles** applies the same filters with `restrict=counts` and
+returns only the count. Both require permission 21 or 22 in the requested
+business unit. Selecting a draft uses **Get draft casefile** with its
+`draftCasefileId`. Keep `BEARER_TOKEN` in the local environment.
+
 Example:
 
 ```text
