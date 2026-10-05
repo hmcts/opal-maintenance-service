@@ -5,12 +5,19 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import uk.gov.hmcts.opal.event.DraftCasefileListPersonalDataEvent;
+import uk.gov.hmcts.opal.generated.model.CasefileSnapshot;
+import uk.gov.hmcts.opal.generated.model.CasefileSnapshotMinorCreditorAccount;
 import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent;
 import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent.Operation;
 import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent.ParticipantCategory;
 
 import java.time.Instant;
 import java.util.EnumSet;
+import java.util.EnumMap;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -82,5 +89,33 @@ class DraftCasefileParticipantCategoryResolverTest {
             .containsExactly("operation", "draftId", "userId", "ipAddress", "occurredAt", "participantCategories");
         assertThat(event.toString()).doesNotContain("SYNTHETIC_NAME_MARKER", "SYNTHETIC_ADDRESS_MARKER",
             "SYNTHETIC_BANK_MARKER");
+    }
+
+    @Test
+    void summaryRolesComeOnlyFromReturnedSnapshot() {
+        var snapshot = new CasefileSnapshot().minorCreditorAccounts(List.of());
+        assertThat(resolver.resolveSummary(snapshot)).containsExactlyInAnyOrder(
+            ParticipantCategory.RESPONDENT, ParticipantCategory.APPLICANT_BENEFICIARY);
+        snapshot.minorCreditorAccounts(List.of(new CasefileSnapshotMinorCreditorAccount()));
+        assertThat(resolver.resolveSummary(snapshot)).containsExactlyInAnyOrder(
+            ParticipantCategory.RESPONDENT, ParticipantCategory.APPLICANT_BENEFICIARY, ParticipantCategory.MINOR_CREDITOR);
+        assertThat(resolver.resolveSummary(snapshot)).doesNotContain(ParticipantCategory.RELATED_PARTIES);
+    }
+
+    @Test
+    void listEventCopiesAndDeduplicatesCategoryIdsAndDropsEmptyGroups() {
+        List<Long> ids = new ArrayList<>(List.of(123L, 123L, 456L));
+        Map<ParticipantCategory, List<Long>> groups = new EnumMap<>(ParticipantCategory.class);
+        groups.put(ParticipantCategory.RESPONDENT, ids);
+        groups.put(ParticipantCategory.MINOR_CREDITOR, List.of());
+        var event = new DraftCasefileListPersonalDataEvent(99L, "192.0.2.1", Instant.EPOCH, groups);
+        ids.clear();
+        groups.clear();
+        assertThat(event.draftIdsByCategory()).containsExactlyEntriesOf(
+            Map.of(ParticipantCategory.RESPONDENT, List.of(123L, 456L)));
+        assertThatThrownBy(() -> event.draftIdsByCategory().clear())
+            .isInstanceOf(UnsupportedOperationException.class);
+        assertThatThrownBy(() -> event.draftIdsByCategory().get(ParticipantCategory.RESPONDENT).clear())
+            .isInstanceOf(UnsupportedOperationException.class);
     }
 }

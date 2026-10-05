@@ -22,6 +22,7 @@ import uk.gov.hmcts.opal.generated.model.DraftCasefileGetResponse;
 import uk.gov.hmcts.opal.logging.DraftCasefileParticipantCategoryResolver;
 import uk.gov.hmcts.opal.mapper.DraftCasefileGetMapper;
 import uk.gov.hmcts.opal.mapper.DraftCasefileMapper;
+import uk.gov.hmcts.opal.mapper.DraftCasefileSummaryMapper;
 import uk.gov.hmcts.opal.repository.DraftCasefileRepository;
 import uk.gov.hmcts.opal.validator.DraftCasefileValidator;
 
@@ -60,7 +61,7 @@ class DraftCasefileServiceTest {
               "organisation":false,"individual_details":{"surname":"Synthetic"}}}}
             """));
     private final DraftCasefileService service = new DraftCasefileService(userService, validator, repository,
-        new DraftCasefileMapper(new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules()), getMapper,
+        new DraftCasefileMapper(new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules()), getMapper, mock(DraftCasefileSummaryMapper.class),
         new DraftCasefileParticipantCategoryResolver(), events, clock);
 
     @BeforeEach
