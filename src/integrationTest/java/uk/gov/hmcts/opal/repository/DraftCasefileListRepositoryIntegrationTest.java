@@ -14,8 +14,8 @@ import tools.jackson.databind.node.ObjectNode;
 import uk.gov.hmcts.opal.BaseIntegrationTest;
 import uk.gov.hmcts.opal.dto.DraftCasefileFilter;
 import uk.gov.hmcts.opal.entity.DraftCasefileStatus;
-import uk.gov.hmcts.opal.support.DraftCasefileSqlCaptureConfiguration;
 import uk.gov.hmcts.opal.support.DraftCasefileSqlCaptureConfiguration.StatementCapture;
+import uk.gov.hmcts.opal.support.DraftCasefileSqlCaptureConfiguration;
 
 import java.time.LocalDateTime;
 import java.util.List;
