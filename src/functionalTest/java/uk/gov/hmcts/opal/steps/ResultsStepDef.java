@@ -20,7 +20,7 @@ import java.util.Map;
 public class ResultsStepDef extends BaseStepDef {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private static final String MATCHING_TARGET = "OPAL_RESULTS_TEST_URL";
+    private static final String MATCHING_TARGET = "TEST_URL";
     private static final String EMPTY_TARGET = "OPAL_RESULTS_EMPTY_TEST_URL";
     static final String ACTIVE_REQUEST_PATH = "/results?order_term=true&active=true";
     static final String MALFORMED_REQUEST_PATH = "/results?order_term=not-a-boolean&active=true";
@@ -51,13 +51,18 @@ public class ResultsStepDef extends BaseStepDef {
         return System.getenv(setting);
     }
 
-    private String resultsTarget(boolean empty) {
-        String matchingTarget = validatedTarget(MATCHING_TARGET, environmentSetting(MATCHING_TARGET));
+    String resultsTarget(boolean empty) {
+        String configuredTarget = environmentSetting(MATCHING_TARGET);
+        String matchingTarget = validatedTarget(MATCHING_TARGET,
+            configuredTarget == null ? "http://localhost:4551" : configuredTarget);
+        if (!empty) {
+            return matchingTarget;
+        }
         String emptyTarget = validatedTarget(EMPTY_TARGET, environmentSetting(EMPTY_TARGET));
         if (matchingTarget.equalsIgnoreCase(emptyTarget)) {
             throw new IllegalStateException(MATCHING_TARGET + " and " + EMPTY_TARGET + " must be distinct");
         }
-        return empty ? emptyTarget : matchingTarget;
+        return emptyTarget;
     }
 
     static String validatedTarget(String setting, String value) {
