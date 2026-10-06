@@ -299,3 +299,40 @@ service instance for each database after fixture application so its reference
 cache loads the controlled state. Steps perform read-only HTTP calls and do not
 change data or caches. No production migration, deployment or shared cache
 refresh is required by this test-only procedure.
+
+### Results verification commands and evidence
+
+With the two controlled Results targets prepared as above, export
+`OPAL_RESULTS_TEST_URL` and `OPAL_RESULTS_EMPTY_TEST_URL` to their respective
+service base URLs. Set `TEST_URL` to a suitable target for the other normal
+functional and smoke scenarios (the matching target is suitable when its other
+reference data includes the prerequisites above), and set
+`OPAL_USER_SERVICE_API_URL` to a compatible running User Service. Both Results
+URLs are required even for a focused selection. Do not change the database or
+cache between the following read-only scenario runs:
+
+```bash
+./gradlew functionalOpal '-Dcucumber.filter.tags=@JIRA-STORY:PO-10298 and not @PO10298Empty'
+./gradlew functionalOpal -Dcucumber.filter.tags=@PO10298Empty
+./gradlew functionalOpal --tests 'uk.gov.hmcts.opal.steps.ResultsStepDefTest'
+./gradlew checkstyleFunctionalTest
+./gradlew build
+./gradlew functional
+./gradlew smoke
+```
+
+Run the assertion-unit command without `cucumber.filter.tags`: a tag property
+selects only the Cucumber runner. It checks response assertions and target
+validation without making live HTTP calls. A Cucumber dry run checks discovery
+only. The two focused live selections exercise three matching-target scenarios
+and one empty-target scenario; normal `functional` must also execute all four
+with both URLs configured and without a tag override.
+
+Before every subsequent functional invocation, preserve the preceding JUnit
+scenario names, test/failure/error/skipped counts, exact command, elapsed time
+and a non-sensitive environment description from
+`build/test-results/functional/opal`. `functionalOpal` clears its previous
+reports. Keep live verification evidence separate from assertion-unit and
+dry-run evidence. Raw Serenity/HTTP reports can contain response or request
+information: review them for sensitive content before sharing and never archive
+bearer headers, tokens or reusable database connection credentials.
