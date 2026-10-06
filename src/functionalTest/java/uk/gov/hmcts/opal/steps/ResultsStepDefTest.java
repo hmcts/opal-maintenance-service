@@ -2,6 +2,10 @@ package uk.gov.hmcts.opal.steps;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.anyRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.anyUrl;
+import static com.github.tomakehurst.wiremock.client.WireMock.get;
+import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -20,7 +24,7 @@ import org.springframework.http.MediaType;
 
 class ResultsStepDefTest {
 
-    private static final String MATCHING_TARGET = "OPAL_RESULTS_TEST_URL";
+    private static final String MATCHING_TARGET = "TEST_URL";
     private static final String EMPTY_TARGET = "OPAL_RESULTS_EMPTY_TEST_URL";
 
     @Test
@@ -190,14 +194,14 @@ class ResultsStepDefTest {
     }
 
     @Test
-    void requiresDistinctTargetsBeforeHttp() {
+    void requiresDistinctTargetsOnlyForEmptyRequest() {
         WireMockServer server = new WireMockServer(options().dynamicPort());
         server.start();
         try {
             String target = "http://localhost:" + server.port();
             ResultsStepDef stepDef = configuredSteps(target, target + "/");
             IllegalStateException failure = assertThrows(IllegalStateException.class,
-                                                        stepDef::requestUnauthenticatedResults);
+                                                        stepDef::requestEmptyResults);
             assertEquals(MATCHING_TARGET + " and " + EMPTY_TARGET + " must be distinct", failure.getMessage());
             server.verify(0, anyRequestedFor(anyUrl()));
         } finally {
@@ -206,28 +210,60 @@ class ResultsStepDefTest {
     }
 
     @Test
-    void requiresBothTargetsBeforeAnyRequest() {
+    void normalRequestUsesTestUrlWithoutRequiringEmptyTarget() {
+        WireMockServer server = new WireMockServer(options().dynamicPort());
+        server.start();
+        try {
+            server.stubFor(get(urlEqualTo(ResultsStepDef.ACTIVE_REQUEST_PATH))
+                .willReturn(okJson("{\"count\":0,\"refData\":[]}")));
+            String target = "http://localhost:" + server.port();
+            for (String unusedEmpty : new String[] {null, "", "not a URL", target + "/"}) {
+                ResultsStepDef stepDef = configuredSteps(target + "/", unusedEmpty);
+                stepDef.requestUnauthenticatedResults();
+                assertEquals(200, stepDef.latestResponse().statusCode());
+            }
+            server.verify(4, getRequestedFor(urlEqualTo(ResultsStepDef.ACTIVE_REQUEST_PATH)));
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
+    void requiresEmptyTargetBeforeEmptyRequest() {
         WireMockServer server = new WireMockServer(options().dynamicPort());
         server.start();
         try {
             String target = "http://localhost:" + server.port();
-            for (String missingSetting : List.of(MATCHING_TARGET, EMPTY_TARGET)) {
-                ResultsStepDef stepDef = configuredSteps(
-                    MATCHING_TARGET.equals(missingSetting) ? null : target,
-                    EMPTY_TARGET.equals(missingSetting) ? null : target
-                );
-                List<Runnable> requests = List.of(stepDef::requestActiveResults, stepDef::requestEmptyResults,
-                                                 stepDef::requestMalformedResults,
-                                                 stepDef::requestUnauthenticatedResults);
-                for (Runnable request : requests) {
-                    IllegalStateException failure = assertThrows(IllegalStateException.class, request::run);
-                    assertEquals(missingSetting, failure.getMessage());
-                }
+            for (String missingEmpty : new String[] {null, "", " "}) {
+                ResultsStepDef stepDef = configuredSteps(target, missingEmpty);
+                IllegalStateException failure = assertThrows(IllegalStateException.class,
+                                                            stepDef::requestEmptyResults);
+                assertEquals(EMPTY_TARGET, failure.getMessage());
             }
             server.verify(0, anyRequestedFor(anyUrl()));
         } finally {
             server.stop();
         }
+    }
+
+    @Test
+    void normalTargetUsesLocalhostFallback() {
+        ResultsStepDef stepDef = configuredSteps(null, "not a URL");
+        assertEquals("http://localhost:4551", stepDef.resultsTarget(false));
+    }
+
+    @Test
+    void emptyRequestUsesItsConfiguredTarget() {
+        ResultsStepDef stepDef = configuredSteps(null, "https://example.test/empty/");
+        assertEquals("https://example.test/empty", stepDef.resultsTarget(true));
+    }
+
+    @Test
+    void emptyTargetCannotMaskInvalidTestUrl() {
+        ResultsStepDef stepDef = configuredSteps("not a URL", "https://example.test/empty");
+        IllegalStateException failure = assertThrows(IllegalStateException.class,
+                                                    stepDef::requestEmptyResults);
+        assertEquals(MATCHING_TARGET, failure.getMessage());
     }
 
     private DataTable expectedResults() {
