@@ -31,6 +31,7 @@ class ResultsStepDefTest {
 
     private static final String MATCHING_TARGET = "TEST_URL";
     private static final String EMPTY_TARGET = "OPAL_RESULTS_EMPTY_TEST_URL";
+    private static final String DETAIL_TARGET = "OPAL_RESULTS_DETAIL_TEST_URL";
 
     @Test
     void rejectsUnrelatedResultEvenWhenExpectedResultIsPresent() {
@@ -271,6 +272,55 @@ class ResultsStepDefTest {
         assertEquals(MATCHING_TARGET, failure.getMessage());
     }
 
+    @Test
+    void detailTargetFallsBackToValidatedTestUrlWithoutEmptyTarget() {
+        ResultsStepDef stepDef = configuredSteps("http://localhost:4551/", null, null);
+        assertEquals("http://localhost:4551", stepDef.detailTarget());
+    }
+
+    @Test
+    void detailTargetUsesLocalhostFallbackWithoutConfiguredTargets() {
+        ResultsStepDef stepDef = configuredSteps(null, null, null);
+        assertEquals("http://localhost:4551", stepDef.detailTarget());
+    }
+
+    @Test
+    void detailTargetNormalizesExplicitUrl() {
+        ResultsStepDef stepDef = configuredSteps("not a URL", null, "https://example.test/details/");
+        assertEquals("https://example.test/details", stepDef.detailTarget());
+    }
+
+    @Test
+    void detailTargetRejectsExplicitBlankOrInvalidUrl() {
+        for (String value : List.of("", " ", "ftp://example.test", "https://example.test?query=yes")) {
+            ResultsStepDef stepDef = configuredSteps("http://localhost:4551", null, value);
+            IllegalStateException failure = assertThrows(IllegalStateException.class, stepDef::detailTarget);
+            assertEquals(DETAIL_TARGET, failure.getMessage());
+        }
+    }
+
+    @Test
+    void unauthenticatedDetailRequestUsesDetailTargetBeforeMatchingTarget() {
+        WireMockServer matching = new WireMockServer(options().dynamicPort());
+        WireMockServer detail = new WireMockServer(options().dynamicPort());
+        matching.start();
+        detail.start();
+        try {
+            detail.stubFor(get(urlEqualTo("/results/Q301T1"))
+                .willReturn(okJson("{\"result_id\":\"Q301T1\"}")));
+            ResultsStepDef stepDef = configuredSteps("http://localhost:" + matching.port(), null,
+                "http://localhost:" + detail.port());
+            stepDef.selectResult("Q301T1");
+            stepDef.requestSelectedResultWithoutAuthentication();
+            assertEquals(200, stepDef.latestResponse().statusCode());
+            detail.verify(1, getRequestedFor(urlEqualTo("/results/Q301T1")));
+            matching.verify(0, anyRequestedFor(anyUrl()));
+        } finally {
+            detail.stop();
+            matching.stop();
+        }
+    }
+
     private DataTable expectedResults() {
         return DataTable.create(List.of(
             List.of("result_id", "result_title"),
@@ -289,10 +339,19 @@ class ResultsStepDefTest {
     }
 
     private ResultsStepDef configuredSteps(String matching, String empty) {
+        return configuredSteps(matching, empty, null);
+    }
+
+    private ResultsStepDef configuredSteps(String matching, String empty, String detail) {
         return new ResultsStepDef() {
             @Override
             protected String environmentSetting(String setting) {
-                return MATCHING_TARGET.equals(setting) ? matching : empty;
+                return switch (setting) {
+                    case MATCHING_TARGET -> matching;
+                    case EMPTY_TARGET -> empty;
+                    case DETAIL_TARGET -> detail;
+                    default -> null;
+                };
             }
         };
     }

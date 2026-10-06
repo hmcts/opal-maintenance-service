@@ -24,6 +24,7 @@ public class ResultsStepDef extends BaseStepDef {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final String MATCHING_TARGET = "TEST_URL";
     private static final String EMPTY_TARGET = "OPAL_RESULTS_EMPTY_TEST_URL";
+    private static final String DETAIL_TARGET = "OPAL_RESULTS_DETAIL_TEST_URL";
     static final String ACTIVE_REQUEST_PATH = "/results?order_term=true&active=true";
     static final String MALFORMED_REQUEST_PATH = "/results?order_term=not-a-boolean&active=true";
 
@@ -52,12 +53,12 @@ public class ResultsStepDef extends BaseStepDef {
 
     @When("I request the selected Result details")
     public void requestSelectedResult() {
-        latestResponse = getWithBearer(resultPath(), BearerTokenStepDef.getToken());
+        latestResponse = getWithBearer(detailTarget(), resultPath(), BearerTokenStepDef.getToken());
     }
 
     @When("I request the selected Result details without authentication")
     public void requestSelectedResultWithoutAuthentication() {
-        latestResponse = getWithoutBearer(resultPath());
+        latestResponse = getWithoutBearer(detailTarget(), resultPath());
     }
 
     @Then("the selected Result identity, title and stored metadata are returned unchanged")
@@ -118,6 +119,11 @@ public class ResultsStepDef extends BaseStepDef {
             throw new IllegalStateException(MATCHING_TARGET + " and " + EMPTY_TARGET + " must be distinct");
         }
         return emptyTarget;
+    }
+
+    String detailTarget() {
+        String configuredTarget = environmentSetting(DETAIL_TARGET);
+        return configuredTarget == null ? resultsTarget(false) : validatedTarget(DETAIL_TARGET, configuredTarget);
     }
 
     static String validatedTarget(String setting, String value) {
