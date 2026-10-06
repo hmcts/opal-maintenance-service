@@ -1,7 +1,7 @@
 /**
  * OPAL Program
  *
- * MODULE      : V1_15__insert_major_creditors_dev_data.sql
+ * MODULE      : V1_17__insert_major_creditors_dev_data.sql
  *
  * DESCRIPTION : Add synthetic DEV Major Creditor selection and comparison data.
  *               This data is not approved for production or staging.

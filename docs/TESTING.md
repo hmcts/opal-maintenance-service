@@ -233,7 +233,7 @@ record's casefile details; they do not assume generated identifiers or
 exactly ten records.
 
 PO-10297 positive coverage requires the DEV-only
-`data/dev/V1_15__insert_major_creditors_dev_data.sql`, applied through normal
+`data/dev/V1_17__insert_major_creditors_dev_data.sql`, applied through normal
 Flyway migration with `ddl`, `data/allEnvs` and `data/dev` selected. It adds
 three synthetic BU 44 records: active non-Central Authority `T901`, inactive
 non-Central Authority `T902`, and active Central Authority `T903`. The positive
