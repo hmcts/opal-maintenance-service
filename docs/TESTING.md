@@ -259,3 +259,43 @@ on missing/ambiguous Country data or colliding creditor keys. Flyway applies it
 once; direct reruns fail safely rather than overwriting existing records.
 See `src/dbUnitTest/majorCreditorsDevDataTest/README.md` for fresh/upgrade scope
 and database-boundary assertions.
+
+
+## PO-10298 controlled Results targets
+
+All four Results scenarios run in the normal `functionalOpal` runner. Set both
+`OPAL_RESULTS_TEST_URL` (matching) and `OPAL_RESULTS_EMPTY_TEST_URL` (empty) to
+distinct HTTP(S) service base URLs without userinfo, query strings or fragments.
+Missing, blank or invalid settings fail with the setting name; there is no
+`TEST_URL` fallback or skipped scenario. Existing bearer-token setup applies.
+The two success scenarios issue the same `/results?order_term=true&active=true`
+request to their respective targets; validation and authentication use matching.
+
+Provision two test-owned disposable PostgreSQL databases, for example
+`opal_results_po10298_matching` and `opal_results_po10298_empty`. Names must
+match `^opal_results_po10298_[a-z0-9_]+$`. After normal Flyway schema/reference
+migrations, mark each database explicitly using its provisioned name:
+
+```sql
+COMMENT ON DATABASE opal_results_po10298_matching IS 'PO-10298 disposable Results fixtures';
+COMMENT ON DATABASE opal_results_po10298_empty IS 'PO-10298 disposable Results fixtures';
+```
+
+With both service instances stopped, apply
+`src/functionalTest/resources/db/results/matching.sql` to matching and
+`src/functionalTest/resources/db/results/empty.sql` to empty, using `psql` with
+`-v ON_ERROR_STOP=1`. Each fixture checks both database-name ownership and the
+marker before deleting Results, locks only `public.results`, and replaces its
+rows in one transaction without cascading. A failed guard or constraint leaves
+the previous data intact. Apply fixtures only to disposable databases, never
+shared environments; discard both databases after verification. Fixtures are
+repeatable while the target is stopped and are not Flyway migrations.
+
+Matching contains exactly MLUMP / Lump sum order, MCHILD / Maintenance Order for
+child(ren), and MAT / Matrimonial Order for Adult as active Order Terms, plus
+TNOORD (active, non-Order-Term) and TINACT (inactive, Order-Term) synthetic
+controls. Empty contains only those two excluded controls. Start a fresh
+service instance for each database after fixture application so its reference
+cache loads the controlled state. Steps perform read-only HTTP calls and do not
+change data or caches. No production migration, deployment or shared cache
+refresh is required by this test-only procedure.
