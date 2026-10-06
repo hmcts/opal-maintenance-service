@@ -353,8 +353,13 @@ The user approved revising the original inactive/unsupported-metadata failure
 expectations to this contract.
 
 Use the existing `TEST_URL` and `OPAL_USER_SERVICE_API_URL` configuration and
-the approved synthetic test user. Authentication must remain enabled. Every
-scenario performs read-only HTTP requests through the existing Cucumber runner.
+the approved synthetic test user. For a focused PO-10301 run, detail requests
+use validated `TEST_URL` (including its localhost fallback) unless the optional
+`OPAL_RESULTS_DETAIL_TEST_URL` is supplied. An explicit detail URL is validated
+and normalized using the same HTTP(S) rules as the inherited Results targets;
+blank or invalid values fail with that setting's name. Authentication must
+remain enabled. Every scenario performs read-only HTTP requests through the
+existing Cucumber runner.
 
 Prepare
 `src/functionalTest/resources/fixtures/results/result-detail-functional-fixtures.sql`
@@ -375,6 +380,17 @@ Start the target service after fixture preparation with a fresh local cache or
 an independently owned empty Redis instance. The service and fixture SQL must
 use the same owned database. Never modify fixture rows after they are cached.
 The SQL is test-only and is not a Flyway migration or deployment seed.
+
+For a combined PO-10298 and PO-10301 live run, prepare three separate owned
+databases and start a fresh service/cache for each: the parent's matching
+dataset at `TEST_URL`, its empty dataset at `OPAL_RESULTS_EMPTY_TEST_URL`, and
+the detail dataset at `OPAL_RESULTS_DETAIL_TEST_URL`. The first two use the
+parent's marked disposable databases and fixture SQL described above; the
+detail target uses `po10301_functional`. Set all three URLs to their respective
+HTTP(S) service base URLs before selecting both Jira story tags. The optional
+detail URL exists because the detail rows would change the parent's exact-list
+response. Never add detail rows to either list dataset or route both datasets
+through one service.
 
 Validate discovery:
 
