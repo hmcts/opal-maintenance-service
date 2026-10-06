@@ -12,6 +12,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.cucumber.datatable.DataTable;
 import io.cucumber.datatable.DataTableTypeRegistry;
 import io.cucumber.datatable.DataTableTypeRegistryTableConverter;
@@ -23,6 +25,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 
 class ResultsStepDefTest {
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final String META = "[{\"name\":\"Custom\",\"type\":\"synthetic-unfamiliar\"}]";
 
     private static final String MATCHING_TARGET = "TEST_URL";
     private static final String EMPTY_TARGET = "OPAL_RESULTS_EMPTY_TEST_URL";
@@ -326,5 +331,123 @@ class ResultsStepDefTest {
                 }
                 """.formatted(additionalField))
             .build();
+    }
+
+    @Test
+    void acceptsUnchangedMetadata() {
+        assertDoesNotThrow(() -> ResultsStepDef.assertResultResponse(
+            result("Q301U1", "Synthetic result", META), "Q301U1", "Synthetic result", META));
+    }
+
+    @Test
+    void rejectsWrongIdentity() {
+        assertThrows(AssertionError.class, () -> ResultsStepDef.assertResultResponse(
+            result("Q301I1", "Synthetic result", META), "Q301U1", "Synthetic result", META));
+    }
+
+    @Test
+    void rejectsWrongTitle() {
+        assertThrows(AssertionError.class, () -> ResultsStepDef.assertResultResponse(
+            result("Q301U1", "Wrong result", META), "Q301U1", "Synthetic result", META));
+    }
+
+    @Test
+    void rejectsChangedMetadata() {
+        assertThrows(AssertionError.class, () -> ResultsStepDef.assertResultResponse(
+            result("Q301U1", "Synthetic result", "[]"), "Q301U1", "Synthetic result", META));
+    }
+
+    @Test
+    void rejectsMetadataReturnedAsAnObject() {
+        ObjectNode body = resultBody("Q301U1", "Synthetic result", META);
+        body.set("result_parameters", MAPPER.createObjectNode().put("name", "Custom"));
+        assertThrows(AssertionError.class, () -> ResultsStepDef.assertResultResponse(
+            response(200, body), "Q301U1", "Synthetic result", META));
+    }
+
+    @Test
+    void acceptsExplicitNull() {
+        assertDoesNotThrow(() -> ResultsStepDef.assertResultResponse(
+            result("Q301N1", "Synthetic result", null), "Q301N1", "Synthetic result", null));
+    }
+
+    @Test
+    void rejectsMissingNullField() {
+        ObjectNode body = resultBody("Q301N1", "Synthetic result", null);
+        body.remove("result_parameters");
+        assertThrows(AssertionError.class, () -> ResultsStepDef.assertResultResponse(
+            response(200, body), "Q301N1", "Synthetic result", null));
+    }
+
+    @Test
+    void distinguishesNullFromEmptyMetadata() {
+        assertThrows(AssertionError.class, () -> ResultsStepDef.assertResultResponse(
+            result("Q301E1", "Synthetic result", null), "Q301E1", "Synthetic result", "[]"));
+    }
+
+    @Test
+    void rejectsAmountMandatoryFlagAsText() {
+        String metadata = "[{\"name\":\"Amount\",\"prompt\":\"Amount\",\"type\":\"decimal-2dp\","
+            + "\"mandatory\":\"true\",\"min\":0,\"max\":10000}]";
+        assertThrows(AssertionError.class, () -> ResultsStepDef.assertAmountMetadata(
+            result("Q301A1", "Synthetic result", metadata)));
+    }
+
+    @Test
+    void acceptsCorrelatedNotFoundWithoutResultData() {
+        assertDoesNotThrow(() -> ResultsStepDef.assertMissingResultResponse(response(404, problem(404))));
+    }
+
+    @Test
+    void rejectsMissingCorrelation() {
+        ObjectNode body = problem(404);
+        body.remove("operation_id");
+        assertThrows(AssertionError.class,
+            () -> ResultsStepDef.assertMissingResultResponse(response(404, body)));
+    }
+
+    @Test
+    void rejectsUnauthorizedResultDisclosure() {
+        ObjectNode body = problem(401);
+        body.put("result_parameters", META);
+        assertThrows(AssertionError.class,
+            () -> ResultsStepDef.assertUnauthorizedResultResponse(response(401, body)));
+    }
+
+    private static Response result(String id, String title, String metadata) {
+        return response(200, resultBody(id, title, metadata));
+    }
+
+    private static ObjectNode resultBody(String id, String title, String metadata) {
+        ObjectNode body = MAPPER.createObjectNode().put("result_id", id).put("result_title", title);
+        if (metadata == null) {
+            body.putNull("result_parameters");
+        } else {
+            body.put("result_parameters", metadata);
+        }
+        return body;
+    }
+
+    private static ObjectNode problem(int status) {
+        boolean missing = status == 404;
+        ObjectNode body = MAPPER.createObjectNode()
+            .put("type", "https://hmcts.gov.uk/problems/" + (missing ? "entity-not-found" : "unauthorized"))
+            .put("title", missing ? "Entity Not Found" : "Unauthorized")
+            .put("status", status)
+            .put("detail", missing ? "The requested entity could not be found"
+                : "You are not authorized to access this resource")
+            .put("instance", "/results/Q301X1")
+            .put("operation_id", "synthetic-operation-id")
+            .put("retriable", false);
+        if (missing) {
+            body.put("reason", "Result not found");
+        }
+        return body;
+    }
+
+    private static Response response(int status, ObjectNode body) {
+        return new ResponseBuilder().setStatusCode(status)
+            .setContentType(status == 200 ? "application/json" : "application/problem+json")
+            .setBody(body.toString()).build();
     }
 }

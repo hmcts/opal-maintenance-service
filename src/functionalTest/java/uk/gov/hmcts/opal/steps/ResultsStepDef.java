@@ -2,12 +2,14 @@ package uk.gov.hmcts.opal.steps;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static uk.gov.hmcts.opal.assertions.ProblemDetailAssertions.assertProblemDetail;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.cucumber.datatable.DataTable;
+import io.cucumber.java.en.Given;
 import io.cucumber.java.en.Then;
 import io.cucumber.java.en.When;
 import io.restassured.response.Response;
@@ -25,7 +27,60 @@ public class ResultsStepDef extends BaseStepDef {
     static final String ACTIVE_REQUEST_PATH = "/results?order_term=true&active=true";
     static final String MALFORMED_REQUEST_PATH = "/results?order_term=not-a-boolean&active=true";
 
+    private static final Map<String, ExpectedResult> EXPECTED = Map.of(
+        "Q301A1", new ExpectedResult("Synthetic active order",
+            "[{\"name\":\"Amount\",\"prompt\":\"Amount\",\"type\":\"decimal-2dp\","
+                + "\"mandatory\":true,\"min\":0,\"max\":10000}]"),
+        "Q301I1", new ExpectedResult("Synthetic inactive order",
+            "[{\"name\":\"Reason\",\"prompt\":\"Reason\",\"type\":\"text-60\",\"mandatory\":false}]"),
+        "Q301U1", new ExpectedResult("Synthetic unfamiliar metadata",
+            "[{\"name\":\"Custom\",\"prompt\":\"Custom\",\"type\":\"synthetic-unfamiliar\",\"mandatory\":false}]"),
+        "Q301N1", new ExpectedResult("Synthetic null metadata", null),
+        "Q301E1", new ExpectedResult("Synthetic empty metadata", "[]"),
+        "Q301T1", new ExpectedResult("Synthetic authentication order", "[]")
+    );
+
     private Response latestResponse;
+    private String selectedId;
+
+    @Given("I have selected the Result with identifier {string}")
+    public void selectResult(String resultId) {
+        assertTrue(EXPECTED.containsKey(resultId) || "Q301X1".equals(resultId),
+            "Use a scenario-owned PO-10301 Result identifier");
+        selectedId = resultId;
+    }
+
+    @When("I request the selected Result details")
+    public void requestSelectedResult() {
+        latestResponse = getWithBearer(resultPath(), BearerTokenStepDef.getToken());
+    }
+
+    @When("I request the selected Result details without authentication")
+    public void requestSelectedResultWithoutAuthentication() {
+        latestResponse = getWithoutBearer(resultPath());
+    }
+
+    @Then("the selected Result identity, title and stored metadata are returned unchanged")
+    public void resultDetailsAreReturned() throws IOException {
+        ExpectedResult expected = EXPECTED.get(selectedId);
+        assertNotNull(expected, "No expected fixture exists for the selected Result");
+        assertResultResponse(latestResponse(), selectedId, expected.title(), expected.metadata());
+    }
+
+    @Then("the metadata describes the expected amount input")
+    public void amountMetadataIsAvailable() throws IOException {
+        assertAmountMetadata(latestResponse());
+    }
+
+    @Then("a correlated Result not-found response is returned without Result data")
+    public void missingResultIsCorrelated() throws IOException {
+        assertMissingResultResponse(latestResponse());
+    }
+
+    @Then("Result details require authentication without exposing Result data")
+    public void resultAuthenticationIsRequired() throws IOException {
+        assertUnauthorizedResultResponse(latestResponse());
+    }
 
     @When("I request active Results available as Order Terms")
     public void requestActiveResults() {
@@ -172,5 +227,74 @@ public class ResultsStepDef extends BaseStepDef {
 
     void latestResponse(Response response) {
         latestResponse = response;
+    }
+
+    static void assertResultResponse(Response response, String id, String title, String metadata)
+        throws IOException {
+
+        assertEquals(200, response.statusCode(), "Result detail request did not succeed");
+        assertTrue(response.contentType() != null && response.contentType().startsWith("application/json"),
+            "Expected application/json");
+        JsonNode body = OBJECT_MAPPER.readTree(response.asString());
+        assertTrue(body.isObject(), "Expected one Result object");
+        assertTrue(body.path("result_id").isTextual(), "Result identity must be text");
+        assertEquals(id, body.path("result_id").asText());
+        assertTrue(body.path("result_title").isTextual(), "Result title must be text");
+        assertEquals(title, body.path("result_title").asText());
+        assertTrue(body.has("result_parameters"), "Result metadata field must be present");
+        JsonNode parameters = body.get("result_parameters");
+        if (metadata == null) {
+            assertTrue(parameters.isNull(), "Expected explicit JSON null for SQL-null metadata");
+        } else {
+            assertTrue(parameters.isTextual(), "Metadata must be a JSON-encoded string");
+            assertEquals(metadata, parameters.textValue(), "Stored Result metadata was changed");
+        }
+    }
+
+    static void assertAmountMetadata(Response response) throws IOException {
+        JsonNode outer = OBJECT_MAPPER.readTree(response.asString());
+        assertTrue(outer.path("result_parameters").isTextual(), "Expected encoded metadata");
+        JsonNode parameters = OBJECT_MAPPER.readTree(outer.path("result_parameters").textValue());
+        assertTrue(parameters.isArray() && parameters.size() == 1, "Expected one configured amount field");
+        JsonNode amount = parameters.get(0);
+        assertEquals("Amount", amount.path("name").textValue());
+        assertEquals("Amount", amount.path("prompt").textValue());
+        assertEquals("decimal-2dp", amount.path("type").textValue());
+        assertTrue(amount.path("mandatory").isBoolean() && amount.path("mandatory").booleanValue());
+        assertTrue(amount.path("min").isNumber());
+        assertEquals(0, amount.path("min").decimalValue().signum());
+        assertTrue(amount.path("max").isIntegralNumber());
+        assertEquals(10000, amount.path("max").intValue());
+    }
+
+    static void assertMissingResultResponse(Response response) throws IOException {
+        assertProblemDetail(response, 404, "https://hmcts.gov.uk/problems/entity-not-found",
+            "Entity Not Found", "The requested entity could not be found", "instance", "operation_id");
+        JsonNode problem = assertNoResultData(response);
+        assertEquals("Result not found", problem.path("reason").textValue());
+    }
+
+    static void assertUnauthorizedResultResponse(Response response) throws IOException {
+        assertProblemDetail(response, 401, "https://hmcts.gov.uk/problems/unauthorized",
+            "Unauthorized", "You are not authorized to access this resource", "instance", "operation_id");
+        assertNoResultData(response);
+    }
+
+    private static JsonNode assertNoResultData(Response response) throws IOException {
+        JsonNode problem = OBJECT_MAPPER.readTree(response.asString());
+        for (String field : new String[] {"result_id", "result_title", "result_parameters", "refData"}) {
+            assertFalse(problem.has(field), "Problem response exposes Result data: " + field);
+        }
+        assertFalse(problem.has("stackTrace"), "Problem response exposes a stack trace");
+        assertFalse(problem.has("exception"), "Problem response exposes an exception");
+        return problem;
+    }
+
+    private String resultPath() {
+        assertNotNull(selectedId, "Select a Result before requesting its details");
+        return "/results/" + selectedId;
+    }
+
+    private record ExpectedResult(String title, String metadata) {
     }
 }
