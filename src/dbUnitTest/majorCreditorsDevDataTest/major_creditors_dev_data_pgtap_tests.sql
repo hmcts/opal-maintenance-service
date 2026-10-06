@@ -1,4 +1,4 @@
--- PO-10297 / V1_15: DEV reference data boundary contract.
+-- PO-10297 / V1_17: DEV reference data boundary contract.
 -- Assertions apply to both fresh DB-01 and predecessor-to-candidate DB-03 paths.
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap;
@@ -73,7 +73,7 @@ BEGIN
         SELECT jsonb_agg(to_jsonb(m) ORDER BY major_creditor_id)
         INTO before_rows FROM public.major_creditors m;
         BEGIN
-            EXECUTE pg_read_file('/tmp/opal-db-migrations/data/dev/V1_15__insert_major_creditors_dev_data.sql');
+            EXECUTE pg_read_file('/tmp/opal-db-migrations/data/dev/V1_17__insert_major_creditors_dev_data.sql');
         EXCEPTION WHEN OTHERS THEN
             GET STACKED DIAGNOSTICS actual_state = RETURNED_SQLSTATE;
         END;

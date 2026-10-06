@@ -18,7 +18,7 @@ Feature: Major Creditor reference data
     When I request Central Authorities without authentication
     Then authentication is required without exposing Central Authority data
 
-  # DEV-only V1_15 supplies T901 plus inactive T902 and Central Authority T903.
+  # DEV-only V1_17 supplies T901 plus inactive T902 and Central Authority T903.
   # Targets using allEnvs without dev need approved equivalent reference data
   # before running this positive scenario. Functional steps never write data.
 
