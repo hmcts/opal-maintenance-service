@@ -27,14 +27,22 @@ public abstract class BaseStepDef {
     );
 
     protected static Response getWithBearer(String path, String token) {
+        return getWithBearer(TEST_URL, path, token);
+    }
+
+    protected static Response getWithBearer(String serviceUrl, String path, String token) {
         return jsonRequest()
             .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
             .when()
-            .get(TEST_URL + path);
+            .get(withoutTrailingSlash(serviceUrl) + path);
     }
 
     protected static Response getWithoutBearer(String path) {
-        return jsonRequest().when().get(TEST_URL + path);
+        return getWithoutBearer(TEST_URL, path);
+    }
+
+    protected static Response getWithoutBearer(String serviceUrl, String path) {
+        return jsonRequest().when().get(withoutTrailingSlash(serviceUrl) + path);
     }
 
     protected static String userServiceUrl() {
