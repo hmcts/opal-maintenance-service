@@ -343,3 +343,49 @@ reports. Keep live verification evidence separate from assertion-unit and
 dry-run evidence. Raw Serenity/HTTP reports can contain response or request
 information: review them for sensitive content before sharing and never archive
 bearer headers, tokens or reusable database connection credentials.
+
+## Result detail functional-test prerequisites
+
+PO-10301 covers `GET /results/{result_id}` using the current API contract:
+inactive Results remain retrievable, absent Results return 404, and stored
+metadata is returned unchanged as a JSON-encoded string or explicit JSON null.
+The user approved revising the original inactive/unsupported-metadata failure
+expectations to this contract.
+
+Use the existing `TEST_URL` and `OPAL_USER_SERVICE_API_URL` configuration and
+the approved synthetic test user. Authentication must remain enabled. Every
+scenario performs read-only HTTP requests through the existing Cucumber runner.
+
+Prepare
+`src/functionalTest/resources/fixtures/results/result-detail-functional-fixtures.sql`
+only in an explicitly created disposable PostgreSQL 17 database named
+`po10301_functional`. Apply the parent's `ddl`, `data/allEnvs` and `data/dev`
+migrations first, using the repository's Flyway version, then execute the file
+through that owned container with `psql -X -v ON_ERROR_STOP=1`. Do not point this
+setup at the regular Compose database, a shared database or a deployed service.
+
+The fixture transaction inserts six independent synthetic records. `Q301A1`
+is active, `Q301I1` is inactive, `Q301U1` contains an unfamiliar parameter type,
+`Q301N1` has SQL-null metadata, `Q301E1` has an empty parameter array and
+`Q301T1` belongs to the authentication scenario. `Q301X1` must not exist.
+Existing fixture keys cause a failure rather than being overwritten. Failed
+preparation must roll back; do not proceed with incomplete data.
+
+Start the target service after fixture preparation with a fresh local cache or
+an independently owned empty Redis instance. The service and fixture SQL must
+use the same owned database. Never modify fixture rows after they are cached.
+The SQL is test-only and is not a Flyway migration or deployment seed.
+
+Validate discovery:
+
+    ./gradlew functionalOpal -Dcucumber.filter.tags=@JIRA-STORY:PO-10301 -Dcucumber.execution.dry-run=true
+
+Run the live scenarios:
+
+    ./gradlew functionalOpal -Dcucumber.filter.tags=@JIRA-STORY:PO-10301
+
+Record all seven scenario results and destroy the owned disposable environment
+afterwards, including following failure. Discovery success is not live API
+verification. A missing fixture or authentication prerequisite is a setup
+failure, not a reason to ignore a scenario. No production data, bearer token or
+reusable connection credential belongs in source or evidence.
