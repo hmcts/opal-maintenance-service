@@ -263,11 +263,18 @@ and database-boundary assertions.
 
 ## PO-10298 controlled Results targets
 
-All four Results scenarios run in the normal `functionalOpal` runner. Set both
-`OPAL_RESULTS_TEST_URL` (matching) and `OPAL_RESULTS_EMPTY_TEST_URL` (empty) to
-distinct HTTP(S) service base URLs without userinfo, query strings or fragments.
-Missing, blank or invalid settings fail with the setting name; there is no
-`TEST_URL` fallback or skipped scenario. Existing bearer-token setup applies.
+All four Results scenarios run in the normal `functionalOpal` runner. Matching,
+validation and authentication use the normal `TEST_URL`, defaulting to
+`http://localhost:4551` when unset, as in the other reference-data features.
+Only the empty scenario requires `OPAL_RESULTS_EMPTY_TEST_URL`, pointing to a
+separately prepared empty target. Normal requests do not read or validate that
+setting. `OPAL_RESULTS_TEST_URL` is no longer used; move its value to `TEST_URL`.
+
+URLs must be HTTP(S) service base URLs without userinfo, query strings or
+fragments. Explicit blank or invalid settings fail with the setting name. The
+empty scenario also rejects a target equal to `TEST_URL` after trailing-slash
+normalization. It fails if its setting is missing; it never falls back to the
+matching target or skips the scenario. Existing bearer-token setup applies.
 The two success scenarios issue the same `/results?order_term=true&active=true`
 request to their respective targets; validation and authentication use matching.
 
@@ -302,14 +309,14 @@ refresh is required by this test-only procedure.
 
 ### Results verification commands and evidence
 
-With the two controlled Results targets prepared as above, export
-`OPAL_RESULTS_TEST_URL` and `OPAL_RESULTS_EMPTY_TEST_URL` to their respective
-service base URLs. Set `TEST_URL` to a suitable target for the other normal
-functional and smoke scenarios (the matching target is suitable when its other
-reference data includes the prerequisites above), and set
-`OPAL_USER_SERVICE_API_URL` to a compatible running User Service. Both Results
-URLs are required even for a focused selection. Do not change the database or
-cache between the following read-only scenario runs:
+With the controlled matching target prepared as above, set `TEST_URL` to its
+service base URL; this target also serves the other normal functional and smoke
+scenarios when its other reference data includes the prerequisites above. Set
+`OPAL_USER_SERVICE_API_URL` to a compatible running User Service. Set
+`OPAL_RESULTS_EMPTY_TEST_URL` to the separately prepared empty target only when
+running the empty scenario or the full functional suite. A focused selection
+excluding the empty scenario needs only the normal service URL settings. Do not
+change the database or cache between the following read-only scenario runs:
 
 ```bash
 ./gradlew functionalOpal '-Dcucumber.filter.tags=@JIRA-STORY:PO-10298 and not @PO10298Empty'
