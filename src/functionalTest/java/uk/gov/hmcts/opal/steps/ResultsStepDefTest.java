@@ -28,11 +28,8 @@ import org.springframework.http.MediaType;
 class ResultsStepDefTest {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
-    private static final String META = "[{\"name\":\"Custom\",\"type\":\"synthetic-unfamiliar\"}]";
 
     private static final String MATCHING_TARGET = "TEST_URL";
-    private static final String EMPTY_TARGET = "OPAL_RESULTS_EMPTY_TEST_URL";
-    private static final String DETAIL_TARGET = "OPAL_RESULTS_DETAIL_TEST_URL";
 
     @Test
     void emptyRequestUsesNormalServiceAndInactiveFilter() {
@@ -263,51 +260,35 @@ class ResultsStepDefTest {
     }
 
     @Test
-    void detailTargetFallsBackToValidatedTestUrlWithoutEmptyTarget() {
-        ResultsStepDef stepDef = configuredSteps("http://localhost:4551/", null, null);
-        assertEquals("http://localhost:4551", stepDef.detailTarget());
-    }
-
-    @Test
-    void detailTargetUsesLocalhostFallbackWithoutConfiguredTargets() {
-        ResultsStepDef stepDef = configuredSteps(null, null, null);
-        assertEquals("http://localhost:4551", stepDef.detailTarget());
-    }
-
-    @Test
-    void detailTargetNormalizesExplicitUrl() {
-        ResultsStepDef stepDef = configuredSteps("not a URL", null, "https://example.test/details/");
-        assertEquals("https://example.test/details", stepDef.detailTarget());
-    }
-
-    @Test
-    void detailTargetRejectsExplicitBlankOrInvalidUrl() {
-        for (String value : List.of("", " ", "ftp://example.test", "https://example.test?query=yes")) {
-            ResultsStepDef stepDef = configuredSteps("http://localhost:4551", null, value);
-            IllegalStateException failure = assertThrows(IllegalStateException.class, stepDef::detailTarget);
-            assertEquals(DETAIL_TARGET, failure.getMessage());
+    void unauthenticatedDetailRequestUsesNormalService() {
+        WireMockServer server = new WireMockServer(options().dynamicPort());
+        server.start();
+        try {
+            server.stubFor(get(urlEqualTo("/results/MLUMP")).willReturn(okJson("{}")));
+            ResultsStepDef steps = normalServiceSteps("http://localhost:" + server.port());
+            steps.selectResult("MLUMP");
+            steps.requestSelectedResultWithoutAuthentication();
+            assertEquals(200, steps.latestResponse().statusCode());
+            server.verify(1, getRequestedFor(urlEqualTo("/results/MLUMP")));
+        } finally {
+            server.stop();
         }
     }
 
     @Test
-    void unauthenticatedDetailRequestUsesDetailTargetBeforeMatchingTarget() {
-        WireMockServer matching = new WireMockServer(options().dynamicPort());
-        WireMockServer detail = new WireMockServer(options().dynamicPort());
-        matching.start();
-        detail.start();
-        try {
-            detail.stubFor(get(urlEqualTo("/results/Q301T1"))
-                .willReturn(okJson("{\"result_id\":\"Q301T1\"}")));
-            ResultsStepDef stepDef = configuredSteps("http://localhost:" + matching.port(), null,
-                "http://localhost:" + detail.port());
-            stepDef.selectResult("Q301T1");
-            stepDef.requestSelectedResultWithoutAuthentication();
-            assertEquals(200, stepDef.latestResponse().statusCode());
-            detail.verify(1, getRequestedFor(urlEqualTo("/results/Q301T1")));
-            matching.verify(0, anyRequestedFor(anyUrl()));
-        } finally {
-            detail.stop();
-            matching.stop();
+    void authenticatedDetailRequestUsesNormalService() {
+        Response detail = result("MLUMP", "Lump sum order", seededAmountMetadata());
+        try (MockedStatic<BaseStepDef> http = mockStatic(BaseStepDef.class);
+             MockedStatic<BearerTokenStepDef> token = mockStatic(BearerTokenStepDef.class)) {
+            token.when(BearerTokenStepDef::getToken).thenReturn("synthetic-test-token");
+            http.when(() -> BaseStepDef.getWithBearer(
+                "https://example.test", "/results/MLUMP", "synthetic-test-token")).thenReturn(detail);
+            ResultsStepDef steps = normalServiceSteps("https://example.test/");
+            steps.selectResult("MLUMP");
+            steps.requestSelectedResult();
+            assertSame(detail, steps.latestResponse());
+            http.verify(() -> BaseStepDef.getWithBearer(
+                "https://example.test", "/results/MLUMP", "synthetic-test-token"));
         }
     }
 
@@ -326,24 +307,6 @@ class ResultsStepDefTest {
         IllegalStateException failure = assertThrows(IllegalStateException.class,
                                                     () -> ResultsStepDef.validatedTarget(setting, value));
         assertEquals(setting, failure.getMessage());
-    }
-
-    private ResultsStepDef configuredSteps(String matching, String empty) {
-        return configuredSteps(matching, empty, null);
-    }
-
-    private ResultsStepDef configuredSteps(String matching, String empty, String detail) {
-        return new ResultsStepDef() {
-            @Override
-            protected String environmentSetting(String setting) {
-                return switch (setting) {
-                    case MATCHING_TARGET -> matching;
-                    case EMPTY_TARGET -> empty;
-                    case DETAIL_TARGET -> detail;
-                    default -> null;
-                };
-            }
-        };
     }
 
     private ResultsStepDef normalServiceSteps(String target) {
@@ -391,64 +354,63 @@ class ResultsStepDefTest {
             .build();
     }
 
-    @Test
-    void acceptsUnchangedMetadata() {
-        assertDoesNotThrow(() -> ResultsStepDef.assertResultResponse(
-            result("Q301U1", "Synthetic result", META), "Q301U1", "Synthetic result", META));
+    private static String seededAmountMetadata() {
+        return """
+            [{"name":"Amount","prompt":"Amount of order","type":"decimal-2dp",
+              "mandatory":true,"min":0,"max":9999999999.99},
+             {"name":"Frequency","type":"read-only"}]
+            """;
     }
 
     @Test
-    void rejectsWrongIdentity() {
-        assertThrows(AssertionError.class, () -> ResultsStepDef.assertResultResponse(
-            result("Q301I1", "Synthetic result", META), "Q301U1", "Synthetic result", META));
+    void selectsSeededAndAbsentResultIdentifiers() {
+        ResultsStepDef steps = new ResultsStepDef();
+        assertDoesNotThrow(() -> steps.selectResult("MLUMP"));
+        assertDoesNotThrow(() -> steps.selectResult("ZZZZZZ"));
     }
 
     @Test
-    void rejectsWrongTitle() {
-        assertThrows(AssertionError.class, () -> ResultsStepDef.assertResultResponse(
-            result("Q301U1", "Wrong result", META), "Q301U1", "Synthetic result", META));
+    void acceptsSeededResultIdentityAndEncodedMetadata() {
+        assertDoesNotThrow(() -> ResultsStepDef.assertSelectedResultResponse(
+            result("MLUMP", "Lump sum order", seededAmountMetadata()), "MLUMP", "Lump sum order"));
     }
 
     @Test
-    void rejectsChangedMetadata() {
-        assertThrows(AssertionError.class, () -> ResultsStepDef.assertResultResponse(
-            result("Q301U1", "Synthetic result", "[]"), "Q301U1", "Synthetic result", META));
+    void acceptsAmountWithinMultiParameterMetadata() {
+        assertDoesNotThrow(() -> ResultsStepDef.assertAmountMetadata(
+            result("MLUMP", "Lump sum order", seededAmountMetadata())));
     }
 
     @Test
-    void rejectsMetadataReturnedAsAnObject() {
-        ObjectNode body = resultBody("Q301U1", "Synthetic result", META);
-        body.set("result_parameters", MAPPER.createObjectNode().put("name", "Custom"));
-        assertThrows(AssertionError.class, () -> ResultsStepDef.assertResultResponse(
-            response(200, body), "Q301U1", "Synthetic result", META));
-    }
-
-    @Test
-    void acceptsExplicitNull() {
-        assertDoesNotThrow(() -> ResultsStepDef.assertResultResponse(
-            result("Q301N1", "Synthetic result", null), "Q301N1", "Synthetic result", null));
-    }
-
-    @Test
-    void rejectsMissingNullField() {
-        ObjectNode body = resultBody("Q301N1", "Synthetic result", null);
-        body.remove("result_parameters");
-        assertThrows(AssertionError.class, () -> ResultsStepDef.assertResultResponse(
-            response(200, body), "Q301N1", "Synthetic result", null));
-    }
-
-    @Test
-    void distinguishesNullFromEmptyMetadata() {
-        assertThrows(AssertionError.class, () -> ResultsStepDef.assertResultResponse(
-            result("Q301E1", "Synthetic result", null), "Q301E1", "Synthetic result", "[]"));
-    }
-
-    @Test
-    void rejectsAmountMandatoryFlagAsText() {
-        String metadata = "[{\"name\":\"Amount\",\"prompt\":\"Amount\",\"type\":\"decimal-2dp\","
-            + "\"mandatory\":\"true\",\"min\":0,\"max\":10000}]";
+    void rejectsAnIncorrectSeededAmountLimit() {
         assertThrows(AssertionError.class, () -> ResultsStepDef.assertAmountMetadata(
-            result("Q301A1", "Synthetic result", metadata)));
+            result("MLUMP", "Lump sum order", seededAmountMetadata().replace("9999999999.99", "10000"))));
+    }
+
+    @Test
+    void rejectsStringMandatoryFlagForSeededAmount() {
+        assertThrows(AssertionError.class, () -> ResultsStepDef.assertAmountMetadata(
+            result("MLUMP", "Lump sum order", seededAmountMetadata().replace("true", "\"true\""))));
+    }
+
+    @Test
+    void rejectsResultMetadataAsAnOuterJsonArray() throws Exception {
+        ObjectNode body = resultBody("MLUMP", "Lump sum order", seededAmountMetadata());
+        body.set("result_parameters", MAPPER.readTree(seededAmountMetadata()));
+        assertThrows(AssertionError.class, () -> ResultsStepDef.assertSelectedResultResponse(
+            response(200, body), "MLUMP", "Lump sum order"));
+    }
+
+    @Test
+    void rejectsSeededResultWithWrongIdentity() {
+        assertThrows(AssertionError.class, () -> ResultsStepDef.assertSelectedResultResponse(
+            result("MAT", "Lump sum order", seededAmountMetadata()), "MLUMP", "Lump sum order"));
+    }
+
+    @Test
+    void rejectsSeededResultWithWrongTitle() {
+        assertThrows(AssertionError.class, () -> ResultsStepDef.assertSelectedResultResponse(
+            result("MLUMP", "Another title", seededAmountMetadata()), "MLUMP", "Lump sum order"));
     }
 
     @Test
@@ -467,7 +429,7 @@ class ResultsStepDefTest {
     @Test
     void rejectsUnauthorizedResultDisclosure() {
         ObjectNode body = problem(401);
-        body.put("result_parameters", META);
+        body.put("result_parameters", "[]");
         assertThrows(AssertionError.class,
             () -> ResultsStepDef.assertUnauthorizedResultResponse(response(401, body)));
     }
@@ -494,7 +456,7 @@ class ResultsStepDefTest {
             .put("status", status)
             .put("detail", missing ? "The requested entity could not be found"
                 : "You are not authorized to access this resource")
-            .put("instance", "/results/Q301X1")
+            .put("instance", "/results/ZZZZZZ")
             .put("operation_id", "synthetic-operation-id")
             .put("retriable", false);
         if (missing) {

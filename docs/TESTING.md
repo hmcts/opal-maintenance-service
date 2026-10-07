@@ -295,3 +295,37 @@ clears reports. Discovery and HTTP mocks are not live API evidence. Review raw
 reports before sharing; never archive bearer headers, tokens or reusable
 connection credentials. A normal full functional/smoke run also needs the other
 journeys' documented data and compatible authentication service.
+
+## Result detail functional coverage
+
+PO-10301 uses the same normal TEST_URL and OPAL_USER_SERVICE_API_URL as the list
+scenarios. MLUMP / Lump sum order is supplied by the maintained all-environment
+baseline; ZZZZZZ is an explicitly unallocated identifier. Functional requests
+are read-only and need no synthetic inserts, fixture database or special detail
+URL. Existing authentication remains enabled.
+
+The three live scenarios verify selected seeded details and meaningful Amount
+metadata, correlated 404 for an absent identifier, and 401 without Result data
+for an unauthenticated request. MLUMP's Amount uses decimal-2dp, prompt “Amount
+of order”, mandatory true, minimum 0 and maximum 9999999999.99.
+
+Inactive retrieval (200), unfamiliar metadata passthrough (200), explicit SQL
+null and encoded [] are covered in ResultDatabaseIntegrationTest using owned
+per-test data and cache reset. The original active-empty list condition is
+separately covered in ResultsDatabaseIntegrationTest. These integration cases
+are not counted as live functional scenarios; this is the requester-approved
+coverage/data-strategy amendment to the original ticket requirements.
+
+Validate discovery:
+
+    ./gradlew functionalOpal '-Dcucumber.filter.tags=@JIRA-STORY:PO-10298 or @JIRA-STORY:PO-10301' -Dcucumber.execution.dry-run=true
+
+Run both stories live against the normal seeded service:
+
+    ./gradlew functionalOpal '-Dcucumber.filter.tags=@JIRA-STORY:PO-10298 or @JIRA-STORY:PO-10301'
+
+Expect seven Results scenarios: four list and three detail. Missing baseline
+records, an allocated absent identifier or incompatible authentication is a
+setup/test failure, never a skip or a reason to mutate reference data. Preserve
+non-sensitive reports before later invocations clear them. The full functional
+suite also needs all other documented reference-data prerequisites.

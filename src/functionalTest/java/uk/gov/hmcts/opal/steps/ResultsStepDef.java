@@ -14,8 +14,10 @@ import io.cucumber.java.en.Then;
 import io.cucumber.java.en.When;
 import io.restassured.response.Response;
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -24,49 +26,33 @@ public class ResultsStepDef extends BaseStepDef {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final String MATCHING_TARGET = "TEST_URL";
-    private static final String DETAIL_TARGET = "OPAL_RESULTS_DETAIL_TEST_URL";
     static final String ACTIVE_REQUEST_PATH = "/results?order_term=true&active=true";
     static final String INACTIVE_REQUEST_PATH = "/results?order_term=true&active=false";
     static final String MALFORMED_REQUEST_PATH = "/results?order_term=not-a-boolean&active=true";
-
-    private static final Map<String, ExpectedResult> EXPECTED = Map.of(
-        "Q301A1", new ExpectedResult("Synthetic active order",
-            "[{\"name\":\"Amount\",\"prompt\":\"Amount\",\"type\":\"decimal-2dp\","
-                + "\"mandatory\":true,\"min\":0,\"max\":10000}]"),
-        "Q301I1", new ExpectedResult("Synthetic inactive order",
-            "[{\"name\":\"Reason\",\"prompt\":\"Reason\",\"type\":\"text-60\",\"mandatory\":false}]"),
-        "Q301U1", new ExpectedResult("Synthetic unfamiliar metadata",
-            "[{\"name\":\"Custom\",\"prompt\":\"Custom\",\"type\":\"synthetic-unfamiliar\",\"mandatory\":false}]"),
-        "Q301N1", new ExpectedResult("Synthetic null metadata", null),
-        "Q301E1", new ExpectedResult("Synthetic empty metadata", "[]"),
-        "Q301T1", new ExpectedResult("Synthetic authentication order", "[]")
-    );
 
     private Response latestResponse;
     private String selectedId;
 
     @Given("I have selected the Result with identifier {string}")
     public void selectResult(String resultId) {
-        assertTrue(EXPECTED.containsKey(resultId) || "Q301X1".equals(resultId),
-            "Use a scenario-owned PO-10301 Result identifier");
+        assertTrue("MLUMP".equals(resultId) || "ZZZZZZ".equals(resultId),
+            "Use the seeded or documented absent Result identifier");
         selectedId = resultId;
     }
 
     @When("I request the selected Result details")
     public void requestSelectedResult() {
-        latestResponse = getWithBearer(detailTarget(), resultPath(), BearerTokenStepDef.getToken());
+        latestResponse = getWithBearer(resultsTarget(), resultPath(), BearerTokenStepDef.getToken());
     }
 
     @When("I request the selected Result details without authentication")
     public void requestSelectedResultWithoutAuthentication() {
-        latestResponse = getWithoutBearer(detailTarget(), resultPath());
+        latestResponse = getWithoutBearer(resultsTarget(), resultPath());
     }
 
-    @Then("the selected Result identity, title and stored metadata are returned unchanged")
+    @Then("the selected Result identity and parameter metadata are returned")
     public void resultDetailsAreReturned() throws IOException {
-        ExpectedResult expected = EXPECTED.get(selectedId);
-        assertNotNull(expected, "No expected fixture exists for the selected Result");
-        assertResultResponse(latestResponse(), selectedId, expected.title(), expected.metadata());
+        assertSelectedResultResponse(latestResponse(), "MLUMP", "Lump sum order");
     }
 
     @Then("the metadata describes the expected amount input")
@@ -112,11 +98,6 @@ public class ResultsStepDef extends BaseStepDef {
         String configuredTarget = environmentSetting(MATCHING_TARGET);
         return validatedTarget(MATCHING_TARGET,
             configuredTarget == null ? "http://localhost:4551" : configuredTarget);
-    }
-
-    String detailTarget() {
-        String configuredTarget = environmentSetting(DETAIL_TARGET);
-        return configuredTarget == null ? resultsTarget() : validatedTarget(DETAIL_TARGET, configuredTarget);
     }
 
     static String validatedTarget(String setting, String value) {
@@ -233,25 +214,20 @@ public class ResultsStepDef extends BaseStepDef {
         latestResponse = response;
     }
 
-    static void assertResultResponse(Response response, String id, String title, String metadata)
-        throws IOException {
-
+    static void assertSelectedResultResponse(Response response, String id, String title) throws IOException {
         assertEquals(200, response.statusCode(), "Result detail request did not succeed");
-        assertTrue(response.contentType() != null && response.contentType().startsWith("application/json"),
-            "Expected application/json");
+        assertTrue(response.contentType() != null && response.contentType().startsWith("application/json"));
         JsonNode body = OBJECT_MAPPER.readTree(response.asString());
         assertTrue(body.isObject(), "Expected one Result object");
-        assertTrue(body.path("result_id").isTextual(), "Result identity must be text");
-        assertEquals(id, body.path("result_id").asText());
-        assertTrue(body.path("result_title").isTextual(), "Result title must be text");
-        assertEquals(title, body.path("result_title").asText());
-        assertTrue(body.has("result_parameters"), "Result metadata field must be present");
-        JsonNode parameters = body.get("result_parameters");
-        if (metadata == null) {
-            assertTrue(parameters.isNull(), "Expected explicit JSON null for SQL-null metadata");
-        } else {
-            assertTrue(parameters.isTextual(), "Metadata must be a JSON-encoded string");
-            assertEquals(metadata, parameters.textValue(), "Stored Result metadata was changed");
+        assertTrue(body.path("result_id").isTextual());
+        assertEquals(id, body.path("result_id").textValue());
+        assertTrue(body.path("result_title").isTextual());
+        assertEquals(title, body.path("result_title").textValue());
+        assertTrue(body.path("result_parameters").isTextual(), "Expected JSON-encoded parameter metadata");
+        JsonNode parameters = OBJECT_MAPPER.readTree(body.path("result_parameters").textValue());
+        assertTrue(parameters != null && parameters.isArray() && !parameters.isEmpty());
+        for (JsonNode parameter : parameters) {
+            assertTrue(parameter.isObject(), "Expected parameter objects");
         }
     }
 
@@ -259,16 +235,22 @@ public class ResultsStepDef extends BaseStepDef {
         JsonNode outer = OBJECT_MAPPER.readTree(response.asString());
         assertTrue(outer.path("result_parameters").isTextual(), "Expected encoded metadata");
         JsonNode parameters = OBJECT_MAPPER.readTree(outer.path("result_parameters").textValue());
-        assertTrue(parameters.isArray() && parameters.size() == 1, "Expected one configured amount field");
-        JsonNode amount = parameters.get(0);
-        assertEquals("Amount", amount.path("name").textValue());
-        assertEquals("Amount", amount.path("prompt").textValue());
+        assertTrue(parameters != null && parameters.isArray(), "Expected parameter array");
+        List<JsonNode> amounts = new ArrayList<>();
+        for (JsonNode parameter : parameters) {
+            if ("Amount".equals(parameter.path("name").textValue())) {
+                amounts.add(parameter);
+            }
+        }
+        assertEquals(1, amounts.size(), "Expected one configured Amount parameter");
+        JsonNode amount = amounts.get(0);
+        assertEquals("Amount of order", amount.path("prompt").textValue());
         assertEquals("decimal-2dp", amount.path("type").textValue());
         assertTrue(amount.path("mandatory").isBoolean() && amount.path("mandatory").booleanValue());
         assertTrue(amount.path("min").isNumber());
-        assertEquals(0, amount.path("min").decimalValue().signum());
-        assertTrue(amount.path("max").isIntegralNumber());
-        assertEquals(10000, amount.path("max").intValue());
+        assertEquals(0, amount.path("min").decimalValue().compareTo(BigDecimal.ZERO));
+        assertTrue(amount.path("max").isNumber());
+        assertEquals(0, amount.path("max").decimalValue().compareTo(new BigDecimal("9999999999.99")));
     }
 
     static void assertMissingResultResponse(Response response) throws IOException {
@@ -299,6 +281,4 @@ public class ResultsStepDef extends BaseStepDef {
         return "/results/" + selectedId;
     }
 
-    private record ExpectedResult(String title, String metadata) {
-    }
 }
