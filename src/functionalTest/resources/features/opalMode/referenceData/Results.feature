@@ -1,8 +1,8 @@
 @Opal @JIRA-LABEL:reference-data
 Feature: Results Reference Data
 
-  # Data and cache preconditions are documented in docs/TESTING.md.
-  # Active and Empty require their respective controlled target states.
+  # Uses the normal all-environment seed: three active Order Terms and no inactive Order Terms.
+  # Requests are read-only; data is not changed or shared as mutable scenario state.
   @JIRA-STORY:PO-10298 @JIRA-EPIC:PO-6506 @PO10298Active
   Scenario: Retrieve active Order Term Results
     Given I am testing as the "opal-test@dev.platform.hmcts.net" user
@@ -14,9 +14,9 @@ Feature: Results Reference Data
       | MAT       | Matrimonial Order for Adult     |
 
   @JIRA-STORY:PO-10298 @JIRA-EPIC:PO-6506 @PO10298Empty
-  Scenario: No active Order Term Results
+  Scenario: Return an empty response when no inactive Order Terms exist
     Given I am testing as the "opal-test@dev.platform.hmcts.net" user
-    When I request active Results available as Order Terms from the empty target
+    When I request inactive Results available as Order Terms
     Then an empty Order Term Results response is returned
 
   @JIRA-STORY:PO-10298 @JIRA-EPIC:PO-6506 @PO10298Malformed

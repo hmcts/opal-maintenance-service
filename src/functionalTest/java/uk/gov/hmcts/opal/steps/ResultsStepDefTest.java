@@ -1,7 +1,5 @@
 package uk.gov.hmcts.opal.steps;
 
-import static com.github.tomakehurst.wiremock.client.WireMock.anyRequestedFor;
-import static com.github.tomakehurst.wiremock.client.WireMock.anyUrl;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
@@ -9,7 +7,9 @@ import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.mockStatic;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -22,6 +22,7 @@ import io.restassured.response.Response;
 import java.util.List;
 import java.util.Locale;
 import org.junit.jupiter.api.Test;
+import org.mockito.MockedStatic;
 import org.springframework.http.MediaType;
 
 class ResultsStepDefTest {
@@ -32,6 +33,40 @@ class ResultsStepDefTest {
     private static final String MATCHING_TARGET = "TEST_URL";
     private static final String EMPTY_TARGET = "OPAL_RESULTS_EMPTY_TEST_URL";
     private static final String DETAIL_TARGET = "OPAL_RESULTS_DETAIL_TEST_URL";
+
+    @Test
+    void emptyRequestUsesNormalServiceAndInactiveFilter() {
+        Response empty = new ResponseBuilder().setStatusCode(200)
+            .setContentType(MediaType.APPLICATION_JSON_VALUE)
+            .setBody("{\"count\":0,\"refData\":[]}").build();
+        try (MockedStatic<BaseStepDef> http = mockStatic(BaseStepDef.class);
+             MockedStatic<BearerTokenStepDef> token = mockStatic(BearerTokenStepDef.class)) {
+            token.when(BearerTokenStepDef::getToken).thenReturn("synthetic-test-token");
+            http.when(() -> BaseStepDef.getWithBearer(
+                "https://example.test", "/results?order_term=true&active=false", "synthetic-test-token"))
+                .thenReturn(empty);
+            ResultsStepDef steps = normalServiceSteps("https://example.test/");
+            steps.requestEmptyResults();
+            assertSame(empty, steps.latestResponse());
+            http.verify(() -> BaseStepDef.getWithBearer(
+                "https://example.test", "/results?order_term=true&active=false", "synthetic-test-token"));
+        }
+    }
+
+    @Test
+    void rejectsResultsInAnUnexpectedDisplayOrder() {
+        DataTable expected = DataTable.create(List.of(
+            List.of("result_id", "result_title"),
+            List.of("MLUMP", "Lump sum order"),
+            List.of("MCHILD", "Maintenance Order for child(ren)")
+        ), new DataTableTypeRegistryTableConverter(new DataTableTypeRegistry(Locale.UK)));
+        assertThrows(AssertionError.class, () -> ResultsStepDef.assertExpectedResults("""
+            {"count":2,"refData":[
+              {"result_id":"MCHILD","result_title":"Maintenance Order for child(ren)"},
+              {"result_id":"MLUMP","result_title":"Lump sum order"}
+            ]}
+            """, expected));
+    }
 
     @Test
     void rejectsUnrelatedResultEvenWhenExpectedResultIsPresent() {
@@ -171,7 +206,7 @@ class ResultsStepDefTest {
 
     @Test
     void rejectsMissingOrBlankTargetsWithSettingNameOnly() {
-        for (String setting : List.of(MATCHING_TARGET, EMPTY_TARGET)) {
+        for (String setting : List.of(MATCHING_TARGET)) {
             assertInvalidTarget(setting, null);
             assertInvalidTarget(setting, "");
             assertInvalidTarget(setting, " ");
@@ -180,7 +215,7 @@ class ResultsStepDefTest {
 
     @Test
     void rejectsInvalidTargetsWithSettingNameOnly() {
-        for (String setting : List.of(MATCHING_TARGET, EMPTY_TARGET)) {
+        for (String setting : List.of(MATCHING_TARGET)) {
             for (String value : List.of(
                 "not a URL", "ftp://localhost", "http:///results", "http://localhost:0",
                 "http://localhost:65536", "http://localhost?filter=value", "http://localhost#fragment",
@@ -195,58 +230,21 @@ class ResultsStepDefTest {
     void acceptsHttpAndHttpsTargetsAndNormalizesTrailingSlash() {
         assertEquals("http://localhost:4551", ResultsStepDef.validatedTarget(MATCHING_TARGET,
                                                                            "http://localhost:4551/"));
-        assertEquals("https://example.test/results", ResultsStepDef.validatedTarget(EMPTY_TARGET,
+        assertEquals("https://example.test/results", ResultsStepDef.validatedTarget(MATCHING_TARGET,
                                                                                  "https://example.test/results"));
     }
 
     @Test
-    void requiresDistinctTargetsOnlyForEmptyRequest() {
+    void normalUnauthenticatedRequestUsesOnlyTestUrl() {
         WireMockServer server = new WireMockServer(options().dynamicPort());
         server.start();
         try {
-            String target = "http://localhost:" + server.port();
-            ResultsStepDef stepDef = configuredSteps(target, target + "/");
-            IllegalStateException failure = assertThrows(IllegalStateException.class,
-                                                        stepDef::requestEmptyResults);
-            assertEquals(MATCHING_TARGET + " and " + EMPTY_TARGET + " must be distinct", failure.getMessage());
-            server.verify(0, anyRequestedFor(anyUrl()));
-        } finally {
-            server.stop();
-        }
-    }
-
-    @Test
-    void normalRequestUsesTestUrlWithoutRequiringEmptyTarget() {
-        WireMockServer server = new WireMockServer(options().dynamicPort());
-        server.start();
-        try {
-            server.stubFor(get(urlEqualTo(ResultsStepDef.ACTIVE_REQUEST_PATH))
+            server.stubFor(get(urlEqualTo("/results?order_term=true&active=true"))
                 .willReturn(okJson("{\"count\":0,\"refData\":[]}")));
-            String target = "http://localhost:" + server.port();
-            for (String unusedEmpty : new String[] {null, "", "not a URL", target + "/"}) {
-                ResultsStepDef stepDef = configuredSteps(target + "/", unusedEmpty);
-                stepDef.requestUnauthenticatedResults();
-                assertEquals(200, stepDef.latestResponse().statusCode());
-            }
-            server.verify(4, getRequestedFor(urlEqualTo(ResultsStepDef.ACTIVE_REQUEST_PATH)));
-        } finally {
-            server.stop();
-        }
-    }
-
-    @Test
-    void requiresEmptyTargetBeforeEmptyRequest() {
-        WireMockServer server = new WireMockServer(options().dynamicPort());
-        server.start();
-        try {
-            String target = "http://localhost:" + server.port();
-            for (String missingEmpty : new String[] {null, "", " "}) {
-                ResultsStepDef stepDef = configuredSteps(target, missingEmpty);
-                IllegalStateException failure = assertThrows(IllegalStateException.class,
-                                                            stepDef::requestEmptyResults);
-                assertEquals(EMPTY_TARGET, failure.getMessage());
-            }
-            server.verify(0, anyRequestedFor(anyUrl()));
+            ResultsStepDef steps = normalServiceSteps("http://localhost:" + server.port() + "/");
+            steps.requestUnauthenticatedResults();
+            assertEquals(200, steps.latestResponse().statusCode());
+            server.verify(1, getRequestedFor(urlEqualTo("/results?order_term=true&active=true")));
         } finally {
             server.stop();
         }
@@ -254,22 +252,14 @@ class ResultsStepDefTest {
 
     @Test
     void normalTargetUsesLocalhostFallback() {
-        ResultsStepDef stepDef = configuredSteps(null, "not a URL");
-        assertEquals("http://localhost:4551", stepDef.resultsTarget(false));
+        assertEquals("http://localhost:4551", normalServiceSteps(null).resultsTarget());
     }
 
     @Test
-    void emptyRequestUsesItsConfiguredTarget() {
-        ResultsStepDef stepDef = configuredSteps(null, "https://example.test/empty/");
-        assertEquals("https://example.test/empty", stepDef.resultsTarget(true));
-    }
-
-    @Test
-    void emptyTargetCannotMaskInvalidTestUrl() {
-        ResultsStepDef stepDef = configuredSteps("not a URL", "https://example.test/empty");
+    void emptyRequestRejectsInvalidNormalTargetBeforeHttp() {
         IllegalStateException failure = assertThrows(IllegalStateException.class,
-                                                    stepDef::requestEmptyResults);
-        assertEquals(MATCHING_TARGET, failure.getMessage());
+            () -> normalServiceSteps("not a URL").requestEmptyResults());
+        assertEquals("TEST_URL", failure.getMessage());
     }
 
     @Test
@@ -352,6 +342,15 @@ class ResultsStepDefTest {
                     case DETAIL_TARGET -> detail;
                     default -> null;
                 };
+            }
+        };
+    }
+
+    private ResultsStepDef normalServiceSteps(String target) {
+        return new ResultsStepDef() {
+            @Override
+            protected String environmentSetting(String setting) {
+                return "TEST_URL".equals(setting) ? target : null;
             }
         };
     }

@@ -261,147 +261,37 @@ See `src/dbUnitTest/majorCreditorsDevDataTest/README.md` for fresh/upgrade scope
 and database-boundary assertions.
 
 
-## PO-10298 controlled Results targets
+## Results reference-data functional prerequisites
 
-All four Results scenarios run in the normal `functionalOpal` runner. Matching,
-validation and authentication use the normal `TEST_URL`, defaulting to
-`http://localhost:4551` when unset, as in the other reference-data features.
-Only the empty scenario requires `OPAL_RESULTS_EMPTY_TEST_URL`, pointing to a
-separately prepared empty target. Normal requests do not read or validate that
-setting. `OPAL_RESULTS_TEST_URL` is no longer used; move its value to `TEST_URL`.
+PO-10298 follows the Fines seeded-data pattern: all four scenarios use normal
+TEST_URL and the existing OPAL_USER_SERVICE_API_URL. The all-environment Results
+baseline contains MAT / Matrimonial Order for Adult, MCHILD / Maintenance Order
+for child(ren), and MLUMP / Lump sum order as the three active Order Terms.
+There are no inactive Order Terms. Normal service startup applies the configured
+Flyway locations; functional tests do not insert, delete or alter reference data.
 
-URLs must be HTTP(S) service base URLs without userinfo, query strings or
-fragments. Explicit blank or invalid settings fail with the setting name. The
-empty scenario also rejects a target equal to `TEST_URL` after trailing-slash
-normalization. It fails if its setting is missing; it never falls back to the
-matching target or skips the scenario. Existing bearer-token setup applies.
-The two success scenarios issue the same `/results?order_term=true&active=true`
-request to their respective targets; validation and authentication use matching.
+The empty live scenario requests order_term=true&active=false and asserts count
+0 with refData []. It is named for that inactive precondition. The original
+no-active-Order-Term condition is covered in ResultsDatabaseIntegrationTest with
+owned per-test rows and the exact order_term=true&active=true request. These are
+separate coverage statements. No special Results target URL or fixture database
+is required. Incompatible baseline data is a test failure, not a skip.
 
-Provision two test-owned disposable PostgreSQL databases, for example
-`opal_results_po10298_matching` and `opal_results_po10298_empty`. Names must
-match `^opal_results_po10298_[a-z0-9_]+$`. After normal Flyway schema/reference
-migrations, mark each database explicitly using its provisioned name:
+Run the live parent scenarios:
 
-```sql
-COMMENT ON DATABASE opal_results_po10298_matching IS 'PO-10298 disposable Results fixtures';
-COMMENT ON DATABASE opal_results_po10298_empty IS 'PO-10298 disposable Results fixtures';
-```
+    ./gradlew functionalOpal -Dcucumber.filter.tags=@JIRA-STORY:PO-10298
 
-With both service instances stopped, apply
-`src/functionalTest/resources/db/results/matching.sql` to matching and
-`src/functionalTest/resources/db/results/empty.sql` to empty, using `psql` with
-`-v ON_ERROR_STOP=1`. Each fixture checks both database-name ownership and the
-marker before deleting Results, locks only `public.results`, and replaces its
-rows in one transaction without cascading. A failed guard or constraint leaves
-the previous data intact. Apply fixtures only to disposable databases, never
-shared environments; discard both databases after verification. Fixtures are
-repeatable while the target is stopped and are not Flyway migrations.
+Validate discovery separately:
 
-Matching contains exactly MLUMP / Lump sum order, MCHILD / Maintenance Order for
-child(ren), and MAT / Matrimonial Order for Adult as active Order Terms, plus
-TNOORD (active, non-Order-Term) and TINACT (inactive, Order-Term) synthetic
-controls. Empty contains only those two excluded controls. Start a fresh
-service instance for each database after fixture application so its reference
-cache loads the controlled state. Steps perform read-only HTTP calls and do not
-change data or caches. No production migration, deployment or shared cache
-refresh is required by this test-only procedure.
+    ./gradlew functionalOpal -Dcucumber.filter.tags=@JIRA-STORY:PO-10298 -Dcucumber.execution.dry-run=true
 
-### Results verification commands and evidence
+Run assertion checks without a Cucumber tag property:
 
-With the controlled matching target prepared as above, set `TEST_URL` to its
-service base URL; this target also serves the other normal functional and smoke
-scenarios when its other reference data includes the prerequisites above. Set
-`OPAL_USER_SERVICE_API_URL` to a compatible running User Service. Set
-`OPAL_RESULTS_EMPTY_TEST_URL` to the separately prepared empty target only when
-running the empty scenario or the full functional suite. A focused selection
-excluding the empty scenario needs only the normal service URL settings. Do not
-change the database or cache between the following read-only scenario runs:
+    ./gradlew functionalOpal --tests 'uk.gov.hmcts.opal.steps.ResultsStepDefTest'
 
-```bash
-./gradlew functionalOpal '-Dcucumber.filter.tags=@JIRA-STORY:PO-10298 and not @PO10298Empty'
-./gradlew functionalOpal -Dcucumber.filter.tags=@PO10298Empty
-./gradlew functionalOpal --tests 'uk.gov.hmcts.opal.steps.ResultsStepDefTest'
-./gradlew checkstyleFunctionalTest
-./gradlew build
-./gradlew functional
-./gradlew smoke
-```
-
-Run the assertion-unit command without `cucumber.filter.tags`: a tag property
-selects only the Cucumber runner. It checks response assertions and target
-validation without making live HTTP calls. A Cucumber dry run checks discovery
-only. The two focused live selections exercise three matching-target scenarios
-and one empty-target scenario; normal `functional` must also execute all four
-with both URLs configured and without a tag override.
-
-Before every subsequent functional invocation, preserve the preceding JUnit
-scenario names, test/failure/error/skipped counts, exact command, elapsed time
-and a non-sensitive environment description from
-`build/test-results/functional/opal`. `functionalOpal` clears its previous
-reports. Keep live verification evidence separate from assertion-unit and
-dry-run evidence. Raw Serenity/HTTP reports can contain response or request
-information: review them for sensitive content before sharing and never archive
-bearer headers, tokens or reusable database connection credentials.
-
-## Result detail functional-test prerequisites
-
-PO-10301 covers `GET /results/{result_id}` using the current API contract:
-inactive Results remain retrievable, absent Results return 404, and stored
-metadata is returned unchanged as a JSON-encoded string or explicit JSON null.
-The user approved revising the original inactive/unsupported-metadata failure
-expectations to this contract.
-
-Use the existing `TEST_URL` and `OPAL_USER_SERVICE_API_URL` configuration and
-the approved synthetic test user. For a focused PO-10301 run, detail requests
-use validated `TEST_URL` (including its localhost fallback) unless the optional
-`OPAL_RESULTS_DETAIL_TEST_URL` is supplied. An explicit detail URL is validated
-and normalized using the same HTTP(S) rules as the inherited Results targets;
-blank or invalid values fail with that setting's name. Authentication must
-remain enabled. Every scenario performs read-only HTTP requests through the
-existing Cucumber runner.
-
-Prepare
-`src/functionalTest/resources/fixtures/results/result-detail-functional-fixtures.sql`
-only in an explicitly created disposable PostgreSQL 17 database named
-`po10301_functional`. Apply the parent's `ddl`, `data/allEnvs` and `data/dev`
-migrations first, using the repository's Flyway version, then execute the file
-through that owned container with `psql -X -v ON_ERROR_STOP=1`. Do not point this
-setup at the regular Compose database, a shared database or a deployed service.
-
-The fixture transaction inserts six independent synthetic records. `Q301A1`
-is active, `Q301I1` is inactive, `Q301U1` contains an unfamiliar parameter type,
-`Q301N1` has SQL-null metadata, `Q301E1` has an empty parameter array and
-`Q301T1` belongs to the authentication scenario. `Q301X1` must not exist.
-Existing fixture keys cause a failure rather than being overwritten. Failed
-preparation must roll back; do not proceed with incomplete data.
-
-Start the target service after fixture preparation with a fresh local cache or
-an independently owned empty Redis instance. The service and fixture SQL must
-use the same owned database. Never modify fixture rows after they are cached.
-The SQL is test-only and is not a Flyway migration or deployment seed.
-
-For a combined PO-10298 and PO-10301 live run, prepare three separate owned
-databases and start a fresh service/cache for each: the parent's matching
-dataset at `TEST_URL`, its empty dataset at `OPAL_RESULTS_EMPTY_TEST_URL`, and
-the detail dataset at `OPAL_RESULTS_DETAIL_TEST_URL`. The first two use the
-parent's marked disposable databases and fixture SQL described above; the
-detail target uses `po10301_functional`. Set all three URLs to their respective
-HTTP(S) service base URLs before selecting both Jira story tags. The optional
-detail URL exists because the detail rows would change the parent's exact-list
-response. Never add detail rows to either list dataset or route both datasets
-through one service.
-
-Validate discovery:
-
-    ./gradlew functionalOpal -Dcucumber.filter.tags=@JIRA-STORY:PO-10301 -Dcucumber.execution.dry-run=true
-
-Run the live scenarios:
-
-    ./gradlew functionalOpal -Dcucumber.filter.tags=@JIRA-STORY:PO-10301
-
-Record all seven scenario results and destroy the owned disposable environment
-afterwards, including following failure. Discovery success is not live API
-verification. A missing fixture or authentication prerequisite is a setup
-failure, not a reason to ignore a scenario. No production data, bearer token or
-reusable connection credential belongs in source or evidence.
+Preserve scenario names, test/failure/error/skipped counts, exact command,
+elapsed time and non-sensitive setup notes before the next functionalOpal run
+clears reports. Discovery and HTTP mocks are not live API evidence. Review raw
+reports before sharing; never archive bearer headers, tokens or reusable
+connection credentials. A normal full functional/smoke run also needs the other
+journeys' documented data and compatible authentication service.

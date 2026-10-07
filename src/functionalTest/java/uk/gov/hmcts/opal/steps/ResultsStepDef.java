@@ -17,15 +17,16 @@ import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public class ResultsStepDef extends BaseStepDef {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final String MATCHING_TARGET = "TEST_URL";
-    private static final String EMPTY_TARGET = "OPAL_RESULTS_EMPTY_TEST_URL";
     private static final String DETAIL_TARGET = "OPAL_RESULTS_DETAIL_TEST_URL";
     static final String ACTIVE_REQUEST_PATH = "/results?order_term=true&active=true";
+    static final String INACTIVE_REQUEST_PATH = "/results?order_term=true&active=false";
     static final String MALFORMED_REQUEST_PATH = "/results?order_term=not-a-boolean&active=true";
 
     private static final Map<String, ExpectedResult> EXPECTED = Map.of(
@@ -85,45 +86,37 @@ public class ResultsStepDef extends BaseStepDef {
 
     @When("I request active Results available as Order Terms")
     public void requestActiveResults() {
-        latestResponse = getWithBearer(resultsTarget(false), ACTIVE_REQUEST_PATH, BearerTokenStepDef.getToken());
+        latestResponse = getWithBearer(resultsTarget(), ACTIVE_REQUEST_PATH, BearerTokenStepDef.getToken());
     }
 
-    @When("I request active Results available as Order Terms from the empty target")
+    @When("I request inactive Results available as Order Terms")
     public void requestEmptyResults() {
-        latestResponse = getWithBearer(resultsTarget(true), ACTIVE_REQUEST_PATH, BearerTokenStepDef.getToken());
+        latestResponse = getWithBearer(resultsTarget(), INACTIVE_REQUEST_PATH, BearerTokenStepDef.getToken());
     }
 
     @When("I request Order Term Results with a malformed order_term filter")
     public void requestMalformedResults() {
-        latestResponse = getWithBearer(resultsTarget(false), MALFORMED_REQUEST_PATH, BearerTokenStepDef.getToken());
+        latestResponse = getWithBearer(resultsTarget(), MALFORMED_REQUEST_PATH, BearerTokenStepDef.getToken());
     }
 
     @When("I request active Order Term Results without authentication")
     public void requestUnauthenticatedResults() {
-        latestResponse = getWithoutBearer(resultsTarget(false), ACTIVE_REQUEST_PATH);
+        latestResponse = getWithoutBearer(resultsTarget(), ACTIVE_REQUEST_PATH);
     }
 
     protected String environmentSetting(String setting) {
         return System.getenv(setting);
     }
 
-    String resultsTarget(boolean empty) {
+    String resultsTarget() {
         String configuredTarget = environmentSetting(MATCHING_TARGET);
-        String matchingTarget = validatedTarget(MATCHING_TARGET,
+        return validatedTarget(MATCHING_TARGET,
             configuredTarget == null ? "http://localhost:4551" : configuredTarget);
-        if (!empty) {
-            return matchingTarget;
-        }
-        String emptyTarget = validatedTarget(EMPTY_TARGET, environmentSetting(EMPTY_TARGET));
-        if (matchingTarget.equalsIgnoreCase(emptyTarget)) {
-            throw new IllegalStateException(MATCHING_TARGET + " and " + EMPTY_TARGET + " must be distinct");
-        }
-        return emptyTarget;
     }
 
     String detailTarget() {
         String configuredTarget = environmentSetting(DETAIL_TARGET);
-        return configuredTarget == null ? resultsTarget(false) : validatedTarget(DETAIL_TARGET, configuredTarget);
+        return configuredTarget == null ? resultsTarget() : validatedTarget(DETAIL_TARGET, configuredTarget);
     }
 
     static String validatedTarget(String setting, String value) {
@@ -207,13 +200,18 @@ public class ResultsStepDef extends BaseStepDef {
             actual.put(id, title);
         }
 
+        List<Map<String, String>> rows = expectedTable.asMaps(String.class, String.class);
         Map<String, String> expected = new HashMap<>();
-        for (Map<String, String> row : expectedTable.asMaps(String.class, String.class)) {
+        for (Map<String, String> row : rows) {
             assertFalse(expected.containsKey(row.get("result_id")), "Duplicate expected Result identifier");
             expected.put(row.get("result_id"), row.get("result_title"));
         }
         assertFalse(expected.isEmpty());
-        assertEquals(expected, actual, "Results must match the controlled active Order Term dataset");
+        assertEquals(expected, actual, "Results must match the seeded Order Term definitions");
+        for (int index = 0; index < rows.size(); index++) {
+            assertEquals(rows.get(index).get("result_id"), data.get(index).path("result_id").textValue(),
+                "Result display order differs from the seeded definitions");
+        }
     }
 
     static void assertEmptyResults(String body) throws IOException {
