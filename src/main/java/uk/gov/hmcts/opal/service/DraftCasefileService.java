@@ -21,6 +21,7 @@ import uk.gov.hmcts.opal.generated.model.DraftCasefileGetResponse;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileListResponse;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileSummary;
 import uk.gov.hmcts.opal.logging.DraftCasefileParticipantCategoryResolver;
+import uk.gov.hmcts.opal.mapper.DraftCasefileAddResponseMapper;
 import uk.gov.hmcts.opal.mapper.DraftCasefileGetMapper;
 import uk.gov.hmcts.opal.mapper.DraftCasefileMapper;
 import uk.gov.hmcts.opal.mapper.DraftCasefileSummaryMapper;
@@ -49,6 +50,7 @@ public class DraftCasefileService {
     private final DraftCasefileValidator validator;
     private final DraftCasefileRepository repository;
     private final DraftCasefileMapper mapper;
+    private final DraftCasefileAddResponseMapper addResponseMapper;
     private final DraftCasefileGetMapper getMapper;
     private final DraftCasefileSummaryMapper summaryMapper;
     private final DraftCasefileParticipantCategoryResolver participantCategoryResolver;
@@ -62,7 +64,7 @@ public class DraftCasefileService {
         validator.validate(request);
         Instant submittedAt = clock.instant().truncatedTo(ChronoUnit.MICROS);
         DraftCasefileEntity entity = repository.save(mapper.toEntity(request, user, submittedAt));
-        DraftCasefileAddResponse response = mapper.toResponse(entity);
+        DraftCasefileAddResponse response = addResponseMapper.toResponse(entity);
         eventPublisher.publishEvent(new DraftCasefilePersonalDataEvent(Operation.SUBMISSION,
             entity.getDraftCasefileId(), user.userId(), user.ipAddress(), submittedAt,
             participantCategoryResolver.resolve(request.getCasefile())));

@@ -17,6 +17,7 @@ import uk.gov.hmcts.opal.generated.model.CasefileSnapshot;
 import uk.gov.hmcts.opal.generated.model.CasefileSnapshotMinorCreditorAccount;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileSummary;
 import uk.gov.hmcts.opal.logging.DraftCasefileParticipantCategoryResolver;
+import uk.gov.hmcts.opal.mapper.DraftCasefileAddResponseMapper;
 import uk.gov.hmcts.opal.mapper.DraftCasefileGetMapper;
 import uk.gov.hmcts.opal.mapper.DraftCasefileMapper;
 import uk.gov.hmcts.opal.mapper.DraftCasefileSummaryMapper;
@@ -52,7 +53,8 @@ class DraftCasefileListServiceTest {
         new DraftCasefileFilter((short) 31021, null, null, List.of(), null, null);
     private final DraftCasefileService service = new DraftCasefileService(
         users, mock(DraftCasefileValidator.class), repository, mock(DraftCasefileMapper.class),
-        mock(DraftCasefileGetMapper.class), summaryMapper, new DraftCasefileParticipantCategoryResolver(),
+        mock(DraftCasefileAddResponseMapper.class), mock(DraftCasefileGetMapper.class), summaryMapper,
+        new DraftCasefileParticipantCategoryResolver(),
         events, clock);
 
     @BeforeEach
