@@ -3,6 +3,7 @@ package uk.gov.hmcts.opal.validator;
 import org.junit.jupiter.api.Test;
 import uk.gov.hmcts.opal.common.exception.OpalApiException;
 import uk.gov.hmcts.opal.entity.DraftCasefileStatus;
+import uk.gov.hmcts.opal.exception.RequestValidationError;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileLifecycleStatus;
 
 import java.time.LocalDate;
@@ -63,6 +64,8 @@ class DraftCasefileQueryValidatorTest {
 
     private static void assertInvalid(org.assertj.core.api.ThrowableAssert.ThrowingCallable operation) {
         assertThatThrownBy(operation).isInstanceOf(OpalApiException.class)
-            .hasMessageNotContaining("SYNTHETIC_PRIVATE_QUERY");
+            .hasMessageNotContaining("SYNTHETIC_PRIVATE_QUERY")
+            .satisfies(failure -> assertThat(((OpalApiException) failure).getError())
+                .isEqualTo(RequestValidationError.INVALID_REQUEST));
     }
 }
