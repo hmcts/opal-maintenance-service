@@ -6,7 +6,6 @@ import org.mapstruct.Mapping;
 import org.mapstruct.Named;
 import org.mapstruct.ReportingPolicy;
 import org.openapitools.jackson.nullable.JsonNullable;
-import uk.gov.hmcts.opal.entity.DraftCasefileStatus;
 import uk.gov.hmcts.opal.generated.model.CasefileType;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileLifecycleStatus;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileSummary;
@@ -18,14 +17,14 @@ import java.time.ZoneOffset;
 
 @Mapper(componentModel = "spring", injectionStrategy = InjectionStrategy.CONSTRUCTOR,
     unmappedTargetPolicy = ReportingPolicy.ERROR, uses = DraftCasefileJsonMapper.class,
-    imports = {DraftCasefileStatus.class, DraftCasefileLifecycleStatus.class})
+    imports = DraftCasefileLifecycleStatus.class)
 public interface DraftCasefileSummaryMapper {
     @Mapping(target = "casefileSnapshot", source = "casefileSnapshot", qualifiedByName = "storedSnapshot")
     @Mapping(target = "casefileType", source = "casefileType", qualifiedByName = "summaryCasefileType")
     @Mapping(target = "casefileStatus",
-        expression = "java(DraftCasefileLifecycleStatus.fromValue(projection.getCasefileStatus()))")
+        expression = "java(DraftCasefileLifecycleStatus.fromValue(projection.getCasefileStatus().name()))")
     @Mapping(target = "casefileStatusName",
-        expression = "java(DraftCasefileStatus.valueOf(projection.getCasefileStatus()).getDisplayName())")
+        expression = "java(projection.getCasefileStatus().getDisplayName())")
     @Mapping(target = "validatedDate", source = "validatedDate", qualifiedByName = "summaryNullableUtc")
     DraftCasefileSummary toSummary(DraftCasefileSummaryProjection projection);
 

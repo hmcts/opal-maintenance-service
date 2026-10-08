@@ -1,5 +1,7 @@
 package uk.gov.hmcts.opal.repository;
 
+import uk.gov.hmcts.opal.entity.DraftCasefileStatus;
+
 import java.time.LocalDateTime;
 
 public interface DraftCasefileSummaryProjection {
@@ -19,7 +21,7 @@ public interface DraftCasefileSummaryProjection {
 
     String getCasefileType();
 
-    String getCasefileStatus();
+    DraftCasefileStatus getCasefileStatus();
 
     LocalDateTime getCasefileStatusDate();
 }

@@ -94,24 +94,25 @@ class DraftCasefileListRepositoryIntegrationTest extends BaseIntegrationTest {
         assertThat(repository.countMatching(filter(null, null, List.of(), null, null))).isEqualTo(6);
         assertThat(capture.draftSelects()).singleElement().satisfies(sql -> {
             String normalised = sql.toLowerCase(Locale.ROOT);
-            assertThat(normalised).startsWith("select count(*)");
+            assertThat(normalised).startsWith("select count(");
             assertThat(normalised).doesNotContain("casefile_snapshot", "timeline_data", "json_", "#>", "->",
                 "submitted_by_name", "status_message", "validated_by", "version_number");
         });
     }
 
     @Test
-    void summarySelectHasNoEntityOrCompleteJsonProjectionAndHasNativeScalarTypes() {
+    void summarySelectLoadsOnlySummaryColumnsWithMappedTypes() {
         capture.clear();
         var rows = repository.findSummaries(filter(null, null, List.of(), null, null));
         assertThat(rows).hasSize(6);
         assertThat(rows.getFirst().getCreatedDate()).isEqualTo(LocalDateTime.parse("2026-09-01T10:00:00"));
         assertThat(rows.getFirst().getCasefileType()).isEqualTo("REMO In");
-        assertThat(rows.getFirst().getCasefileStatus()).isEqualTo("SUBMITTED");
+        assertThat(rows.getFirst().getCasefileStatus()).isEqualTo(DraftCasefileStatus.SUBMITTED);
         assertThat(capture.draftSelects()).singleElement().satisfies(sql -> {
             assertThat(sql).contains("casefile_snapshot");
             assertThat(sql).doesNotContain("d.*", "timeline_data", "status_message", "version_number", "json_",
-                "#>", "->", "d.casefile as", "d.casefile,");
+                "#>", "->");
+            assertThat(sql).doesNotContainPattern("\\b\\w+\\.casefile\\b");
         });
     }
 

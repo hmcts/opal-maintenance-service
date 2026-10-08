@@ -25,8 +25,8 @@ paginates locally. Submitter IDs are filter values, with no User Service lookup.
 Normal responses contain `count` and `summaries`, including
 `{"count":0,"summaries":[]}` for no matches. Normal count equals the returned list
 size. `restrict=counts` returns only `{"count":N}`; it loads no snapshot or summary,
-and works without parsing personal-data columns. Both modes use the same SQL
-filter clause and return 200 for no matches. There is no collection ETag or
+and works without parsing personal-data columns. Both modes use the same JPA
+Specification and return 200 for no matches. There is no collection ETag or
 Location header.
 
 Each summary contains draft and BU IDs, `casefile_snapshot`, case type, lifecycle
@@ -83,7 +83,7 @@ unavailable persistence 503 and unreadable stored data 500. Stored values and
 invalid private inputs are not disclosed. Empty results are 200.
 
 Unit and PostgreSQL 17/MockMvc integration tests cover both modes, filters,
-UTC edges, published links/audit, unchanged rows, native projection types,
+UTC edges, published links/audit, unchanged rows, JPA projection types,
 count-only SQL, same-BU permission isolation, signed JWT/User Service lookup,
 exact grouped metadata, after-commit timing and safe failures. Existing Add and
 single GET tests cover those contracts and public `/`, `/health`, `/prometheus`.

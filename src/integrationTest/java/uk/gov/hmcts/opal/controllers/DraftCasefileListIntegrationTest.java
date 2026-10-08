@@ -148,7 +148,7 @@ class DraftCasefileListIntegrationTest extends BaseIntegrationTest {
         verify(repository, never()).findSummaries(any(DraftCasefileFilter.class));
         verifyNoInteractions(logging);
         assertThat(capture.draftSelects()).singleElement().satisfies(sql ->
-            assertThat(sql.toLowerCase(Locale.ROOT)).startsWith("select count(*)"));
+            assertThat(sql.toLowerCase(Locale.ROOT)).startsWith("select count("));
     }
 
     @ParameterizedTest
@@ -334,7 +334,8 @@ class DraftCasefileListIntegrationTest extends BaseIntegrationTest {
         perform(listRequest(false, CREATE_MANAGE_DRAFT_CASEFILES));
         assertThat(capture.draftSelects()).singleElement().satisfies(sql -> {
             assertThat(sql).contains("casefile_snapshot");
-            assertThat(sql).doesNotContain("count(*)", "d.casefile,", "timeline_data");
+            assertThat(sql).doesNotContain("count(", "timeline_data");
+            assertThat(sql).doesNotContainPattern("\\b\\w+\\.casefile\\b");
         });
         assertThat(storedRow(910201)).isEqualTo(before);
         clearInvocations(logging);
