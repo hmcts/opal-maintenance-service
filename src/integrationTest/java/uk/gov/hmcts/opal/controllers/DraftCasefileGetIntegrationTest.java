@@ -73,6 +73,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
     "spring.flyway.locations=classpath:db/migration/ddl",
     "opal.redis.enabled=false",
     "management.health.redis.enabled=false",
+    "logging.level.opal.DraftCasefileApiController=DEBUG",
+    "logging.level.opal.DraftCasefileService=DEBUG",
     "spring.jpa.open-in-view=false"
 })
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
@@ -158,7 +160,8 @@ class DraftCasefileGetIntegrationTest extends BaseIntegrationTest {
         assertStoredResponseAndUnchangedRow(id, response, before);
         assertConsultationMetadata(id, 4);
         assertThat(output.getAll().substring(outputStart))
-            .doesNotContain(PRIVATE, "Synthetic rejection reason", "Synthetic M1", "Synthetic M2");
+            .doesNotContain(PRIVATE, "Synthetic rejection reason", "Synthetic R", "Synthetic A",
+                "Synthetic M1", "Synthetic M2", "Synthetic Submitter", "Synthetic Checker");
     }
 
     @ParameterizedTest

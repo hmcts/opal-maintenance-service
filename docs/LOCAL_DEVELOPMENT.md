@@ -131,6 +131,19 @@ The response should have status `UP`. The service API is available at
 `http://localhost:4551`, and User Service remains available from Docker at
 `http://localhost:4555`.
 
+## Debug logging
+
+Logging defaults to INFO. To enable DEBUG for a particular logger, use these
+tasks and arguments in the IntelliJ Gradle run configuration:
+
+```text
+run --args='--logging.level.<logger-name>=DEBUG'
+```
+
+Replace `<logger-name>` with the logger name used by the class you are debugging.
+Lombok's `@Slf4j(topic = ...)` sets an explicit name; otherwise it uses the fully
+qualified class name. Other loggers keep their configured levels.
+
 ## Optional testing-support endpoints
 
 Add this environment variable only when testing Maintenance Service's
