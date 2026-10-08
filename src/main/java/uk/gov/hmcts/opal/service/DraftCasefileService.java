@@ -2,6 +2,7 @@ package uk.gov.hmcts.opal.service;
 
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,6 +42,7 @@ import static uk.gov.hmcts.opal.authorisation.MaintenancePermission.CREATE_MANAG
 
 @Service
 @RequiredArgsConstructor
+@Slf4j(topic = "opal.DraftCasefileService")
 public class DraftCasefileService {
 
     private final MaintenanceUserService maintenanceUserService;
@@ -90,7 +92,10 @@ public class DraftCasefileService {
         MaintenanceUser user = maintenanceUserService.requireAuthorisedUser(filter.businessUnitId(),
             CREATE_MANAGE_DRAFT_CASEFILES, CHECK_VALIDATE_DRAFT_CASEFILES);
         if (countsOnly) {
-            return new DraftCasefileListResponse().count(repository.countMatching(filter));
+            long count = repository.countMatching(filter);
+            log.debug(":listDraftCasefiles: businessUnitId={}, countsOnly=true, count={}",
+                filter.businessUnitId(), count);
+            return new DraftCasefileListResponse().count(count);
         }
         List<DraftCasefileSummaryProjection> rows = repository.findSummaries(filter);
         List<DraftCasefileSummary> summaries = rows.stream().map(summaryMapper::toSummary).toList();
@@ -99,6 +104,8 @@ public class DraftCasefileService {
         if (!rows.isEmpty()) {
             eventPublisher.publishEvent(listAccessEvent(user, summaries));
         }
+        log.debug(":listDraftCasefiles: businessUnitId={}, countsOnly=false, count={}",
+            filter.businessUnitId(), summaries.size());
         return response;
     }
 

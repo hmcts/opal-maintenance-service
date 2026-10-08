@@ -77,6 +77,8 @@ import static uk.gov.hmcts.opal.authorisation.MaintenancePermission.CREATE_MANAG
     "spring.flyway.locations=classpath:db/migration/ddl",
     "opal.redis.enabled=false",
     "management.health.redis.enabled=false",
+    "logging.level.opal.DraftCasefileApiController=DEBUG",
+    "logging.level.opal.DraftCasefileService=DEBUG",
     "spring.jpa.open-in-view=false"
 })
 @Import(DraftCasefileSqlCaptureConfiguration.class)
@@ -263,7 +265,8 @@ class DraftCasefileListIntegrationTest extends BaseIntegrationTest {
             .writeValueAsString(details.getAllValues());
         assertThat(serialised).doesNotContain("casefile_snapshot", "respondent_name", "Synthetic R",
             "Synthetic A", "bank_account_details", "timeline_data", "status_message");
-        assertThat(output.getAll().substring(start)).doesNotContain("Synthetic R", "Synthetic A");
+        assertThat(output.getAll().substring(start)).doesNotContain(
+            "Synthetic R", "Synthetic A", "Synthetic M1", "Synthetic M2", "Synthetic Submitter", "BUU-1", "BUU-2");
     }
 
     @Test
