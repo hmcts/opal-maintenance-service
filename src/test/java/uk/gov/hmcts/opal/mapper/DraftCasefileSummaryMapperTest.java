@@ -64,7 +64,7 @@ class DraftCasefileSummaryMapperTest {
     @EnumSource(DraftCasefileStatus.class)
     void mapsEveryLifecycleCodeAndLabel(DraftCasefileStatus status) {
         var values = values();
-        values.put("casefileStatus", status.name());
+        values.put("casefileStatus", status);
         var summary = mapper.toSummary(projection(values));
         assertThat(summary.getCasefileStatus().getValue()).isEqualTo(status.name());
         assertThat(summary.getCasefileStatusName()).isEqualTo(status.getDisplayName());
@@ -93,7 +93,7 @@ class DraftCasefileSummaryMapperTest {
         values.put("validatedDate", LocalDateTime.parse("2026-10-02T12:00:00"));
         values.put("casefileSnapshot", SNAPSHOT);
         values.put("casefileType", "REMO In");
-        values.put("casefileStatus", "PUBLISHED");
+        values.put("casefileStatus", DraftCasefileStatus.PUBLISHED);
         values.put("casefileStatusDate", LocalDateTime.parse("2026-10-03T12:00:00"));
         return values;
     }
