@@ -11,7 +11,7 @@ import tools.jackson.databind.json.JsonMapper;
 import uk.gov.hmcts.opal.authorisation.MaintenanceUser;
 import uk.gov.hmcts.opal.authorisation.MaintenanceUserService;
 import uk.gov.hmcts.opal.common.exception.OpalApiException;
-import uk.gov.hmcts.opal.dto.DraftCasefileRetrieval;
+import uk.gov.hmcts.opal.dto.VersionedResponse;
 import uk.gov.hmcts.opal.entity.DraftCasefileEntity;
 import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent;
 import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent.Operation;
@@ -132,7 +132,7 @@ class DraftCasefileServiceTest {
         when(getMapper.toResponse(row)).thenReturn(body);
         when(clock.instant()).thenReturn(Instant.EPOCH);
 
-        assertThat(service.getDraftCasefile(123L)).isEqualTo(new DraftCasefileRetrieval(body, 4L));
+        assertThat(service.getDraftCasefile(123L)).isEqualTo(new VersionedResponse<>(body, 4L));
 
         InOrder order = inOrder(repository, userService, getMapper, events);
         order.verify(repository).findById(123L);
