@@ -27,7 +27,7 @@ class DraftCasefileGetMapperTest {
     private static final JsonMapper JSON = JsonMapper.builder().build();
     private static final ObjectMapper COMPATIBLE = new JacksonCompatibilityConfiguration().objectMapper();
     private final DraftCasefileGetMapper mapper = new DraftCasefileGetMapperImpl(
-        new DraftCasefileJsonMapper(JSON, COMPATIBLE));
+        new DraftCasefileJsonMapper(JSON, COMPATIBLE), new DraftCasefileValueMapper());
 
     @Test
     void returnsTheCompleteStoredPayloadAndPublishedSummary() throws Exception {

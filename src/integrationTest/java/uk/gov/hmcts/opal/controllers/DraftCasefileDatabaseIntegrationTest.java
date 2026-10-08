@@ -30,7 +30,7 @@ import uk.gov.hmcts.opal.BaseIntegrationTest;
 import uk.gov.hmcts.opal.entity.DraftCasefileEntity;
 import uk.gov.hmcts.opal.logging.integration.dto.PersonalDataProcessingLogDetails;
 import uk.gov.hmcts.opal.logging.integration.service.LoggingService;
-import uk.gov.hmcts.opal.mapper.DraftCasefileMapper;
+import uk.gov.hmcts.opal.mapper.DraftCasefileAddResponseMapper;
 import uk.gov.hmcts.opal.repository.DraftCasefileRepository;
 import uk.gov.hmcts.opal.support.DraftCasefileHttpFixture;
 
@@ -83,7 +83,7 @@ class DraftCasefileDatabaseIntegrationTest extends BaseIntegrationTest {
     @MockitoSpyBean
     private DraftCasefileRepository repository;
     @MockitoSpyBean
-    private DraftCasefileMapper mapper;
+    private DraftCasefileAddResponseMapper mapper;
     @MockitoBean
     private LoggingService logging;
     @MockitoBean

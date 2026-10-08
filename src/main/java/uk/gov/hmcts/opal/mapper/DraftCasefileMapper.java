@@ -1,7 +1,6 @@
 package uk.gov.hmcts.opal.mapper;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.openapitools.jackson.nullable.JsonNullable;
@@ -14,9 +13,7 @@ import uk.gov.hmcts.opal.generated.model.CasefileSnapshot;
 import uk.gov.hmcts.opal.generated.model.CasefileSnapshotApplicantAccount;
 import uk.gov.hmcts.opal.generated.model.CasefileSnapshotMinorCreditorAccount;
 import uk.gov.hmcts.opal.generated.model.CasefileSnapshotRespondentAccount;
-import uk.gov.hmcts.opal.generated.model.CasefileType;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileAddRequest;
-import uk.gov.hmcts.opal.generated.model.DraftCasefileAddResponse;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileSubmissionTimelineEntry;
 
 import java.time.Instant;
@@ -53,26 +50,6 @@ public class DraftCasefileMapper {
                 .build();
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("Unable to serialize Draft Casefile metadata", exception);
-        }
-    }
-
-    public DraftCasefileAddResponse toResponse(DraftCasefileEntity entity) {
-        try {
-            return new DraftCasefileAddResponse()
-                .draftCasefileId(entity.getDraftCasefileId())
-                .businessUnitId(entity.getBusinessUnitId())
-                .createdDate(entity.getCreatedDate().atOffset(ZoneOffset.UTC))
-                .submittedBy(entity.getSubmittedBy())
-                .submittedByName(entity.getSubmittedByName())
-                .casefileSnapshot(objectMapper.readValue(entity.getCasefileSnapshot(), CasefileSnapshot.class))
-                .casefileType(CasefileType.fromValue(entity.getCasefileType()))
-                .casefileStatus(DraftCasefileAddResponse.CasefileStatusEnum
-                    .fromValue(entity.getCasefileStatus().name()))
-                .casefileStatusDate(entity.getCasefileStatusDate().atOffset(ZoneOffset.UTC))
-                .timelineData(objectMapper.readValue(entity.getTimelineData(),
-                    new TypeReference<List<DraftCasefileSubmissionTimelineEntry>>() {}));
-        } catch (JsonProcessingException exception) {
-            throw new IllegalStateException("Unable to deserialize Draft Casefile metadata", exception);
         }
     }
 

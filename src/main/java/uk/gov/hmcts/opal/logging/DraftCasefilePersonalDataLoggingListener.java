@@ -1,8 +1,7 @@
 package uk.gov.hmcts.opal.logging;
 
 import lombok.RequiredArgsConstructor;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
@@ -22,9 +21,9 @@ import java.util.List;
 
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class DraftCasefilePersonalDataLoggingListener {
 
-    private static final Logger LOG = LoggerFactory.getLogger(DraftCasefilePersonalDataLoggingListener.class);
     private final LoggingService loggingService;
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = false)
@@ -73,7 +72,7 @@ public class DraftCasefilePersonalDataLoggingListener {
     }
 
     private static void logFailure(ParticipantCategory category) {
-        LOG.error("Draft Casefile personal data logging failed for role {}", category);
+        log.error("Draft Casefile personal data logging failed for role {}", category);
     }
 
     private static PersonalDataProcessingCategory processingCategory(Operation operation) {

@@ -20,6 +20,7 @@ import uk.gov.hmcts.opal.entity.DraftCasefileStatus;
 import uk.gov.hmcts.opal.generated.model.CasefileType;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileAddRequest;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileAddResponse;
+import uk.gov.hmcts.opal.mapper.DraftCasefileAddResponseMapper;
 import uk.gov.hmcts.opal.mapper.DraftCasefileMapper;
 
 import java.time.Instant;
@@ -44,6 +45,8 @@ class DraftCasefileRepositoryIntegrationTest extends BaseIntegrationTest {
     @Autowired
     private DraftCasefileMapper mapper;
     @Autowired
+    private DraftCasefileAddResponseMapper addResponseMapper;
+    @Autowired
     private EntityManager entityManager;
     @Autowired
     private JdbcTemplate jdbc;
@@ -61,7 +64,7 @@ class DraftCasefileRepositoryIntegrationTest extends BaseIntegrationTest {
             DraftCasefileEntity mapped = mapper.toEntity(request, user(), SUBMITTED);
             DraftCasefileEntity saved = repository.saveAndFlush(mapped);
             assertThat(saved.getDraftCasefileId()).isPositive();
-            DraftCasefileAddResponse response = mapper.toResponse(saved);
+            DraftCasefileAddResponse response = addResponseMapper.toResponse(saved);
             assertThat(response.getDraftCasefileId()).isEqualTo(saved.getDraftCasefileId());
             assertThat(response.getCreatedDate()).isEqualTo(SUBMITTED.atOffset(ZoneOffset.UTC));
             assertThat(response.getCasefileStatusDate()).isEqualTo(response.getCreatedDate());

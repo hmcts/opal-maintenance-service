@@ -27,7 +27,7 @@ class DraftCasefileSummaryMapperTest {
     private final com.fasterxml.jackson.databind.ObjectMapper compatible =
         new JacksonCompatibilityConfiguration().objectMapper();
     private final DraftCasefileSummaryMapper mapper = new DraftCasefileSummaryMapperImpl(
-        new DraftCasefileJsonMapper(JsonMapper.builder().build(), compatible));
+        new DraftCasefileJsonMapper(JsonMapper.builder().build(), compatible), new DraftCasefileValueMapper());
 
     @Test
     void preservesPublishedLinksSequencesAndDistinctApprovalDate() throws Exception {
