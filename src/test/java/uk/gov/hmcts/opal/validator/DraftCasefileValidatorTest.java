@@ -14,7 +14,7 @@ import uk.gov.hmcts.opal.entity.CountryEntity;
 import uk.gov.hmcts.opal.entity.MaintenanceApplicationEntity;
 import uk.gov.hmcts.opal.entity.MajorCreditorEntity;
 import uk.gov.hmcts.opal.entity.ResultEntity;
-import uk.gov.hmcts.opal.exception.DraftCasefileError;
+import uk.gov.hmcts.opal.exception.RequestValidationError;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileAddRequest;
 import uk.gov.hmcts.opal.repository.CountryRepository;
 import uk.gov.hmcts.opal.repository.MaintenanceApplicationRepository;
@@ -274,11 +274,11 @@ class DraftCasefileValidatorTest {
         JsonNode original = request.getCasefile().deepCopy();
         OpalApiException exception = catchThrowableOfType(OpalApiException.class, () -> validator.validate(request));
         assertThat(exception).isNotNull();
-        assertThat(exception.getError()).isEqualTo(DraftCasefileError.INVALID_REQUEST);
+        assertThat(exception.getError()).isEqualTo(RequestValidationError.INVALID_REQUEST);
         assertThat(exception.getError().getHttpStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
-        assertThat(exception.getError().getErrorTypePrefix()).isEqualTo("DRAFT_CASEFILE");
+        assertThat(exception.getError().getErrorTypePrefix()).isEqualTo("REQUEST_VALIDATION");
         assertThat(exception.getError().getErrorTypeNumeric()).isEqualTo("001");
-        assertThat(exception.getError().getTitle()).isEqualTo("Invalid Draft Casefile request");
+        assertThat(exception.getError().getTitle()).isEqualTo("Invalid request");
         assertThat(exception.getDetail()).isEqualTo(detail);
         assertThat(request.getCasefile()).isEqualTo(original);
     }
