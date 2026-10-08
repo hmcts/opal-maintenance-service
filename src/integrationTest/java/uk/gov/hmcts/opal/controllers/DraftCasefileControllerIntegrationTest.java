@@ -23,8 +23,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.json.JsonMapper;
 import uk.gov.hmcts.common.exceptions.standard.UnauthorizedException;
 import uk.gov.hmcts.opal.BaseIntegrationTest;
-import uk.gov.hmcts.opal.dto.DraftCasefileRetrieval;
-import uk.gov.hmcts.opal.dto.DraftCasefileSubmission;
+import uk.gov.hmcts.opal.dto.VersionedResponse;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileAddRequest;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileAddResponse;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileGetResponse;
@@ -70,7 +69,7 @@ class DraftCasefileControllerIntegrationTest extends BaseIntegrationTest {
     void acceptsRawCasefileAndArbitraryNamedStringsWithoutApplyingGeneratedDefaults() throws Exception {
         String body = validBody.replace("100.00", "arbitrary named string");
         when(service.addDraftCasefile(any())).thenReturn(
-            new DraftCasefileSubmission(new DraftCasefileAddResponse().draftCasefileId(123L), 7L));
+            new VersionedResponse<>(new DraftCasefileAddResponse().draftCasefileId(123L), 7L));
         mockMvc.perform(post("/draft-casefiles").with(authentication(DraftCasefileHttpFixture.token((short) 1)))
             .contentType(MediaType.APPLICATION_JSON).content(body))
             .andExpect(status().isCreated())
@@ -156,7 +155,7 @@ class DraftCasefileControllerIntegrationTest extends BaseIntegrationTest {
     @Test
     void returnsCurrentStrongEtagWithoutVersionInTheBody() throws Exception {
         when(service.getDraftCasefile(123L))
-            .thenReturn(new DraftCasefileRetrieval(new DraftCasefileGetResponse(), 4L));
+            .thenReturn(new VersionedResponse<>(new DraftCasefileGetResponse(), 4L));
 
         mockMvc.perform(get("/draft-casefiles/123")
                 .with(authentication(DraftCasefileHttpFixture.token((short) 1))))

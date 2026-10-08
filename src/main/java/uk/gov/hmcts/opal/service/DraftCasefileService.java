@@ -7,8 +7,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uk.gov.hmcts.opal.authorisation.MaintenanceUser;
 import uk.gov.hmcts.opal.authorisation.MaintenanceUserService;
-import uk.gov.hmcts.opal.dto.DraftCasefileRetrieval;
-import uk.gov.hmcts.opal.dto.DraftCasefileSubmission;
+import uk.gov.hmcts.opal.dto.VersionedResponse;
 import uk.gov.hmcts.opal.entity.DraftCasefileEntity;
 import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent;
 import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent.Operation;
@@ -42,7 +41,7 @@ public class DraftCasefileService {
     private final Clock clock;
 
     @Transactional
-    public DraftCasefileSubmission addDraftCasefile(DraftCasefileAddRequest request) {
+    public VersionedResponse<DraftCasefileAddResponse> addDraftCasefile(DraftCasefileAddRequest request) {
         MaintenanceUser user = maintenanceUserService.requireAuthorisedUser(
             request.getBusinessUnitId(), CREATE_MANAGE_DRAFT_CASEFILES);
         validator.validate(request);
@@ -52,11 +51,11 @@ public class DraftCasefileService {
         eventPublisher.publishEvent(new DraftCasefilePersonalDataEvent(Operation.SUBMISSION,
             entity.getDraftCasefileId(), user.userId(), user.ipAddress(), submittedAt,
             participantCategoryResolver.resolve(request.getCasefile())));
-        return new DraftCasefileSubmission(response, entity.getVersionNumber());
+        return new VersionedResponse<>(response, entity.getVersionNumber());
     }
 
     @Transactional(readOnly = true)
-    public DraftCasefileRetrieval getDraftCasefile(Long id) {
+    public VersionedResponse<DraftCasefileGetResponse> getDraftCasefile(Long id) {
         DraftCasefileEntity entity = repository.findById(id)
             .orElseThrow(() -> new EntityNotFoundException("Draft Casefile not found"));
         MaintenanceUser user = maintenanceUserService.requireAuthorisedUser(
@@ -65,10 +64,11 @@ public class DraftCasefileService {
         if (entity.getVersionNumber() == null) {
             throw new IllegalStateException("Stored Draft Casefile version is unavailable");
         }
-        DraftCasefileRetrieval retrieval = new DraftCasefileRetrieval(response, entity.getVersionNumber());
+        VersionedResponse<DraftCasefileGetResponse> versionedResponse =
+            new VersionedResponse<>(response, entity.getVersionNumber());
         eventPublisher.publishEvent(new DraftCasefilePersonalDataEvent(Operation.VIEW,
             entity.getDraftCasefileId(), user.userId(), user.ipAddress(), clock.instant(),
             participantCategoryResolver.resolve(response.getCasefile())));
-        return retrieval;
+        return versionedResponse;
     }
 }
