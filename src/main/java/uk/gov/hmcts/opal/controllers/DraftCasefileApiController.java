@@ -5,7 +5,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
-import uk.gov.hmcts.opal.dto.DraftCasefileFilter;
 import uk.gov.hmcts.opal.dto.VersionedResponse;
 import uk.gov.hmcts.opal.generated.http.api.DraftCasefileApi;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileAddRequest;
@@ -14,7 +13,6 @@ import uk.gov.hmcts.opal.generated.model.DraftCasefileGetResponse;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileLifecycleStatus;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileListResponse;
 import uk.gov.hmcts.opal.service.DraftCasefileService;
-import uk.gov.hmcts.opal.validator.DraftCasefileQueryValidator;
 import uk.gov.hmcts.opal.validator.OpenApiRequest;
 
 import java.time.LocalDate;
@@ -26,7 +24,6 @@ import java.util.List;
 public class DraftCasefileApiController implements DraftCasefileApi {
 
     private final DraftCasefileService service;
-    private final DraftCasefileQueryValidator queryValidator;
 
     @Override
     @OpenApiRequest("DraftCasefileAddRequest")
@@ -52,8 +49,7 @@ public class DraftCasefileApiController implements DraftCasefileApi {
         LocalDate casefileStatusToDate, String restrict
     ) {
         log.debug(":GET:getDraftCasefiles: businessUnitId={}", businessUnitId);
-        DraftCasefileFilter filter = queryValidator.validate(businessUnitId, submittedBy, notSubmittedBy,
-            casefileStatus, casefileStatusFromDate, casefileStatusToDate, restrict);
-        return ResponseEntity.ok(service.listDraftCasefiles(filter, "counts".equals(restrict)));
+        return ResponseEntity.ok(service.listDraftCasefiles(businessUnitId, submittedBy, notSubmittedBy,
+            casefileStatus, casefileStatusFromDate, casefileStatusToDate, restrict));
     }
 }

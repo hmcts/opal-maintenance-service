@@ -4,7 +4,7 @@ import org.springframework.stereotype.Component;
 import uk.gov.hmcts.opal.common.exception.OpalApiException;
 import uk.gov.hmcts.opal.dto.DraftCasefileFilter;
 import uk.gov.hmcts.opal.entity.DraftCasefileStatus;
-import uk.gov.hmcts.opal.exception.DraftCasefileError;
+import uk.gov.hmcts.opal.exception.RequestValidationError;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileLifecycleStatus;
 
 import java.time.DateTimeException;
@@ -49,6 +49,6 @@ public class DraftCasefileQueryValidator {
     }
 
     private static OpalApiException invalid(String detail) {
-        return new OpalApiException(DraftCasefileError.INVALID_REQUEST, detail);
+        return new OpalApiException(RequestValidationError.INVALID_REQUEST, detail);
     }
 }
