@@ -19,6 +19,7 @@ import uk.gov.hmcts.opal.generated.model.DraftCasefileAddRequest;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileAddResponse;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileGetResponse;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileListResponse;
+import uk.gov.hmcts.opal.generated.model.DraftCasefileLifecycleStatus;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileSummary;
 import uk.gov.hmcts.opal.logging.DraftCasefileParticipantCategoryResolver;
 import uk.gov.hmcts.opal.mapper.DraftCasefileAddResponseMapper;
@@ -28,9 +29,11 @@ import uk.gov.hmcts.opal.mapper.DraftCasefileSummaryMapper;
 import uk.gov.hmcts.opal.repository.DraftCasefileRepository;
 import uk.gov.hmcts.opal.repository.DraftCasefileSummaryProjection;
 import uk.gov.hmcts.opal.validator.DraftCasefileValidator;
+import uk.gov.hmcts.opal.validator.DraftCasefileQueryValidator;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.EnumMap;
 import java.util.LinkedHashSet;
@@ -48,6 +51,7 @@ public class DraftCasefileService {
 
     private final MaintenanceUserService maintenanceUserService;
     private final DraftCasefileValidator validator;
+    private final DraftCasefileQueryValidator queryValidator;
     private final DraftCasefileRepository repository;
     private final DraftCasefileMapper mapper;
     private final DraftCasefileAddResponseMapper addResponseMapper;
@@ -90,10 +94,16 @@ public class DraftCasefileService {
     }
 
     @Transactional(readOnly = true)
-    public DraftCasefileListResponse listDraftCasefiles(DraftCasefileFilter filter, boolean countsOnly) {
+    public DraftCasefileListResponse listDraftCasefiles(
+        Short businessUnitId, String submittedBy, String notSubmittedBy,
+        List<DraftCasefileLifecycleStatus> casefileStatus, LocalDate casefileStatusFromDate,
+        LocalDate casefileStatusToDate, String restrict
+    ) {
+        DraftCasefileFilter filter = queryValidator.validate(businessUnitId, submittedBy, notSubmittedBy,
+            casefileStatus, casefileStatusFromDate, casefileStatusToDate, restrict);
         MaintenanceUser user = maintenanceUserService.requireAuthorisedUser(filter.businessUnitId(),
             CREATE_MANAGE_DRAFT_CASEFILES, CHECK_VALIDATE_DRAFT_CASEFILES);
-        if (countsOnly) {
+        if ("counts".equals(restrict)) {
             long count = repository.countMatching(filter);
             log.debug(":listDraftCasefiles: businessUnitId={}, countsOnly=true, count={}",
                 filter.businessUnitId(), count);

@@ -11,6 +11,7 @@ import org.springframework.security.access.AccessDeniedException;
 import uk.gov.hmcts.opal.authorisation.MaintenanceUser;
 import uk.gov.hmcts.opal.authorisation.MaintenanceUserService;
 import uk.gov.hmcts.opal.dto.DraftCasefileFilter;
+import uk.gov.hmcts.opal.common.exception.OpalApiException;
 import uk.gov.hmcts.opal.event.DraftCasefileListPersonalDataEvent;
 import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent.ParticipantCategory;
 import uk.gov.hmcts.opal.generated.model.CasefileSnapshot;
@@ -24,6 +25,7 @@ import uk.gov.hmcts.opal.mapper.DraftCasefileSummaryMapper;
 import uk.gov.hmcts.opal.repository.DraftCasefileRepository;
 import uk.gov.hmcts.opal.repository.DraftCasefileSummaryProjection;
 import uk.gov.hmcts.opal.validator.DraftCasefileValidator;
+import uk.gov.hmcts.opal.validator.DraftCasefileQueryValidator;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -52,7 +54,8 @@ class DraftCasefileListServiceTest {
     private final DraftCasefileFilter filter =
         new DraftCasefileFilter((short) 31021, null, null, List.of(), null, null);
     private final DraftCasefileService service = new DraftCasefileService(
-        users, mock(DraftCasefileValidator.class), repository, mock(DraftCasefileMapper.class),
+        users, mock(DraftCasefileValidator.class), new DraftCasefileQueryValidator(), repository,
+        mock(DraftCasefileMapper.class),
         mock(DraftCasefileAddResponseMapper.class), mock(DraftCasefileGetMapper.class), summaryMapper,
         new DraftCasefileParticipantCategoryResolver(),
         events, clock);
@@ -64,9 +67,17 @@ class DraftCasefileListServiceTest {
     }
 
     @Test
+    void invalidQueryDoesNotAuthoriseQueryOrPublish() {
+        assertThatThrownBy(() -> service.listDraftCasefiles(
+            (short) 31021, null, null, null, null, null, "unsupported"))
+            .isInstanceOf(OpalApiException.class);
+        verifyNoInteractions(users, repository, summaryMapper, events, clock);
+    }
+
+    @Test
     void countAuthorisesFirstAndDoesNotReadMapOrPublishSummaries() {
         when(repository.countMatching(filter)).thenReturn(7L);
-        var response = service.listDraftCasefiles(filter, true);
+        var response = service.listDraftCasefiles((short) 31021, null, null, null, null, null, "counts");
         assertThat(response.getCount()).isEqualTo(7L);
         assertThat(response.getSummaries()).isNull();
         InOrder order = inOrder(users, repository);
@@ -82,15 +93,17 @@ class DraftCasefileListServiceTest {
         when(users.requireAuthorisedUser((short) 31021,
             CREATE_MANAGE_DRAFT_CASEFILES, CHECK_VALIDATE_DRAFT_CASEFILES))
             .thenThrow(new AccessDeniedException("Denied"));
-        assertThatThrownBy(() -> service.listDraftCasefiles(filter, false)).isInstanceOf(AccessDeniedException.class);
-        assertThatThrownBy(() -> service.listDraftCasefiles(filter, true)).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> service.listDraftCasefiles((short) 31021, null, null, null, null, null, null))
+            .isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> service.listDraftCasefiles((short) 31021, null, null, null, null, null, "counts"))
+            .isInstanceOf(AccessDeniedException.class);
         verifyNoInteractions(repository, summaryMapper, events, clock);
     }
 
     @Test
     void emptyNormalResultContainsEmptyListAndPublishesNoEvent() {
         when(repository.findSummaries(filter)).thenReturn(List.of());
-        var response = service.listDraftCasefiles(filter, false);
+        var response = service.listDraftCasefiles((short) 31021, null, null, null, null, null, null);
         assertThat(response.getCount()).isZero();
         assertThat(response.getSummaries()).isEmpty();
         verify(repository, never()).countMatching(any(DraftCasefileFilter.class));
@@ -107,7 +120,7 @@ class DraftCasefileListServiceTest {
         when(summaryMapper.toSummary(first)).thenReturn(firstSummary);
         when(summaryMapper.toSummary(second)).thenReturn(secondSummary);
         when(clock.instant()).thenReturn(Instant.EPOCH);
-        var response = service.listDraftCasefiles(filter, false);
+        var response = service.listDraftCasefiles((short) 31021, null, null, null, null, null, null);
         assertThat(response.getCount()).isEqualTo(3L);
         assertThat(response.getSummaries()).containsExactly(firstSummary, secondSummary, secondSummary);
         var event = ArgumentCaptor.forClass(DraftCasefileListPersonalDataEvent.class);
@@ -132,17 +145,18 @@ class DraftCasefileListServiceTest {
     @Test
     void repositoryOrPartialMappingFailureDoesNotPublish() {
         when(repository.countMatching(filter)).thenThrow(new DataAccessResourceFailureException("Unavailable"));
-        assertThatThrownBy(() -> service.listDraftCasefiles(filter, true))
+        assertThatThrownBy(() -> service.listDraftCasefiles((short) 31021, null, null, null, null, null, "counts"))
             .isInstanceOf(DataAccessResourceFailureException.class);
         when(repository.findSummaries(filter)).thenThrow(new DataAccessResourceFailureException("Unavailable"));
-        assertThatThrownBy(() -> service.listDraftCasefiles(filter, false))
+        assertThatThrownBy(() -> service.listDraftCasefiles((short) 31021, null, null, null, null, null, null))
             .isInstanceOf(DataAccessResourceFailureException.class);
         var first = row(123L);
         var second = row(456L);
         org.mockito.Mockito.doReturn(List.of(first, second)).when(repository).findSummaries(filter);
         when(summaryMapper.toSummary(first)).thenReturn(summary(123L, false));
         when(summaryMapper.toSummary(second)).thenThrow(new IllegalStateException("Unreadable snapshot"));
-        assertThatThrownBy(() -> service.listDraftCasefiles(filter, false)).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> service.listDraftCasefiles((short) 31021, null, null, null, null, null, null))
+            .isInstanceOf(IllegalStateException.class);
         verifyNoInteractions(events, clock);
     }
 
