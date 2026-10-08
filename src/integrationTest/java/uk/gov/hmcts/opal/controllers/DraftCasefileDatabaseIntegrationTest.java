@@ -61,6 +61,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
     "spring.flyway.locations=classpath:db/migration/ddl",
     "opal.redis.enabled=false",
     "management.health.redis.enabled=false",
+    "logging.level.opal.DraftCasefileApiController=DEBUG",
+    "logging.level.opal.DraftCasefileService=DEBUG",
     "spring.jpa.open-in-view=false"
 })
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
