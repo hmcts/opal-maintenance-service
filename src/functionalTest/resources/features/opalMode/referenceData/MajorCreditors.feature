@@ -2,7 +2,7 @@
 Feature: Major Creditor reference data
 
   @JIRA-STORY:PO-10294 @JIRA-EPIC:PO-6506
-  Scenario: Retrieve active Central Authorities
+  Scenario: Retrieve active seeded Central Authorities
     Given I am testing as the "opal-test@dev.platform.hmcts.net" user
     When I request active Central Authorities for the seeded business unit
     Then the Central Authority details are available for casefile selection
@@ -17,3 +17,25 @@ Feature: Major Creditor reference data
   Scenario: Central Authorities require authentication
     When I request Central Authorities without authentication
     Then authentication is required without exposing Central Authority data
+
+  # DEV-only V1_17 supplies T901 plus inactive T902 and Central Authority T903.
+  # Targets using allEnvs without dev need approved equivalent reference data
+  # before running this positive scenario. Functional steps never write data.
+
+  @JIRA-STORY:PO-10297 @JIRA-EPIC:PO-6506
+  Scenario: Retrieve active non-Central Authority Major Creditors
+    Given I am testing as the "opal-test@dev.platform.hmcts.net" user
+    And the Major Creditor selection and comparison records are available
+    When I request active non-Central Authority Major Creditors
+    Then the Major Creditors required for creditor selection are returned
+
+  @JIRA-STORY:PO-10297 @JIRA-EPIC:PO-6506
+  Scenario: Reject a malformed Major Creditor active filter
+    Given I am testing as the "opal-test@dev.platform.hmcts.net" user
+    When I request Major Creditors with a malformed active filter
+    Then the Major Creditor validation response is correlated
+
+  @JIRA-STORY:PO-10297 @JIRA-EPIC:PO-6506
+  Scenario: Major Creditors require authentication
+    When I request Major Creditors without authentication
+    Then Major Creditor reference data is not disclosed
