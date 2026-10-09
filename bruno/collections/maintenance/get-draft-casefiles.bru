@@ -1,0 +1,28 @@
+meta {
+  name: Get draft casefiles
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{baseURL}}/draft-casefiles?business_unit_id=44
+  body: none
+  auth: bearer
+}
+
+params:query {
+  business_unit_id: 44
+}
+
+headers {
+  Accept: application/json
+}
+
+auth:bearer {
+  token: {{BEARER_TOKEN}}
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

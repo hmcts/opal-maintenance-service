@@ -4,24 +4,17 @@ import org.mapstruct.InjectionStrategy;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.ReportingPolicy;
-import org.openapitools.jackson.nullable.JsonNullable;
-import uk.gov.hmcts.opal.entity.DraftCasefileEntity;
-import uk.gov.hmcts.opal.generated.model.DraftCasefileGetResponse;
+import uk.gov.hmcts.opal.generated.model.DraftCasefileSummary;
+import uk.gov.hmcts.opal.repository.DraftCasefileSummaryProjection;
 
 @Mapper(componentModel = "spring", injectionStrategy = InjectionStrategy.CONSTRUCTOR,
     unmappedTargetPolicy = ReportingPolicy.ERROR,
     uses = {DraftCasefileJsonMapper.class, DraftCasefileValueMapper.class})
-public interface DraftCasefileGetMapper {
-
-    @Mapping(target = "casefile", source = "casefile", qualifiedByName = "storedCasefile")
+public interface DraftCasefileSummaryMapper {
     @Mapping(target = "casefileSnapshot", source = "casefileSnapshot", qualifiedByName = "storedSnapshot")
-    @Mapping(target = "timelineData", source = "timelineData", qualifiedByName = "storedTimeline")
     @Mapping(target = "casefileType", source = "casefileType", qualifiedByName = "casefileType")
     @Mapping(target = "casefileStatusName", source = "casefileStatus.displayName")
     @Mapping(target = "validatedDate", source = "validatedDate", qualifiedByName = "nullableUtc")
-    DraftCasefileGetResponse toResponse(DraftCasefileEntity entity);
+    DraftCasefileSummary toSummary(DraftCasefileSummaryProjection projection);
 
-    default <T> JsonNullable<T> mapToJsonNullable(T value) {
-        return JsonNullable.of(value);
-    }
 }

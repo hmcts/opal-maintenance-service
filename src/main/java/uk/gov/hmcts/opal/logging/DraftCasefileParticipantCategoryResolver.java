@@ -3,6 +3,7 @@ package uk.gov.hmcts.opal.logging;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent.ParticipantCategory;
+import uk.gov.hmcts.opal.generated.model.CasefileSnapshot;
 
 import java.util.EnumSet;
 import java.util.Set;
@@ -24,6 +25,15 @@ public class DraftCasefileParticipantCategoryResolver {
             if (hasBankDetails(creditor)) {
                 categories.add(ParticipantCategory.RELATED_PARTIES);
             }
+        }
+        return Set.copyOf(categories);
+    }
+
+    public Set<ParticipantCategory> resolveSummary(CasefileSnapshot snapshot) {
+        Set<ParticipantCategory> categories = EnumSet.of(
+            ParticipantCategory.RESPONDENT, ParticipantCategory.APPLICANT_BENEFICIARY);
+        if (snapshot.getMinorCreditorAccounts() != null && !snapshot.getMinorCreditorAccounts().isEmpty()) {
+            categories.add(ParticipantCategory.MINOR_CREDITOR);
         }
         return Set.copyOf(categories);
     }
