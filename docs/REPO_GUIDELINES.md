@@ -20,8 +20,11 @@ the same change.
 - Use `src/test/java` for unit tests, `src/integrationTest/java` for
   Spring/database integration tests, `src/functionalTest/java` for functional
   HTTP tests, and `src/smokeTest/java` for smoke tests.
-- Keep database-owned pgTAP suites under `src/dbUnitTest`, grouped by the
-  database object or object area they verify and named `*_pgtap_tests.sql`.
+- Place new database-owned pgTAP suites directly under `src/dbUnitTest`, named
+  `*_pgtap_tests.sql` for the database object they verify. Each function or
+  procedure has one self-contained suite. Do not add subdirectories, support
+  SQL or shell test scripts. Follow the authoritative
+  [pgTAP suite layout](TESTING.md#pgtap-suite-layout).
 - Keep Helm deployment configuration under `charts/`, quality and security-tool
   configuration under `config/`, supporting assets under `lib/`, and local or
   container helpers under `bin/`.

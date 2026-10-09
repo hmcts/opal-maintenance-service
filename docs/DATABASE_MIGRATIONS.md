@@ -117,6 +117,11 @@ AS $$
 
 Replace the sample parameter rows with one row for every parameter in the routine signature, retaining signature order. For a replaced or recreated routine, place any trustworthy carried-forward change rows above the new current change row.
 
+Retain the blank comment lines shown in the template between `OPAL Program`,
+`MODULE`, `DESCRIPTION`, `PARAMETERS` and `CHANGE HISTORY`, and before the
+change-history column headings. Keep continuation lines within each section
+together.
+
 ## Safe schema changes
 
 When an application and schema cannot change atomically, prefer expand, backfill, and contract sequencing. Preserve compatibility with the currently deployed application until the rollout no longer needs it.
@@ -148,6 +153,93 @@ Preserve authoritative comment wording exactly. Readability edits must not
 change definitions or quoted text. Apply these conventions to new or safely
 editable SQL; never rewrite an already-applied Flyway migration solely for
 formatting. The [immutability rules](#immutability-and-forward-fixes) still apply.
+
+### Functions and stored procedures
+
+Use the following conventions in new or safely editable routine SQL. Apply
+them to both functions and procedures; do not reformat applied migrations.
+
+- Use descriptive names so the code explains ordinary assignments and
+  calculations. Follow established naming conventions and choose constant
+  names that describe their purpose.
+- Write PostgreSQL built-in function names in uppercase, for example
+  `NOW()`, `TO_CHAR()`, `MAX()`, `MIN()`, `SUBSTRING()`, `LPAD()` and `CHR()`.
+  Preserve the declared spelling of application-defined routines and quoted
+  identifiers.
+- Declare sequence bounds as named `CONSTANT` values and use those names in
+  queries, comparisons and sequence resets. Prefer the same approach for
+  other fixed business limits. Choose a type that preserves the value's
+  meaning, including leading zeroes where significant; convert explicitly
+  for numeric comparisons. Simple arithmetic increments need no artificial
+  constants, and independent test expectations must not be derived from the
+  production constants.
+- Add short purpose comments before significant loops, query blocks and
+  non-obvious branches or calculations. State what the block achieves first,
+  then explain relevant mechanics or limits. For example, an allocation loop
+  comment should describe inserting the allocation before explaining retry
+  behaviour. Avoid narrating every statement or retaining commented-out
+  debugging code.
+- Put one blank line before a purpose comment when it follows executable
+  statements. Keep consecutive comment lines together and keep the comment
+  attached to the code it describes. No extra blank line is needed immediately
+  after an indented block opening such as `BEGIN`, `ELSE` or `THEN`.
+- Separate an `IF` block from preceding statements and from subsequent work
+  with one blank line. If the block has a purpose comment, place the blank
+  line before that comment rather than between the comment and the `IF`.
+- Keep consecutive outer `END IF;` statements together. A single blank line
+  after an inner block's `END IF;` can distinguish that completed sub-block
+  from the remaining outer closures; do not space out every closing statement.
+- Put one blank line between declarations and the routine's main `BEGIN`,
+  before an `EXCEPTION` handler, and after `GET STACKED DIAGNOSTICS` before
+  composing or processing the captured error details.
+- Preserve the [routine header template](#stored-procedure-and-function-template)
+  and its section spacing. These body-comment conventions supplement the
+  required headers and [pgTAP scenario introductions](TESTING.md#pgtap-scenario-introductions).
+
+### Exception messages and defaults
+
+- Build contextual exception messages with `FORMAT()`. Start with the routine
+  name and failed operation, then include the relevant safe identifiers or
+  candidate values needed to identify the failure. For an allocation failure,
+  include the candidate account number and Business Unit. Do not include
+  secrets, PII or entire input records.
+- When handling a PostgreSQL exception, retain the original `SQLSTATE` and
+  `SQLERRM` in any contextual replacement message. Use `GET STACKED DIAGNOSTICS`
+  to capture relevant available metadata, such as `CONSTRAINT_NAME`, and retain
+  it in the corresponding `RAISE ... USING` fields. Capture only useful fields;
+  do not invent constraint details for a directly raised business exception.
+- Use a bare `RAISE;` when the contract calls for propagating the original
+  exception unchanged. Do not add a handler solely to reformat every error or
+  convert failures into success. Backend services retain transaction and
+  run-status ownership.
+- For a new contextual or business exception using the default `P0001`, omit
+  `ERRCODE`. Specify a condition or error code only when the approved contract
+  requires a different SQLSTATE. Keep tests explicit about the expected code.
+- Omit routine declaration clauses that only restate PostgreSQL defaults,
+  including `VOLATILE`, `CALLED ON NULL INPUT` and `SECURITY INVOKER`, when
+  omission preserves the approved effective behaviour. Preserve required
+  non-default settings and verify the effective properties when replacing an
+  existing routine.
+
+For example, the terminal allocation-collision handler composes its message
+and preserves the caught constraint without restating the default error code:
+
+```sql
+GET STACKED DIAGNOSTICS v_constraint = CONSTRAINT_NAME;
+
+v_error_message := FORMAT(
+    'f_get_account_number: allocation failed after five attempts; Account number = %s, BU = %s; %s: %s',
+    v_number, pi_business_unit_id, SQLSTATE, SQLERRM);
+
+RAISE EXCEPTION USING
+    MESSAGE = v_error_message,
+    CONSTRAINT = v_constraint;
+```
+
+This excerpt belongs inside the final-attempt exception handler; it does not
+replace the retry loop. See PostgreSQL's
+[exception diagnostics](https://www.postgresql.org/docs/17/plpgsql-control-structures.html#PLPGSQL-EXCEPTION-DIAGNOSTICS)
+and [error-reporting syntax and defaults](https://www.postgresql.org/docs/17/plpgsql-errors-and-messages.html).
 
 ## Data migrations and environment scope
 
@@ -312,6 +404,10 @@ Use the current
 assertion mechanics and patterns, command-failing output, and the common
 evidence format. DB-04 defines the required migration-specific contract and
 outcomes without duplicating those mechanics.
+Follow the [pgTAP suite layout](TESTING.md#pgtap-suite-layout): one
+self-contained SQL suite per function or procedure, with new suites directly
+under `src/dbUnitTest` and no subdirectories, separate support SQL or shell
+test scripts.
 
 ### Planned DB-06 stored-procedure responsibility contract
 
