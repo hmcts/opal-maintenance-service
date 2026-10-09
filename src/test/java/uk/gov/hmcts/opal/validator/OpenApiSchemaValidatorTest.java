@@ -81,6 +81,36 @@ class OpenApiSchemaValidatorTest {
     }
 
     @Test
+    void acceptsCompleteReplacementWithoutCreationOnlyTopLevelType() {
+        ObjectNode replacement = request();
+        replacement.remove("casefile_type");
+        assertThatCode(() -> validateReplacement(replacement)).doesNotThrowAnyException();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"business_unit_id", "casefile"})
+    void rejectsMissingReplacementProperties(String property) {
+        ObjectNode replacement = request();
+        replacement.remove("casefile_type");
+        replacement.remove(property);
+        assertThatThrownBy(() -> validateReplacement(replacement)).isInstanceOf(OpalApiException.class);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"version_number", "casefile_type", "casefile_snapshot", "timeline_data",
+        "submitted_by", "created_date", "casefile_status", "status_message", "validated_by"})
+    void rejectsServerOwnedReplacementProperties(String property) {
+        ObjectNode replacement = request();
+        replacement.remove("casefile_type");
+        replacement.put(property, "SYNTHETIC_PRIVATE_VALUE");
+        assertThatThrownBy(() -> validateReplacement(replacement)).isInstanceOf(OpalApiException.class);
+    }
+
+    private static void validateReplacement(ObjectNode replacement) {
+        validator.validate("DraftCasefileReplaceRequest", replacement.toString().getBytes(StandardCharsets.UTF_8));
+    }
+
+    @Test
     void acceptsMinimalIndividualWithOmittedOptionalFieldsAndArbitraryResultStrings() {
         assertThatCode(() -> validate(REQUEST)).doesNotThrowAnyException();
     }

@@ -10,6 +10,7 @@ import uk.gov.hmcts.opal.generated.http.api.DraftCasefileApi;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileAddRequest;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileAddResponse;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileGetResponse;
+import uk.gov.hmcts.opal.generated.model.DraftCasefileReplaceRequest;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileLifecycleStatus;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileListResponse;
 import uk.gov.hmcts.opal.service.DraftCasefileService;
@@ -33,6 +34,16 @@ public class DraftCasefileApiController implements DraftCasefileApi {
         return ResponseEntity.status(HttpStatus.CREATED)
             .eTag(Long.toString(versionedResponse.version()))
             .body(versionedResponse.response());
+    }
+
+    @Override
+    @OpenApiRequest("DraftCasefileReplaceRequest")
+    public ResponseEntity<DraftCasefileGetResponse> replaceDraftCasefile(
+        Long id, String ifMatch, DraftCasefileReplaceRequest request
+    ) {
+        log.debug(":PUT:replaceDraftCasefile: draftCasefileId={}", id);
+        VersionedResponse<DraftCasefileGetResponse> result = service.replaceDraftCasefile(id, request, ifMatch);
+        return ResponseEntity.ok().eTag(Long.toString(result.version())).body(result.response());
     }
 
     @Override
