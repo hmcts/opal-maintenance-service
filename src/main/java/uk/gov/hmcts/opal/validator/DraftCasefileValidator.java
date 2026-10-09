@@ -8,6 +8,7 @@ import uk.gov.hmcts.opal.entity.CountryEntity;
 import uk.gov.hmcts.opal.entity.ResultEntity;
 import uk.gov.hmcts.opal.exception.RequestValidationError;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileAddRequest;
+import uk.gov.hmcts.opal.generated.model.CasefileType;
 import uk.gov.hmcts.opal.repository.CountryRepository;
 import uk.gov.hmcts.opal.repository.MaintenanceApplicationRepository;
 import uk.gov.hmcts.opal.repository.MajorCreditorRepository;
@@ -28,13 +29,15 @@ public class DraftCasefileValidator {
     private final ResultRepository results;
 
     public void validate(DraftCasefileAddRequest request) {
-        JsonNode casefile = request.getCasefile();
+        validate(request.getBusinessUnitId(), request.getCasefileType(), request.getCasefile());
+    }
+
+    public void validate(Short businessUnitId, CasefileType casefileType, JsonNode casefile) {
         JsonNode account = casefile.get("respondent_account");
-        Short businessUnitId = request.getBusinessUnitId();
         if (businessUnitId.intValue() != account.get("business_unit_id").intValue()) {
             throw invalid("Business Unit values must match");
         }
-        if (!request.getCasefileType().getValue().equals(account.get("casefile_type").stringValue())) {
+        if (!casefileType.getValue().equals(account.get("casefile_type").stringValue())) {
             throw invalid("Casefile types must match");
         }
         validateApplication(account.get("application_code").stringValue());

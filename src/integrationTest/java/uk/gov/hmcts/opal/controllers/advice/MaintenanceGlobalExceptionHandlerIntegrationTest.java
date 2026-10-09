@@ -161,6 +161,18 @@ class MaintenanceGlobalExceptionHandlerIntegrationTest extends BaseIntegrationTe
             .doesNotContain("SYNTHETIC_PRIVATE_DATABASE_MESSAGE", "SYNTHETIC_PRIVATE_DATABASE_CAUSE");
     }
 
+    @Test
+    void returnsSafeCorrelatedConflictForOptimisticLockFailure(CapturedOutput output) throws Exception {
+        int start = output.getAll().length();
+        var result = mockMvc.perform(get("/test-support/optimistic-lock").with(user("test-user")))
+            .andExpect(status().isConflict())
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+            .andExpect(jsonPath("$.detail").value("Draft Casefile version has changed"))
+            .andExpect(jsonPath("$.operation_id").isNotEmpty()).andReturn();
+        assertThat(result.getResponse().getContentAsString()).doesNotContain("SYNTHETIC_PRIVATE_LOCK");
+        assertThat(output.getAll().substring(start)).doesNotContain("SYNTHETIC_PRIVATE_LOCK");
+    }
+
     @Validated
     @RestController
     static class RequestValidationTestController {
@@ -185,6 +197,12 @@ class MaintenanceGlobalExceptionHandlerIntegrationTest extends BaseIntegrationTe
         String databaseUnavailable() {
             throw new DataAccessResourceFailureException("SYNTHETIC_PRIVATE_DATABASE_MESSAGE",
                 new IllegalArgumentException("SYNTHETIC_PRIVATE_DATABASE_CAUSE"));
+        }
+
+        @GetMapping("/test-support/optimistic-lock")
+        String optimisticLock() {
+            throw new org.springframework.orm.ObjectOptimisticLockingFailureException("SYNTHETIC_PRIVATE_LOCK",
+                new IllegalStateException("SYNTHETIC_PRIVATE_LOCK"));
         }
 
         @GetMapping("/test-support/internal-constraint")

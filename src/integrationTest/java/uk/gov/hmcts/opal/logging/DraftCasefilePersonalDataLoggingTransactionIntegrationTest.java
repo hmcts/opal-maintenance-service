@@ -134,6 +134,37 @@ class DraftCasefilePersonalDataLoggingTransactionIntegrationTest extends BaseInt
     }
 
     @Test
+    void resubmissionPublishesOnlyAfterCommit() {
+        when(logging.personalDataAccessLogAsync(any())).thenReturn(true);
+        new TransactionTemplate(transactionManager).executeWithoutResult(transaction -> {
+            events.publishEvent(resubmissionEvent());
+            verifyNoInteractions(logging);
+        });
+        var captured = ArgumentCaptor.forClass(PersonalDataProcessingLogDetails.class);
+        verify(logging, times(4)).personalDataAccessLogAsync(captured.capture());
+        assertThat(captured.getAllValues()).allSatisfy(details -> {
+            assertThat(details.getCategory()).isEqualTo(PersonalDataProcessingCategory.ALTERATION);
+            assertThat(details.getBusinessIdentifier()).startsWith("Resubmit Draft Casefile - ");
+        });
+    }
+
+    @Test
+    void resubmissionRollbackAndOutsideTransactionDoNotPublish() {
+        new TransactionTemplate(transactionManager).executeWithoutResult(transaction -> {
+            events.publishEvent(resubmissionEvent());
+            verifyNoInteractions(logging);
+            transaction.setRollbackOnly();
+        });
+        events.publishEvent(resubmissionEvent());
+        verifyNoInteractions(logging);
+    }
+
+    private static DraftCasefilePersonalDataEvent resubmissionEvent() {
+        return new DraftCasefilePersonalDataEvent(Operation.RESUBMISSION, 123L, 99L, "192.0.2.1", SUBMITTED,
+            EnumSet.allOf(ParticipantCategory.class));
+    }
+
+    @Test
     void viewPublishesOnlyAfterReadOnlyTransactionCommits() {
         when(logging.personalDataAccessLogAsync(any())).thenReturn(true);
         TransactionTemplate readOnly = new TransactionTemplate(transactionManager);
