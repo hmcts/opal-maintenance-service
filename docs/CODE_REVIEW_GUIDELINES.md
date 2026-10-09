@@ -37,6 +37,11 @@ Optional improvements are not findings unless advisory feedback was requested.
   unchanged definitions, authoritative comment wording, assertion
   descriptions, and accurate fixture dependencies and expected outcomes.
   Formatting alone remains outside defect findings under the review objective.
+- Verify the [pgTAP suite layout](TESTING.md#pgtap-suite-layout): one
+  self-contained suite per routine, new suites directly under `src/dbUnitTest`,
+  SQL-only test coordination, and no subdirectories, separate support SQL or
+  shell test scripts. Check that consolidation retains all required coverage
+  and uses existing discovery.
 
 ## Acceptable exceptions
 
