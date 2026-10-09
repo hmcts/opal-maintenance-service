@@ -164,6 +164,72 @@ paths:
               schema:
                 $ref: './common.yaml#/components/schemas/ProblemDetail'
 
+  /draft-casefiles/{id}:
+    get:
+      tags: [Draft Casefile]
+      operationId: getDraftCasefile
+      summary: Gets a Draft Casefile for viewing, review or amendment
+      description: >-
+        Returns the stored casefile, account snapshot, timeline and lifecycle metadata.
+        Requires Create and Manage Draft Casefiles or Check and validate draft Casefiles
+        permission in the owning Maintenance Business Unit. Retrieval does not change the draft.
+      security:
+        - DraftCasefileBearerAuth: []
+      externalDocs:
+        description: Get Draft Casefile logical API specification
+        url: https://hmcts.atlassian.net/wiki/spaces/PO/pages/271484595/Get+Draft+Casefile
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: integer, format: int64, minimum: 1}
+      responses:
+        '200':
+          description: Complete authorised Draft Casefile
+          headers:
+            ETag:
+              description: Strong entity tag identifying the current persisted draft version.
+              required: true
+              schema: {type: string, example: '"0"'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/GetResponse'}
+        '400':
+          description: Invalid Draft Casefile identifier
+          content:
+            application/problem+json:
+              schema: {$ref: './common.yaml#/components/schemas/ProblemDetail'}
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema: {$ref: './common.yaml#/components/schemas/ProblemDetail'}
+        '403':
+          description: No matching owning-BU identity or accepted permission
+          content:
+            application/problem+json:
+              schema: {$ref: './common.yaml#/components/schemas/ProblemDetail'}
+        '404':
+          description: Draft Casefile not found
+          content:
+            application/problem+json:
+              schema: {$ref: './common.yaml#/components/schemas/ProblemDetail'}
+        '406':
+          description: Requested response media type is not supported
+          content:
+            application/problem+json:
+              schema: {$ref: './common.yaml#/components/schemas/ProblemDetail'}
+        '500':
+          description: Internal server error
+          content:
+            application/problem+json:
+              schema: {$ref: './common.yaml#/components/schemas/ProblemDetail'}
+        '503':
+          description: Service unavailable
+          content:
+            application/problem+json:
+              schema: {$ref: './common.yaml#/components/schemas/ProblemDetail'}
+
 components:
   securitySchemes:
     DraftCasefileBearerAuth:
@@ -272,3 +338,71 @@ components:
           format: date-time
           description: Same UTC submission timestamp as created_date.
       description: Initial Submitted event with the captured submitter name and UTC submission timestamp; no reason.
+
+    GetResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - draft_casefile_id
+        - business_unit_id
+        - created_date
+        - submitted_by
+        - submitted_by_name
+        - casefile
+        - casefile_snapshot
+        - casefile_type
+        - casefile_status
+        - casefile_status_name
+        - casefile_status_date
+        - timeline_data
+      properties:
+        draft_casefile_id:
+          type: integer
+          format: int64
+          minimum: 1
+        business_unit_id:
+          type: integer
+          format: int16
+          minimum: 1
+          maximum: 32767
+        created_date:
+          type: string
+          format: date-time
+        submitted_by:
+          type: string
+          maxLength: 20
+          description: Captured Business Unit User ID of the submitter.
+        submitted_by_name:
+          type: string
+          maxLength: 100
+        validated_date:
+          type: [string, 'null']
+          format: date-time
+        validated_by:
+          type: [string, 'null']
+          maxLength: 20
+        validated_by_name:
+          type: [string, 'null']
+          maxLength: 100
+        casefile:
+          $ref: './Casefile.yaml#/components/schemas/Casefile'
+        casefile_snapshot:
+          $ref: './Casefile.yaml#/components/schemas/CasefileSnapshot'
+        casefile_type:
+          $ref: './Casefile.yaml#/components/schemas/CasefileType'
+        casefile_status:
+          type: string
+          enum: [SUBMITTED, DELETED, REJECTED, PUBLISHING_PENDING, PUBLISHED, PUBLISHING_FAILED, RESUBMITTED]
+        casefile_status_name:
+          type: string
+          description: Backend display label for casefile_status.
+        casefile_status_date:
+          type: string
+          format: date-time
+        status_message:
+          type: [string, 'null']
+        timeline_data:
+          type: array
+          minItems: 1
+          items:
+            $ref: './Casefile.yaml#/components/schemas/TimelineEntry'

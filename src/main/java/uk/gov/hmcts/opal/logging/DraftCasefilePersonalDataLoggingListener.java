@@ -6,8 +6,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
-import uk.gov.hmcts.opal.event.DraftCasefileSubmittedEvent;
-import uk.gov.hmcts.opal.event.DraftCasefileSubmittedEvent.ParticipantCategory;
+import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent;
+import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent.Operation;
+import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent.ParticipantCategory;
 import uk.gov.hmcts.opal.logging.integration.dto.IdentifierType;
 import uk.gov.hmcts.opal.logging.integration.dto.ParticipantIdentifier;
 import uk.gov.hmcts.opal.logging.integration.dto.PersonalDataProcessingCategory;
@@ -25,7 +26,7 @@ public class DraftCasefilePersonalDataLoggingListener {
     private final LoggingService loggingService;
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = false)
-    public void onSubmitted(DraftCasefileSubmittedEvent event) {
+    public void onPersonalDataAccess(DraftCasefilePersonalDataEvent event) {
         for (ParticipantCategory category : ParticipantCategory.values()) {
             if (event.participantCategories().contains(category)) {
                 send(event, category);
@@ -33,11 +34,11 @@ public class DraftCasefilePersonalDataLoggingListener {
         }
     }
 
-    private void send(DraftCasefileSubmittedEvent event, ParticipantCategory category) {
+    private void send(DraftCasefilePersonalDataEvent event, ParticipantCategory category) {
         PersonalDataProcessingLogDetails details = PersonalDataProcessingLogDetails.builder()
-            .category(PersonalDataProcessingCategory.COLLECTION)
-            .businessIdentifier(operationName(category))
-            .createdAt(event.submittedAt().atOffset(ZoneOffset.UTC))
+            .category(processingCategory(event.operation()))
+            .businessIdentifier(operationName(event.operation(), category))
+            .createdAt(event.occurredAt().atOffset(ZoneOffset.UTC))
             .createdBy(new ParticipantIdentifier(event.userId().toString(), DraftIdentifierType.OPAL_USER_ID))
             .ipAddress(event.ipAddress())
             .individuals(List.of(new ParticipantIdentifier(event.draftId().toString(),
@@ -57,12 +58,23 @@ public class DraftCasefilePersonalDataLoggingListener {
         LOG.error("Draft Casefile personal data logging failed for role {}", category);
     }
 
-    private static String operationName(ParticipantCategory category) {
-        return switch (category) {
-            case RESPONDENT -> "Submit Draft Casefile - Respondent";
-            case APPLICANT_BENEFICIARY -> "Submit Draft Casefile - Applicant / Beneficiary";
-            case RELATED_PARTIES -> "Submit Draft Casefile - Related parties";
-            case MINOR_CREDITOR -> "Submit Draft Casefile - Minor Creditor";
+    private static PersonalDataProcessingCategory processingCategory(Operation operation) {
+        return switch (operation) {
+            case SUBMISSION -> PersonalDataProcessingCategory.COLLECTION;
+            case VIEW -> PersonalDataProcessingCategory.CONSULTATION;
+        };
+    }
+
+    private static String operationName(Operation operation, ParticipantCategory category) {
+        String action = switch (operation) {
+            case SUBMISSION -> "Submit Draft Casefile - ";
+            case VIEW -> "View Draft Casefile - ";
+        };
+        return action + switch (category) {
+            case RESPONDENT -> "Respondent";
+            case APPLICANT_BENEFICIARY -> "Applicant / Beneficiary";
+            case RELATED_PARTIES -> "Related parties";
+            case MINOR_CREDITOR -> "Minor Creditor";
         };
     }
 

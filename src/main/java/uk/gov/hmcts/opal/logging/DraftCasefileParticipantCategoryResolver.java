@@ -2,7 +2,7 @@ package uk.gov.hmcts.opal.logging;
 
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
-import uk.gov.hmcts.opal.event.DraftCasefileSubmittedEvent.ParticipantCategory;
+import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent.ParticipantCategory;
 
 import java.util.EnumSet;
 import java.util.Set;
