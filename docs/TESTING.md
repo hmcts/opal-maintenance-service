@@ -259,3 +259,39 @@ on missing/ambiguous Country data or colliding creditor keys. Flyway applies it
 once; direct reruns fail safely rather than overwriting existing records.
 See `src/dbUnitTest/majorCreditorsDevDataTest/README.md` for fresh/upgrade scope
 and database-boundary assertions.
+
+
+## Results reference-data functional prerequisites
+
+PO-10298 follows the Fines seeded-data pattern: all four scenarios use normal
+TEST_URL and the existing OPAL_USER_SERVICE_API_URL. The all-environment Results
+baseline contains MAT / Matrimonial Order for Adult, MCHILD / Maintenance Order
+for child(ren), and MLUMP / Lump sum order as the three active Order Terms.
+There are no inactive Order Terms. Normal service startup applies the configured
+Flyway locations; functional tests do not insert, delete or alter reference data.
+
+The empty live scenario requests order_term=true&active=false and asserts count
+0 with refData []. It is named for that inactive precondition. The original
+no-active-Order-Term condition is covered in ResultsDatabaseIntegrationTest with
+owned per-test rows and the exact order_term=true&active=true request. These are
+separate coverage statements. No special Results target URL or fixture database
+is required. Incompatible baseline data is a test failure, not a skip.
+
+Run the live parent scenarios:
+
+    ./gradlew functionalOpal -Dcucumber.filter.tags=@JIRA-STORY:PO-10298
+
+Validate discovery separately:
+
+    ./gradlew functionalOpal -Dcucumber.filter.tags=@JIRA-STORY:PO-10298 -Dcucumber.execution.dry-run=true
+
+Run assertion checks without a Cucumber tag property:
+
+    ./gradlew functionalOpal --tests 'uk.gov.hmcts.opal.steps.ResultsStepDefTest'
+
+Preserve scenario names, test/failure/error/skipped counts, exact command,
+elapsed time and non-sensitive setup notes before the next functionalOpal run
+clears reports. Discovery and HTTP mocks are not live API evidence. Review raw
+reports before sharing; never archive bearer headers, tokens or reusable
+connection credentials. A normal full functional/smoke run also needs the other
+journeys' documented data and compatible authentication service.
