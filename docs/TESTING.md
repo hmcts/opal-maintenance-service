@@ -61,8 +61,8 @@ credentials, or reusable connection details.
 
 ### DB-04 pgTAP test placement
 
-DB-04 migration-specific checks live under `src/dbUnitTest`, grouped by
-the maintained database object or feature and run by the
+New DB-04 migration-specific suites live directly under `src/dbUnitTest`,
+named for the maintained database object and run by the
 [DB-01 database-owned suite](#db-01-suite-semantics). Keep the
 migration and ticket association in the test metadata or handoff rather than
 using a ticket-specific directory. The checks must use direct PostgreSQL
@@ -92,8 +92,8 @@ mechanics and patterns, command-failing output, and the common evidence format.
 
 ### Planned DB-06 procedure-side testing
 
-Stored-procedure checks live under `src/dbUnitTest`, grouped by the
-maintained procedure or feature and run by the
+New stored-procedure suites live directly under `src/dbUnitTest`, named for
+the maintained procedure and run by the
 [DB-01 database-owned suite](#db-01-suite-semantics). Keep the
 migration and ticket association in the test metadata or handoff. Call the
 procedure directly through PostgreSQL rather than through Spring, a backend
@@ -153,7 +153,9 @@ the `*_unit_tests.sql` suffix remains supported for existing suites.
 For a database object's schema contract, combine catalogue and behavioral
 assertions in one `*_pgtap_tests.sql` suite rather than splitting them by test
 type.
-Maintenance Applications combines catalogue and behavioral checks in
+Follow the [pgTAP suite layout](#pgtap-suite-layout) for all new or updated
+database-owned tests.
+The existing Maintenance Applications suite combines these checks in
 `maintenanceApplicationsTest/maintenance_applications_pgtap_tests.sql`.
 Discovered suites are part of Gradle and the normal `check` lifecycle.
 
@@ -221,6 +223,45 @@ or the pgTAP plan count.
 
 These conventions apply to new and amended suites; do not modify unrelated
 legacy tests solely to add headers.
+
+### pgTAP suite layout
+
+- Give each function or stored procedure one self-contained pgTAP suite named
+  `<routine_name>_pgtap_tests.sql`. Keep all scenarios and assertions for that
+  routine in that file. Use the same single-suite approach for a database
+  object's schema contract; schema and reference-data contracts retain their
+  existing separate ownership.
+- Place every new suite directly under `src/dbUnitTest`. Do not create object,
+  feature, ticket, `support` or other subdirectories beneath that test root.
+  Identify the tested routine or object in the suite filename instead.
+- Keep routine-specific setup, synthetic fixtures, independent expected
+  results, temporary SQL helpers and cleanup inside the owning suite. Do not
+  split them into separate setup, fixture, boundary or concurrency SQL files,
+  and do not include another suite or support SQL using `\i` or `\ir`.
+- Database assertions and routine test coordination must be SQL/pgTAP. Do not
+  add shell test scripts, per-routine runners or shell commands inside a suite
+  through `\!`, `COPY ... PROGRAM` or an equivalent mechanism. Run the suites
+  through the existing Gradle-owned `dbUnitTest` framework.
+- Keep interaction checks in the consuming routine's suite. Preserve applicable
+  success, boundary/failure, row-scope, repeat, rollback and real concurrency
+  coverage within that suite. If required SQL-only tooling is unavailable,
+  report the gap rather than silently dropping coverage or adding a shell
+  runner.
+- README documentation may sit directly alongside the suites. Existing suites,
+  authoritative reference-data fixtures and framework self-tests retain their
+  current paths unless their relocation is explicitly in scope; their legacy
+  folders are not a precedent for new suite layout. Do not add new routine
+  support files.
+
+For example, two functions have two independently discoverable suites directly
+under the database test root:
+
+```text
+src/dbUnitTest/
+├── f_get_check_letter_pgtap_tests.sql
+├── f_get_account_number_pgtap_tests.sql
+└── README.md
+```
 
 ### pgTAP scenario introductions
 
