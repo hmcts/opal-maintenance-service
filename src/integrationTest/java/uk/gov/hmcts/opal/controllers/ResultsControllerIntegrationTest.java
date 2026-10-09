@@ -78,7 +78,8 @@ class ResultsControllerIntegrationTest extends BaseIntegrationTest {
             .andExpect(jsonPath("$.title").value("Bad Request"))
             .andExpect(jsonPath("$.status").value(400))
             .andExpect(jsonPath("$.detail").value("Parameter '" + parameter + "' must be of type Boolean"))
-            .andExpect(jsonPath("$.reason").doesNotExist());
+            .andExpect(jsonPath("$.reason").doesNotExist())
+            .andExpect(jsonPath("$.operation_id").isNotEmpty());
         verifyNoInteractions(repository);
     }
 
