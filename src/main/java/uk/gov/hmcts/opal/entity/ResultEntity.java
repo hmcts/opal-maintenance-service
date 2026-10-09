@@ -34,6 +34,9 @@ public class ResultEntity {
     @Column(name = "order_term", nullable = false)
     private Boolean orderTerm;
 
+    @Column(name = "requires_creditor", nullable = false)
+    private Boolean requiresCreditor;
+
     @Column(name = "active", nullable = false)
     private Boolean active;
 }

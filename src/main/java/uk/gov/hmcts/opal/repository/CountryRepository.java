@@ -11,6 +11,8 @@ import uk.gov.hmcts.opal.entity.CountryEntity;
 @Repository
 public interface CountryRepository extends JpaRepository<CountryEntity, Long> {
 
+    List<CountryEntity> findByCjsCode(Short code);
+
     @Query("""
         SELECT country
         FROM CountryEntity country

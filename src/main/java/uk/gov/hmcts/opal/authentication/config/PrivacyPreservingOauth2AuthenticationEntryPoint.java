@@ -2,6 +2,7 @@ package uk.gov.hmcts.opal.authentication.config;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
@@ -20,6 +21,7 @@ import java.util.Map;
 import java.util.Optional;
 
 @Component
+@RequiredArgsConstructor
 public class PrivacyPreservingOauth2AuthenticationEntryPoint implements AuthenticationEntryPoint {
 
     private static final String EVENT_ACTION_OUTCOME = "Failure";
@@ -29,11 +31,6 @@ public class PrivacyPreservingOauth2AuthenticationEntryPoint implements Authenti
     private static final String UNAUTHENTICATED = "Unauthenticated";
 
     private final SecurityEventLoggingService securityEventLoggingService;
-
-    public PrivacyPreservingOauth2AuthenticationEntryPoint(
-        SecurityEventLoggingService securityEventLoggingService) {
-        this.securityEventLoggingService = securityEventLoggingService;
-    }
 
     @Override
     public void commence(
