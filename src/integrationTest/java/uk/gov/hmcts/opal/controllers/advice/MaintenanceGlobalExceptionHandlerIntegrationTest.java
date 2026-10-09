@@ -30,6 +30,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import uk.gov.hmcts.common.exceptions.standard.UnauthorizedException;
 import uk.gov.hmcts.opal.BaseIntegrationTest;
+import uk.gov.hmcts.opal.exception.ResourceConflictException;
 
 @AutoConfigureMockMvc
 @ExtendWith(OutputCaptureExtension.class)
@@ -180,6 +181,45 @@ class MaintenanceGlobalExceptionHandlerIntegrationTest extends BaseIntegrationTe
             .doesNotContain("SYNTHETIC_PRIVATE_DATABASE_MESSAGE", "SYNTHETIC_PRIVATE_DATABASE_CAUSE");
     }
 
+    @Test
+    void returnsSafeCorrelatedConflictForOptimisticLockFailure(CapturedOutput output) throws Exception {
+        int start = output.getAll().length();
+        var result = mockMvc.perform(get("/test-support/optimistic-lock").with(user("test-user")))
+            .andExpect(status().isConflict())
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+            .andExpect(jsonPath("$.type").value("https://hmcts.gov.uk/problems/optimistic-locking"))
+            .andExpect(jsonPath("$.title").value("Conflict"))
+            .andExpect(jsonPath("$.detail").value("Conflict updating record. Please try again."))
+            .andExpect(jsonPath("$.resourceType").doesNotExist())
+            .andExpect(jsonPath("$.resourceId").doesNotExist())
+            .andExpect(jsonPath("$.operation_id").isNotEmpty()).andReturn();
+        assertThat(result.getResponse().getContentAsString()).doesNotContain("SYNTHETIC_PRIVATE_LOCK");
+        assertThat(output.getAll().substring(start)).doesNotContain("SYNTHETIC_PRIVATE_LOCK");
+    }
+
+    @Test
+    void returnsSafeCorrelatedResourceConflictWithoutLoggingExceptionDetails(CapturedOutput output) throws Exception {
+        int start = output.getAll().length();
+        var result = mockMvc.perform(get("/test-support/resource-conflict").with(user("test-user")))
+            .andExpect(status().isConflict())
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+            .andExpect(jsonPath("$.type").value("https://hmcts.gov.uk/problems/resource-conflict"))
+            .andExpect(jsonPath("$.title").value("Conflict"))
+            .andExpect(jsonPath("$.detail").value("A conflict occurred with the requested resource"))
+            .andExpect(jsonPath("$.status").value(409))
+            .andExpect(jsonPath("$.resourceType").doesNotExist())
+            .andExpect(jsonPath("$.resourceId").doesNotExist())
+            .andExpect(jsonPath("$.conflictReason").doesNotExist())
+            .andExpect(jsonPath("$.operation_id").isNotEmpty())
+            .andExpect(jsonPath("$.retriable").value(false)).andReturn();
+        String operationId = result.getResponse().getHeader("operation_id");
+        assertThat(operationId).isNotBlank();
+        assertThat(result.getResponse().getContentAsString()).contains(operationId)
+            .doesNotContain("SYNTHETIC_PRIVATE_CONFLICT", "SYNTHETIC_PRIVATE_CAUSE");
+        assertThat(output.getAll().substring(start))
+            .doesNotContain("SYNTHETIC_PRIVATE_CONFLICT", "SYNTHETIC_PRIVATE_CAUSE");
+    }
+
     @Validated
     @RestController
     static class RequestValidationTestController {
@@ -204,6 +244,19 @@ class MaintenanceGlobalExceptionHandlerIntegrationTest extends BaseIntegrationTe
         String databaseUnavailable() {
             throw new DataAccessResourceFailureException("SYNTHETIC_PRIVATE_DATABASE_MESSAGE",
                 new IllegalArgumentException("SYNTHETIC_PRIVATE_DATABASE_CAUSE"));
+        }
+
+        @GetMapping("/test-support/optimistic-lock")
+        String optimisticLock() {
+            throw new org.springframework.orm.ObjectOptimisticLockingFailureException("SYNTHETIC_PRIVATE_LOCK",
+                new IllegalStateException("SYNTHETIC_PRIVATE_LOCK"));
+        }
+
+        @GetMapping("/test-support/resource-conflict")
+        String resourceConflict() {
+            ResourceConflictException exception = new ResourceConflictException("SYNTHETIC_PRIVATE_CONFLICT");
+            exception.initCause(new IllegalStateException("SYNTHETIC_PRIVATE_CAUSE"));
+            throw exception;
         }
 
         @GetMapping("/test-support/header-validation")

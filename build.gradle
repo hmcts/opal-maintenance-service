@@ -142,8 +142,23 @@ tasks.register('generateOpenApiValidationSchema', JavaExec) {
   args = [bundledInput.get().asFile.absolutePath, 'DraftCasefileAddRequest', schemaOutput.get().asFile.absolutePath]
 }
 
+tasks.register('generateDraftCasefileReplaceValidationSchema', JavaExec) {
+  dependsOn 'bundleOpenApi'
+  classpath = sourceSets.openapi.runtimeClasspath
+  group = 'openapi'
+  description = 'Generate runtime request validation JSON Schema from the bundled contract'
+  mainClass = 'uk.gov.hmcts.opal.openapi.OpenApiValidationSchemaGenerator'
+  def bundledInput = layout.buildDirectory.file('openapi-bundled.yaml')
+  def schemaOutput = layout.buildDirectory.file(
+    'generated/openapi-validation/openapi-validation/DraftCasefileReplaceRequest.json')
+  inputs.file(bundledInput)
+  inputs.property('rootComponent', 'DraftCasefileReplaceRequest')
+  outputs.file(schemaOutput)
+  args = [bundledInput.get().asFile.absolutePath, 'DraftCasefileReplaceRequest', schemaOutput.get().asFile.absolutePath]
+}
+
 tasks.named('processResources') {
-  dependsOn 'generateOpenApiValidationSchema'
+  dependsOn 'generateOpenApiValidationSchema', 'generateDraftCasefileReplaceValidationSchema'
   from(layout.buildDirectory.dir('generated/openapi-validation'))
 }
 

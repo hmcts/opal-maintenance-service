@@ -61,6 +61,15 @@ public abstract class BaseStepDef {
             .delete(TEST_URL + path);
     }
 
+    protected static Response putWithBearer(String path, String token, String body, String ifMatch) {
+        return jsonRequest().header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+            .header(HttpHeaders.IF_MATCH, ifMatch).body(body).when().put(TEST_URL + path);
+    }
+
+    protected static Response putWithoutBearer(String path, String body, String ifMatch) {
+        return jsonRequest().header(HttpHeaders.IF_MATCH, ifMatch).body(body).when().put(TEST_URL + path);
+    }
+
     protected static String userServiceUrl() {
         return USER_SERVICE_URL;
     }

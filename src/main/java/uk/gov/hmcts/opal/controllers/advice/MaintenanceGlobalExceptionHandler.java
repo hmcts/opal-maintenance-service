@@ -11,6 +11,7 @@ import org.springframework.core.Ordered;
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.core.annotation.Order;
 import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
@@ -72,6 +73,14 @@ public class MaintenanceGlobalExceptionHandler {
             "database-unavailable", true, null, LOG
         );
         return OpalProblemDetailFactory.responseWithProblemDetail(HttpStatus.SERVICE_UNAVAILABLE, problem);
+    }
+
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public ResponseEntity<ProblemDetail> handleOptimisticLockingFailure(
+        ObjectOptimisticLockingFailureException exception
+    ) {
+        return problemResponse(HttpStatus.CONFLICT, "Conflict", "Draft Casefile version has changed",
+            "draft-casefile-version-conflict", null);
     }
 
     @ExceptionHandler(IllegalStateException.class)
