@@ -37,11 +37,6 @@ Optional improvements are not findings unless advisory feedback was requested.
   unchanged definitions, authoritative comment wording, assertion
   descriptions, and accurate fixture dependencies and expected outcomes.
   Formatting alone remains outside defect findings under the review objective.
-- Verify the [pgTAP suite layout](TESTING.md#pgtap-suite-layout): one
-  self-contained suite per routine, new suites directly under `src/dbUnitTest`,
-  SQL-only test coordination, and no subdirectories, separate support SQL or
-  shell test scripts. Check that consolidation retains all required coverage
-  and uses existing discovery.
 
 ## Database review checks
 
@@ -65,12 +60,16 @@ against the changed contract and its delivery evidence:
   ownership, locks, retry behaviour, and compatibility match the agreed routine
   scope. Additional guards, locks, or cross-layer changes need evidence of the
   supported scenario and owner, rather than a speculative requirement.
-- Each routine has one owning suite under the authoritative
+- Each routine has one self-contained owning suite under the authoritative
   [pgTAP suite layout](TESTING.md#pgtap-suite-layout), with catalogue and
-  behavioural assertions, fixtures, temporary helpers, and cleanup. New suites
-  are flat; existing paths remain unless relocation is explicitly in scope.
-  Per-routine Python or shell runners, including temporary or ignored
-  recipes, do not substitute for framework-owned database coverage.
+  behavioural assertions, fixtures, test-only SQL helpers, and cleanup.
+  Database assertions and test coordination stay in SQL/pgTAP and run through
+  the existing Gradle-owned `dbUnitTest` framework. New suites are directly
+  under `src/dbUnitTest`, with no new subdirectories or separate support SQL;
+  existing paths remain unless relocation is explicitly in scope.
+  Consolidation retains all applicable coverage and uses existing discovery.
+  Do not introduce separate Python or shell database test runners, including
+  temporary, ignored, or generated scripts and executable runbook recipes.
 - Required upgrade or multiple-session concurrency coverage identifies an
   actual supported mechanism and execution evidence. Concurrency may be
   coordinated inside the owning SQL/pgTAP suite, including test-only `dblink`,
