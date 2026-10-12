@@ -38,13 +38,15 @@ Tests use rollback-only transactions. The refresh failure test deliberately reje
 
 These are the two maintained Results suites and one current CSV. Future data changes update this fixture and the applicable assertions. No permanent suite or fixture is added per refresh. Normal dbUnitTest checks the final state after all migrations; it does not prove intermediate predecessor behavior.
 
-## Disposable predecessor validation
+## Historical disposable predecessor validation
 
-For this delivery, use the following one-off runbook from the repository root. It applies the actual predecessor through 1.14, records all original values plus one unrelated synthetic row, applies 1.15, verifies preservation before 1.16, then verifies refreshed data, unchanged columns/rows, Flyway validation and repeat/no-op behavior. This controlled verification is separate from the clean-database deployment assumption.
+The following one-off Python runbook is retained as historical evidence from the earlier PO-10893/PO-10894 delivery. It is unsuitable to execute or adapt as new verification under the current [Routine suites and framework gaps](../../../docs/TESTING.md#routine-suites-and-framework-gaps) policy. The maintained Gradle framework currently has no predecessor target; required new upgrade coverage must record that tooling gap, its owner, and agreed separately scoped framework remediation. This historical recipe does not establish a supported framework capability or satisfy a new upgrade requirement.
 
-Requirements: Python 3, Docker, repository pgTAP Dockerfile and pinned Flyway image. No shared connection settings may be present. The script publishes no host port and mounts no persistent database volume. It removes its exact container and temporary stage SQL even on failure. The current runner stops explicitly at 1.16; future migrations must not silently change this checkpoint. Update this current runbook when a later ticket changes the expected dataset.
+The historical sequence applies the actual predecessor through 1.14, records all original values plus one unrelated synthetic row, applies 1.15, verifies preservation before 1.16, then verifies refreshed data, unchanged columns/rows, Flyway validation and repeat/no-op behavior. That controlled verification was separate from the clean-database deployment assumption.
 
-Save the following Python block to a newly created temporary file outside the repository, then use the capture commands below. Do not keep a permanent runner or stage files in the test tree.
+Its requirements were Python 3, Docker, the repository pgTAP Dockerfile and pinned Flyway image, with no shared connection settings present. The script publishes no host port, mounts no persistent database volume, and removes its exact container and temporary stage SQL even on failure. Its checkpoint is 1.16. Preserve this recipe and its historical SQL and fixtures as evidence; do not update it into a runner for later tickets.
+
+The delivery runbook saved the following Python block to a newly created temporary file outside the repository and used the capture commands below. The commands remain historical evidence.
 
 ```python
 import os, pathlib, re, shutil, subprocess, tempfile, time, uuid
@@ -145,7 +147,7 @@ cat build/reports/resultsUpgrade/run.log
 [ "$results_upgrade_status" -eq 0 ]
 ```
 
-A valid report includes 111 passing assertions (4 intermediate, 93 schema, 3 final preservation and 11 data), the upgrade PASS message and confirmed cleanup. An empty report or command exit alone is insufficient. Raw evidence stays ignored under `build/reports/`; summarize commands/results in the PR. Interrupted runs require checking/removing only the uniquely named container recorded in the log, never broad Docker cleanup.
+The historical report acceptance criteria were 111 passing assertions (4 intermediate, 93 schema, 3 final preservation and 11 data), the upgrade PASS message and confirmed cleanup. An empty report or command exit alone was insufficient. Raw evidence stays ignored under `build/reports/`; retain its commands/results in the delivery record. Cleanup of an interrupted historical run must target only the uniquely named container recorded in its log, never broad Docker cleanup.
 
 ## Operations and recovery
 
@@ -155,4 +157,4 @@ Flyway owns each migration transaction. If 1.15 succeeds but 1.16 fails with a S
 
 Post-migration signals: Flyway validate succeeds, no migrations remain pending, all 22 approved keys reconcile exactly, permitted actions are NULL for those keys, and unrelated rows/columns retain their values. Existing startup/health and backend regression tests remain part of the project build. Runtime consumers must be checked before rollout for nullable actions and the revised JSON types/metadata, read-only Frequency, date flags and ChildDOB identifier. This is a rollout obligation, not an implementation blocker or an established consumer defect.
 
-Human SQL peer review, at least two reviewers, QA, CI, merge and deployment need separate evidence. The change introduces no dependencies, CVE suppressions, secrets, PII or persistent routines. Database contract assertions cover fresh and controlled predecessor paths; raw execution reports and PR prose provide the per-ticket AC mapping.
+Human SQL peer review, at least two reviewers, QA, CI, merge and deployment need separate evidence. The change introduces no dependencies, CVE suppressions, secrets, PII or persistent routines. For the earlier delivery, database contract assertions covered fresh and controlled predecessor paths; its raw execution reports and PR prose provide the historical per-ticket AC mapping.
