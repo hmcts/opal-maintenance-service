@@ -43,6 +43,49 @@ Optional improvements are not findings unless advisory feedback was requested.
   shell test scripts. Check that consolidation retains all required coverage
   and uses existing discovery.
 
+## Database review checks
+
+Use the [routine responsibility contract](DATABASE_MIGRATIONS.md#planned-db-06-stored-procedure-responsibility-contract),
+[routine LLD guidance](DATABASE_MIGRATIONS.md#routine-lld-documentation), and
+[Testing](TESTING.md#routine-suites-and-framework-gaps) to check the following
+against the changed contract and its delivery evidence:
+
+- The routine implements its ticketed database responsibility, with any
+  backend/API or UI work separately identified and owned. Detailed request
+  validation has an evidenced owner; moving a rule out of SQL requires verified
+  coverage before the relevant database call. A rule in design collateral or a
+  precedent from another service alone does not prove its execution layer.
+- Database integrity and mapping rules remain enforced, including relationships
+  that an existing constraint cannot express. Any explicit check that duplicates
+  a constraint or native PostgreSQL failure has a concrete contract reason;
+  simplification preserves the required SQLSTATE, diagnostic context, atomicity,
+  and caller behaviour. Failures propagate rather than becoming successful
+  results.
+- Parameters, outputs, affected rows, transaction ownership, run-status
+  ownership, locks, retry behaviour, and compatibility match the agreed routine
+  scope. Additional guards, locks, or cross-layer changes need evidence of the
+  supported scenario and owner, rather than a speculative requirement.
+- Each routine has one owning suite under the authoritative
+  [pgTAP suite layout](TESTING.md#pgtap-suite-layout), with catalogue and
+  behavioural assertions, fixtures, temporary helpers, and cleanup. New suites
+  are flat; existing paths remain unless relocation is explicitly in scope.
+  Per-routine Python or shell runners, including temporary or ignored
+  recipes, do not substitute for framework-owned database coverage.
+- Required upgrade or multiple-session concurrency coverage identifies an
+  actual supported mechanism and execution evidence. Concurrency may be
+  coordinated inside the owning SQL/pgTAP suite, including test-only `dblink`,
+  through `dbUnitTest`; a separate Gradle hook is not inherently required.
+  Missing predecessor or SQL session-coordination capability is recorded as a tooling gap
+  with its owner and agreed separately scoped remediation; required coverage
+  remains unmet until verified.
+- Required database LLD, object, interaction, and ownership evidence reflects
+  the delivered implementation and points to the actual reviewed source and revision.
+  Report completed external publication or approval only with direct evidence.
+
+Apply the impact-based severity rules above. Record a concrete changed-code or
+delivery defect when the gap breaks a required contract; keep preferences and
+unsupported simplification suggestions advisory.
+
 ## Acceptable exceptions
 
 Do not report existing legacy structure outside the change, justified patterns

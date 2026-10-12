@@ -140,7 +140,8 @@ sufficient validation.
 - Assess compatibility, locks, table rewrites, data volume, environment scope,
   and recovery before authoring a migration.
 - Follow [Database Migrations](DATABASE_MIGRATIONS.md) for naming, version
-  discovery, connection safety, validation, and release evidence.
+  discovery, connection safety, routine scope, validation ownership, native
+  PostgreSQL failures, design evidence, and release requirements.
 
 ## Configuration and operations
 
@@ -172,6 +173,10 @@ sufficient validation.
   unchanged suite demonstrated to remain sufficient, or record a reviewed DB-04
   no-assertion exception. Run `./gradlew dbUnitTest` and record its non-sensitive
   evidence for applicable database changes.
+- Follow [Routine suites and framework gaps](TESTING.md#routine-suites-and-framework-gaps)
+  for routine suite ownership, SQL/pgTAP assertions, test coordination, and
+  required upgrade or concurrency coverage when a framework mechanism is
+  unavailable. The discovery of legacy suffixes does not change that contract.
 - Functional and smoke tests use `TEST_URL`, defaulting to
   `http://localhost:4551`, and require a suitable running service.
 - Assert observable behaviour rather than implementation details. Use real DTOs,

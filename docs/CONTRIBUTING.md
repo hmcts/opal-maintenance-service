@@ -6,6 +6,46 @@ work over for human review, together with each applicable
 [Backend](BACKEND_DEFINITION_OF_DONE.md) and
 [Database](DATABASE_DEFINITION_OF_DONE.md) supplement.
 
+## Design and planning evidence
+
+Repository standards apply before a design or implementation plan is approved,
+and again before execution. Read the applicable implementation, testing,
+database, OpenAPI, review, and Definition of Done guidance for the affected
+scope. Generic skill templates do not replace these requirements.
+
+Reconcile the selected ticket and Acceptance Criteria, confirmed decisions,
+context source revisions, and intended implementation baseline. Record the
+inspected revisions and relevant dirty state, distinguish the current checkout
+from any separately inspected foundation, and identify material changes since
+the preceding context, design, or plan. Read-only context collection retains
+its own evidence boundaries; current application-code drift is assessed during
+design and planning.
+
+Carry requirements and unresolved conflicts into each subsequent artifact.
+Record the old and current requirement, its source, and the agreed resolution
+or outstanding decision. An earlier readiness result, approved design, legacy
+test suffix, or maintained example does not establish current compliance or
+authorize an exception to repository standards. Reconcile conflicting ticket
+requirements explicitly before implementing the affected work.
+
+For each Acceptance Criterion and material repository requirement, identify
+the design decision, implementation task, planned verification, and delivery
+evidence. Confirm that the maintained framework can execute the proposed
+checks. Follow [routine testing and framework-gap handling](TESTING.md#routine-suites-and-framework-gaps)
+for database coverage; unsupported required checks remain explicit unmet
+requirements.
+
+Identify the agreed scope and delivery owner for API or backend work discovered
+during database planning. Track separately owned dependencies and consumer
+alignment without silently expanding the database ticket or assuming upstream
+validation exists. A comparable service provides precedent, not authority for
+different domain behaviour.
+
+Design and plan self-review must check current source evidence and applicable
+repository standards as well as internal consistency and spec coverage. Carry
+the same evidence and constraints into delegated review and implementation
+briefs, including when work moves to another worktree.
+
 ## Branches
 
 Use the Jira key as the branch identifier for ticketed work, for example
