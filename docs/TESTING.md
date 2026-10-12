@@ -147,18 +147,9 @@ diagnostic requests. Never place a bearer value in a tracked Bruno file.
 ## Routine suites and framework gaps
 
 Follow the authoritative [pgTAP suite layout](#pgtap-suite-layout) for placement,
-single-suite ownership, SQL-only coordination, and the exceptions for existing
-suites, authoritative reference-data fixtures, and framework self-tests. Every
-new suite is flat; existing paths remain unless relocation is explicitly in
-scope. This section adds verification and tooling-gap requirements to that
-layout contract.
-
-Database contract assertions stay in SQL/pgTAP and execute through the existing
-Gradle-owned `dbUnitTest` framework. Do not introduce per-routine Python or shell
-database test runners for assertions or test coordination, including ignored,
-generated, or temporary scripts and runbook recipes. Unrelated metadata or
-documentation tooling and the existing shared Gradle lifecycle orchestration
-remain permitted.
+single-suite ownership, SQL/pgTAP assertions and coordination, runner
+restrictions, and existing-path exceptions. This section adds verification and
+tooling-gap requirements to that layout contract.
 
 For a required multiple-session concurrency scenario, identify the actual
 SQL/pgTAP mechanism in the owning suite, its disposable-harness prerequisites,
@@ -278,10 +269,15 @@ legacy tests solely to add headers.
   results, temporary SQL helpers and cleanup inside the owning suite. Do not
   split them into separate setup, fixture, boundary or concurrency SQL files,
   and do not include another suite or support SQL using `\i` or `\ir`.
-- Database assertions and routine test coordination must be SQL/pgTAP. Do not
-  add shell test scripts, per-routine runners or shell commands inside a suite
-  through `\!`, `COPY ... PROGRAM` or an equivalent mechanism. Run the suites
-  through the existing Gradle-owned `dbUnitTest` framework.
+- Database assertions, routine test coordination, fixtures, test-only SQL
+  helpers and cleanup stay inside self-contained SQL/pgTAP suites. Run the
+  suites through the existing Gradle-owned `dbUnitTest` framework. Do not add
+  Python or shell database test runners for assertions or test coordination,
+  including ignored, generated, or temporary scripts and executable runbook
+  recipes, or shell commands inside a suite through `\!`, `COPY ... PROGRAM`
+  or an equivalent mechanism. This restriction concerns database testing;
+  unrelated metadata or documentation tooling and the existing shared Gradle
+  lifecycle orchestration remain permitted.
 - Keep interaction checks in the consuming routine's suite. Preserve applicable
   success, boundary/failure, row-scope, repeat, rollback and real concurrency
   coverage within that suite. If required SQL-only tooling is unavailable,

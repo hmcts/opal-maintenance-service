@@ -40,114 +40,24 @@ These are the two maintained Results suites and one current CSV. Future data cha
 
 ## Historical disposable predecessor validation
 
-The following one-off Python runbook is retained as historical evidence from the earlier PO-10893/PO-10894 delivery. It is unsuitable to execute or adapt as new verification under the current [Routine suites and framework gaps](../../../docs/TESTING.md#routine-suites-and-framework-gaps) policy. The maintained Gradle framework currently has no predecessor target; required new upgrade coverage must record that tooling gap, its owner, and agreed separately scoped framework remediation. This historical recipe does not establish a supported framework capability or satisfy a new upgrade requirement.
+The earlier PO-10893/PO-10894 delivery record reports one-off disposable validation through predecessor 1.14,
+preservation of all original values and one unrelated synthetic row at 1.15, and refreshed data with unchanged
+non-target columns/rows at 1.16. Its historical acceptance criteria were 111 passing assertions (4
+intermediate, 93 schema, 3 final preservation and 11 data), Flyway validation, repeat/no-op behavior, the
+upgrade PASS message and confirmed cleanup. These historical results are not current verification.
 
-The historical sequence applies the actual predecessor through 1.14, records all original values plus one unrelated synthetic row, applies 1.15, verifies preservation before 1.16, then verifies refreshed data, unchanged columns/rows, Flyway validation and repeat/no-op behavior. That controlled verification was separate from the clean-database deployment assumption.
+Historical evidence references are `build/reports/resultsUpgrade/run.log`, the earlier delivery record and its
+PR prose with the per-ticket AC mapping. Raw reports remain ignored under `build/reports/`; retain the
+recorded commands/results as evidence. Recovery of an interrupted historical run must target only the uniquely
+named container recorded in its log, never broad Docker cleanup.
 
-Its requirements were Python 3, Docker, the repository pgTAP Dockerfile and pinned Flyway image, with no shared connection settings present. The script publishes no host port, mounts no persistent database volume, and removes its exact container and temporary stage SQL even on failure. Its checkpoint is 1.16. Preserve this recipe and its historical SQL and fixtures as evidence; do not update it into a runner for later tickets.
-
-The delivery runbook saved the following Python block to a newly created temporary file outside the repository and used the capture commands below. The commands remain historical evidence.
-
-```python
-import os, pathlib, re, shutil, subprocess, tempfile, time, uuid
-repo=pathlib.Path.cwd()
-versions=[os.environ[k] for k in ('RESULTS_PREDECESSOR','RESULTS_SCHEMA_VERSION','RESULTS_DATA_VERSION')]
-assert all(re.fullmatch(r'1\.[0-9]+',v) for v in versions)
-assert int(versions[0].split('.')[1]) < int(versions[1].split('.')[1]) < int(versions[2].split('.')[1])
-for k in os.environ:
-    if (k.startswith('FLYWAY_') or k.startswith('OPAL_MAINTENANCE_DB_')) and os.environ[k].strip():
-        raise RuntimeError('Refusing external database setting: '+k)
-image=re.search(r"flywayImageName = '([^']+)'",(repo/'gradle/db-unit-test.gradle').read_text()).group(1)
-name='opal-results-upgrade-'+uuid.uuid4().hex
-pgimage='opal-maintenance-db-unit-test-postgres:17'
-db='opal_results_upgrade'
-stage_dir=pathlib.Path(tempfile.mkdtemp(prefix="opal-results-stages-",dir="/private/tmp"))
-stage_dir.joinpath('setup.sql').write_text('-- Scenario: establish the real predecessor and unrelated synthetic row.\n-- Setup: predecessor Flyway chain completed in a new disposable database.\n-- Expected: snapshots survive S unchanged and retain all non-target values after D.\nCREATE SCHEMA results_upgrade_probe;\nCREATE VIEW results_upgrade_probe.row_values AS\nSELECT r.result_id::text AS result_id,\n       row_to_json(v)::text AS exact_value,\n       to_jsonb(v)-\'order_term\'-\'result_parameters\'-\'enf_next_permitted_actions\' AS unchanged_columns\nFROM public.results r\nCROSS JOIN LATERAL (\n SELECT r.result_id, r.result_title, r.order_term,r.enforcement_result,r.case_result,\n r.case_result_type,r.active,r.order_accruing,r.requires_creditor,r.enforcement_hold,\n r.requires_enforcer,r.generates_hearing,r.generates_warrant,r.lists_monies,\n r.result_parameters::text AS result_parameters,r.requires_employment_data,\n r.allow_additional_action,r.enf_next_permitted_actions,r.manual_enforcement,r.auto_enforcement\n) v;\nINSERT INTO public.results VALUES\n (\'T94002\',\'Upgrade synthetic Result\',false,false,true,\'Ancillary\',\n  false,false,false,false,false,false,false,false,\'{ "z": 1 }\'::json,\n  false,false,\'Preserve me\',false,false);\nCREATE TABLE results_upgrade_probe.before_rows AS\nSELECT * FROM results_upgrade_probe.row_values;\nCREATE TABLE results_upgrade_probe.before_schema AS\nSELECT column_name,data_type,character_maximum_length,column_default,is_nullable\nFROM information_schema.columns WHERE table_schema=\'public\' AND table_name=\'results\';\n')
-stage_dir.joinpath('nullability_checks.sql').write_text("BEGIN;\nCREATE EXTENSION IF NOT EXISTS pgtap;\nSELECT plan(4);\n-- Scenario: schema relaxed before reference values are refreshed.\n-- Setup: actual S applied after predecessor snapshot; D not yet applied.\n-- Expected: nullable VARCHAR(100), all rows unchanged, all other columns unchanged.\nSELECT col_is_null('public','results','enf_next_permitted_actions','upgrade allows NULL');\nSELECT col_type_is('public','results','enf_next_permitted_actions','varchar(100)','upgrade retains width');\nSELECT results_eq(\n 'SELECT * FROM results_upgrade_probe.row_values ORDER BY result_id',\n 'SELECT * FROM results_upgrade_probe.before_rows ORDER BY result_id',\n 'nullability migration preserves every existing value');\nSELECT results_eq(\n $$SELECT column_name::text,data_type::text,character_maximum_length,column_default::text,is_nullable::text\n   FROM information_schema.columns WHERE table_schema='public' AND table_name='results'\n   ORDER BY column_name$$,\n $$SELECT column_name::text,data_type::text,character_maximum_length,column_default::text,\n   CASE WHEN column_name='enf_next_permitted_actions' THEN 'YES' ELSE is_nullable::text END\n   FROM results_upgrade_probe.before_schema ORDER BY column_name$$,\n 'only column nullability changes');\nSELECT * FROM finish();\nROLLBACK;\n")
-stage_dir.joinpath('refresh_checks.sql').write_text("BEGIN;\nCREATE EXTENSION IF NOT EXISTS pgtap;\nSELECT plan(3);\n-- Scenario: actual D applies on top of the preserved predecessor data.\n-- Setup: original seeded rows plus unrelated synthetic fixture were upgraded.\n-- Expected: key set and other 17 columns unchanged; unrelated row byte-equivalent.\nSELECT results_eq(\n 'SELECT result_id,unchanged_columns FROM results_upgrade_probe.row_values ORDER BY result_id',\n 'SELECT result_id,unchanged_columns FROM results_upgrade_probe.before_rows ORDER BY result_id',\n 'upgrade preserves keys and every non-target column');\nSELECT results_eq(\n $$SELECT exact_value FROM results_upgrade_probe.row_values WHERE result_id='T94002'$$,\n $$SELECT exact_value FROM results_upgrade_probe.before_rows WHERE result_id='T94002'$$,\n 'unrelated row survives actual Flyway refresh unchanged');\nSELECT is((SELECT enf_next_permitted_actions::text FROM public.results WHERE result_id='T94002'),\n 'Preserve me','unrelated non-null permitted actions survive both migrations');\nSELECT * FROM finish();\nROLLBACK;\n")
-started=False
-attempted=False
-began=time.monotonic()
-def run(args,**kw):
-    return subprocess.run(args,check=True,text=True,**kw)
-def sql(statement):
-    return subprocess.check_output(['docker','exec',name,'psql','-X','-v','ON_ERROR_STOP=1',
-        '-U','postgres','-d',db,'-At','-c',statement],text=True).strip()
-def tap(path):
-    run(['docker','exec',name,'pg_prove','--verbose','-h','localhost','-U','postgres','-d',db,path])
-try:
-    run(['docker','build','-f','docker/postgres-pgtap.Dockerfile','-t',pgimage,'.'])
-    attempted=True
-    run(['docker','run','--detach','--rm','--name',name,
-         '-e','POSTGRES_HOST_AUTH_METHOD=trust','-e','POSTGRES_DB='+db,pgimage])
-    started=True
-    for attempt in range(60):
-        proc=subprocess.run(['docker','exec',name,'cat','/proc/1/comm'],capture_output=True,text=True)
-        ready=subprocess.run(['docker','exec',name,'pg_isready','-U','postgres','-d',db],capture_output=True)
-        if proc.returncode==0 and proc.stdout.strip()=='postgres' and ready.returncode==0:break
-        time.sleep(1)
-    else:raise RuntimeError('Disposable PostgreSQL not ready')
-    assert sql("SELECT count(*) FROM pg_tables WHERE schemaname='public'")=='0'
-    fw=['docker','run','--rm','--network','container:'+name]
-    for folder in ('ddl','data/allEnvs','data/dev'):
-        path=repo/'src/main/resources/db/migration'/folder
-        assert path.is_dir()
-        fw+=['-v',str(path)+':/flyway/sql/'+folder+':ro']
-    fw += [image,'-url=jdbc:postgresql://localhost:5432/'+db,'-user=postgres',
-        '-locations=filesystem:/flyway/sql/ddl,filesystem:/flyway/sql/data/allEnvs,filesystem:/flyway/sql/data/dev',
-        '-baselineOnMigrate=false','-cleanDisabled=true']
-    print('PostgreSQL image:',pgimage,'Flyway image:',image)
-    print('Predecessor, schema, refresh versions:',*versions)
-    print('Migration locations: ddl, data/allEnvs, data/dev')
-    run(fw+['-target='+versions[0],'migrate'])
-    assert sql('SELECT version FROM public.flyway_schema_history WHERE success ORDER BY installed_rank DESC LIMIT 1')==versions[0]
-    run(['docker','cp',str(repo/'src/dbUnitTest')+'/.',name+':/tmp/opal-db-unit-test'])
-    run(['docker','cp',str(repo/'src/main/resources/db/migration')+'/.',name+':/tmp/opal-db-migrations'])
-    run(['docker','cp',str(stage_dir)+'/.',name+':/tmp/results-upgrade-checks'])
-    run(['docker','exec',name,'psql','-X','-v','ON_ERROR_STOP=1','-U','postgres','-d',db,
-         '-f','/tmp/results-upgrade-checks/setup.sql'])
-    run(fw+['-target='+versions[1],'migrate'])
-    assert sql('SELECT version FROM public.flyway_schema_history WHERE success ORDER BY installed_rank DESC LIMIT 1')==versions[1]
-    tap('/tmp/results-upgrade-checks/nullability_checks.sql')
-    tap('/tmp/opal-db-unit-test/resultsTest/results_pgtap_tests.sql')
-    run(fw+['-target='+versions[2],'migrate'])
-    assert sql('SELECT version FROM public.flyway_schema_history WHERE success ORDER BY installed_rank DESC LIMIT 1')==versions[2]
-    run(fw+['validate'])
-    tap('/tmp/results-upgrade-checks/refresh_checks.sql')
-    tap('/tmp/opal-db-unit-test/resultsDataTest/results_data_pgtap_tests.sql')
-    history=sql('SELECT string_agg(row_to_json(h)::text, E\'\\n\' ORDER BY installed_rank) FROM public.flyway_schema_history h')
-    run(fw+['-target='+versions[2],'migrate'])
-    assert history==sql('SELECT string_agg(row_to_json(h)::text, E\'\\n\' ORDER BY installed_rank) FROM public.flyway_schema_history h')
-    print('Upgrade, intermediate preservation, final data, Flyway validate and no-op: PASS')
-finally:
-    try:
-        if attempted:
-            names=subprocess.check_output(['docker','ps','-a','--format','{{.Names}}'],text=True).splitlines()
-            if name in names:run(['docker','rm','--force',name])
-            remaining=subprocess.check_output(['docker','ps','-a','--format','{{.Names}}'],text=True).splitlines()
-            assert name not in remaining,'Disposable cleanup not confirmed'
-            print('Cleanup confirmed')
-        print('Duration seconds:',round(time.monotonic()-began,2))
-    finally:
-        shutil.rmtree(stage_dir)
-        assert not stage_dir.exists()
-```
-
-```bash
-results_upgrade_runner=$(mktemp /private/tmp/opal-results-upgrade.XXXXXX)
-# Save the complete Python block above into this newly created file.
-export RESULTS_PREDECESSOR=1.14
-export RESULTS_SCHEMA_VERSION=1.15
-export RESULTS_DATA_VERSION=1.16
-mkdir -p build/reports/resultsUpgrade
-python3 "$results_upgrade_runner" > build/reports/resultsUpgrade/run.log 2>&1
-results_upgrade_status=$?
-rm -- "$results_upgrade_runner"
-cat build/reports/resultsUpgrade/run.log
-[ "$results_upgrade_status" -eq 0 ]
-```
-
-The historical report acceptance criteria were 111 passing assertions (4 intermediate, 93 schema, 3 final preservation and 11 data), the upgrade PASS message and confirmed cleanup. An empty report or command exit alone was insufficient. Raw evidence stays ignored under `build/reports/`; retain its commands/results in the delivery record. Cleanup of an interrupted historical run must target only the uniquely named container recorded in its log, never broad Docker cleanup.
+The maintained Gradle framework currently implements only the fresh DB-01 path and has no predecessor target.
+Maintained predecessor-upgrade testing remains unavailable; a standalone executable recipe does not establish
+framework support. Under [Routine suites and framework
+gaps](../../../docs/TESTING.md#routine-suites-and-framework-gaps), required new upgrade coverage must record
+the specific scenario, tooling gap, responsible owner and agreed separately scoped framework remediation, and
+remain unmet until supported execution evidence exists. The historical evidence does not satisfy a new upgrade
+requirement.
 
 ## Operations and recovery
 
