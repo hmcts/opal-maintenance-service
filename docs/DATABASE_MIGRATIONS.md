@@ -413,16 +413,25 @@ test scripts.
 
 DB-06 owns the responsibility boundary for stored procedures introduced or
 changed by migrations. A stored procedure performs its declared database work
-and raises a PostgreSQL exception when that work cannot complete. It must not
+and propagates a PostgreSQL exception when that work cannot complete, whether
+native or deliberately raised under the error contract below. It must not
 commit, roll back, or otherwise own a transaction boundary, and it must not
 create or update run-status records. The calling backend service owns the
 transaction boundary and the run-status lifecycle; this guide does not
 prescribe the backend implementation mechanics. Record any required backend or
 status-persistence change as separate work outside this database workstream.
 
+Keep a lightweight record-at-a-time insertion helper focused on its declared
+mapping, allocation, integrity, insertion, and output contract. Collection
+iteration, optional-element selection, and publication-wide orchestration or
+completeness checks belong to an identified caller or a separately scoped
+orchestration routine. Document that boundary before adding those
+responsibilities to a helper. A database orchestration routine still does not
+own the backend transaction or run-status lifecycle.
+
 The contract for each introduced or changed procedure must document:
 
-- Inputs and input validation.
+- Inputs and input validation, including the ownership evidence below.
 - Outputs or result shape.
 - Affected-row scope and other database side effects.
 - SQLSTATE and error behaviour.
@@ -445,6 +454,129 @@ Collect evidence proportionate to the change:
   including error and empty outcomes where relevant.
 - Record exact commands, target type, selected locations, results, and reasons for skipped checks.
 - Never claim a shared environment or deployment was validated unless it actually was.
+
+#### Validation ownership and integrity
+
+For each proposed validation rule, record its authoritative requirement source
+and revision or confirmed decision, its enforcement owner, and verification
+evidence that the owner enforces it at the required point in the workflow.
+Distinguish implemented coverage from intended or pending coverage. A rule in
+design collateral establishes a requirement; its presence alone does not assign
+that rule to the procedure.
+
+Detailed request formatting, completeness, JSON-shape, and whitespace checks
+may belong to backend or UI validation, or deliberately form part of the
+procedure's contract. Agree that boundary using the actual supported callers.
+Do not remove required checks on unverified claims of UI/backend coverage or on
+Fines precedent: another service's routine and business rules do not establish
+this service's enforcement. Record unresolved ownership or coverage as a gap
+and do not claim that the affected contract is complete.
+
+Use existing PostgreSQL type, nullability, primary-key, unique, foreign-key, and
+check constraints for integrity they already enforce. Justify any duplicate
+existence precheck against the required semantics and error contract. Retain
+protection that those constraints do not provide, including:
+
+- Required Party classification and valid pairings of references; separate
+  foreign keys do not prove these relationships.
+- Supplied-code resolution: a supplied but unresolved code must not silently
+  become a nullable identifier merely because the resulting foreign key accepts
+  null.
+- Polymorphic target integrity, such as a Notes target without a foreign key;
+  retain target validation unless an evidenced alternative is agreed.
+- Declared row scope, cardinality, allocation, and output guarantees. Do not
+  silently discard conflicting or unused supplied data during mapping.
+
+Justify each explicit lock using the caller's actual transaction lifetime,
+isolation assumptions, and a supported concurrent deletion, key-change, or
+other competing operation. State the interval and outcome it protects and map
+that scenario to verification evidence or an explicit framework gap under
+[Routine suites and framework gaps](TESTING.md#routine-suites-and-framework-gaps).
+A lookup or insertion-window lock does not establish permanent referential
+integrity. Apply this validation and locking guidance to functions where
+applicable.
+
+#### Native errors and deliberate exceptions
+
+Native PostgreSQL constraint, type, or conversion failures may satisfy the
+expected error contract without an additional precheck or `RAISE`. For every
+deliberate precheck, explicit exception, or SQLSTATE translation, explain what
+required semantic protection, diagnostic, or compatible caller behaviour it
+adds beyond existing constraints and native propagation. Consider concurrent
+changes when assessing a precheck; it does not replace the constraint.
+
+Record the failure condition, evidenced SQLSTATE and relevant diagnostic
+context, including constraint identity where callers rely on it. Preserve
+compatible errors and useful diagnostics; do not swallow failures or turn them
+into successful results. A justified handler or `RAISE` remains valid. Do not
+invent a universal error-code scheme or require translation of every native
+failure. An intentional incompatible error change needs an explicit contract
+and delivery sequence, together with direct PostgreSQL evidence for the
+affected outcomes.
+
+## Routine LLD documentation
+
+When the ticket requires a function or procedure LLD, document the delivered
+contract from implementation and verified evidence. These requirements are
+self-contained; another service or agent-context checkout is not required.
+Use a concise purpose-based page title and reuse the matching page under the
+selected Functions or Procedures parent. Preserve unrelated content and fresh
+user edits; a style preference does not justify a duplicate or relocation.
+
+Start with References containing the delivered ticket and relevant design
+collateral, then one Overview and Scope covering purpose, routines, callers,
+and ownership. Distinguish design-intended callers from inspected call sites.
+Keep implementation revisions, dependency delivery, validation, deployment,
+and recovery evidence in the handoff. Closely related routines may share a page;
+give each its own named section, placing helpers before callers and linking
+existing descriptions rather than duplicating them.
+
+For each routine, include:
+
+| Section | Required evidence |
+| --- | --- |
+| Input / Output Parameters | Schema-qualified signature in parameter order, defaults, IN/OUT/INOUT modes, and effective PostgreSQL types where declared syntax differs. State accepted inputs, required/optional and null behaviour, and exact outputs or return shape. Describe a procedure's CALL/OUT/INOUT contract without inventing a function RETURNS clause. |
+| Database Dependencies | Tables, sequences, types, and called routines, with direct reads/inserts/updates/deletes, affected-row scope and counts where known, and helper/caller relationships. Distinguish indirect constraint/default effects; state explicitly when a pure calculation helper affects no records. |
+| Logic and Workflow | Ordered work, calculations, decisions, loops, retry bounds and restart points. A simple calculation helper may use clear logic and an implementation-derived worked example. Record diagram applicability and its reason for every routine in the handoff. |
+| Error Handling | Conditions and their results or evidenced SQLSTATEs, distinguishing null results, deliberate exceptions, retries/exhaustion, and unchanged native propagation. Do not invent catches, codes, or retries. |
+| Performance Considerations | Evidenced work, record access, scans, locks, and contention. Separate code-based implications from measurements; do not claim latency, index use, scalability, or guarantees without evidence. |
+
+Document backend ownership of transaction boundaries and run-status updates
+where relevant. Explain implemented exception-block rollback or retry behaviour
+without presenting it as ownership of the caller's transaction. Surface
+conflicting design and implementation evidence in the handoff.
+
+Use a workflow diagram when branches, loops/retries, multi-step database work,
+or orchestration benefit from it. Keep labels and paths readable and show
+relevant native/error exits, retry bounds, and the correct restart point.
+Preserve editable logical source alongside the render where practical. For
+every diagram used, render and visually inspect the actual output at its
+intended reading size for clipping, overlaps, labels, and path destinations.
+Separately compare decisions, branches, loops, helper calls, record operations,
+returns, and failure exits against the implementation. Record both checks and
+their results. If either check is unavailable, retain the draft and identify the
+missing evidence; do not claim the diagram is validated or publication-ready.
+
+When the exact LLD Acceptance Criterion requires publication, prepare a
+reviewable draft and ensure authorization covers the target pages and change
+scope. Reuse approval already given for that scope. Discover existing pages
+before creating a missing child, and resolve ambiguous targets or material
+evidence conflicts before the affected write. Read fresh page content, title,
+parent, and version immediately before editing; apply only scoped changes and
+use version checks where available. On conflict, reread and reconcile. After an
+uncertain save or create, read back or rediscover before retrying.
+
+Read back persisted content through an approved authenticated route. Verify
+the target title/parent, covered routines, references and helper order,
+signatures/effective types, outputs, record effects, errors, and preservation of
+unrelated content against the reviewed draft. Verify any saved diagram's
+attachment/media reference resolves to the intended image and renders legibly,
+including editor media identity and collection where applicable. Record saved
+URLs, versions when exposed, per-page results, and unavailable checks accurately.
+A clicked Save button, API timeout, or local draft is not publication evidence. Assess
+the exact ticket LLD Acceptance Criterion against verified saved-page coverage
+separately from the wider Definition of Done; do not claim publication complete
+while required readback or diagram checks are missing.
 
 ## Release and recovery evidence
 

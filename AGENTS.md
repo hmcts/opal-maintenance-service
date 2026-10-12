@@ -19,12 +19,14 @@ The default local port is `4551`; configured endpoints are `/health` and `/prome
   whose branch name matches the local branch.
 - Never push a feature branch to `refs/heads/master`.
 
-## Before making changes
+## Before design, planning, or implementation
 
 - Read the ticket and Acceptance Criteria when present.
 - Inspect `git status` and preserve unrelated work.
 - When branch creation is part of the workflow, use a dedicated branch as described in [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md).
-- Route implementation to [docs/REPO_GUIDELINES.md](docs/REPO_GUIDELINES.md), testing to [docs/TESTING.md](docs/TESTING.md), database and Flyway work to [docs/DATABASE_MIGRATIONS.md](docs/DATABASE_MIGRATIONS.md), contribution work to [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md), and review work to [docs/CODE_REVIEW_GUIDELINES.md](docs/CODE_REVIEW_GUIDELINES.md).
+- Read the applicable guidance before proposing a design or producing an implementation plan, as well as before implementation: [docs/REPO_GUIDELINES.md](docs/REPO_GUIDELINES.md) for implementation standards, [docs/TESTING.md](docs/TESTING.md) for testing, [docs/DATABASE_MIGRATIONS.md](docs/DATABASE_MIGRATIONS.md) for database and Flyway work, [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for contribution and planning evidence, and [docs/CODE_REVIEW_GUIDELINES.md](docs/CODE_REVIEW_GUIDELINES.md) for review.
+- Follow [Design and planning evidence](docs/CONTRIBUTING.md#design-and-planning-evidence). Check designs and plans against current ticket evidence, the intended implementation baseline, repository standards, and the applicable Definitions of Done; matching a previous spec alone is insufficient. Preserve unresolved conflicts rather than inventing an exception or silently expanding scope.
+- For routine LLD work, follow [Routine LLD documentation](docs/DATABASE_MIGRATIONS.md#routine-lld-documentation), including the distinction between a local draft and verified publication.
 - For OpenAPI work, read [docs/OPENAPI_GUIDELINES.md](docs/OPENAPI_GUIDELINES.md) before adding or moving schemas. Preserve its ownership and generated-name conventions, and verify both bundled and generated output.
 
 ## Always
@@ -77,7 +79,15 @@ Use both [docs/CODE_REVIEW_GUIDELINES.md](docs/CODE_REVIEW_GUIDELINES.md) and [d
 
 Use an available task-specific skill when its description matches the requested work.
 
-Supporting repository documents remain authoritative when a relevant skill is unavailable.
+Repository standards apply whether or not a relevant skill is available,
+including during skill-based brainstorming, design, planning, execution, and
+review. Keep service-specific policy in the tracked repository guidance rather
+than relying on edits to ignored installed skill copies.
+
+Respect a context-collection skill's read-only evidence boundaries; reconcile
+current application-code drift during design and planning. Delegated tasks and
+worktrees must retain the target repository, applicable guidance, approved
+scope, and unresolved conflicts in their task context.
 
 ## Verification and handoff
 
