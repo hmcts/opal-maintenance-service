@@ -23,7 +23,7 @@ plugins {
 
 ext {
   log4JVersion = "2.26.1"
-  cucumberVersion = "7.34.9"
+  cucumberVersion = "8.0.4"
   serenityVersion = "5.3.11"
 }
 
