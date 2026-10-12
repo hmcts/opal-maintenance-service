@@ -181,12 +181,54 @@ Raw TAP diagnostics and a non-sensitive execution summary are written under
 `build/reports/dbUnitTest`. The current Countries contract is
 `src/dbUnitTest/countriesTest/countries_pgtap_tests.sql`.
 
+### pgTAP file headers
+
+Every new or amended pgTAP suite must start with a file-level header containing
+`OPAL Program`, `MODULE`, `DESCRIPTION`, and `CHANGE HISTORY`. Use the filename
+for `MODULE` and describe the suite's purpose and scope in `DESCRIPTION`.
+Change history must record the date, responsible human contributor, Jira ticket,
+and change summary. Never use `Codex` or another agent name as the author; ask
+if the responsible contributor is unknown. Preserve trustworthy existing history
+and append the current change; do not invent historical entries or add a manual
+version number.
+
+For a new suite, the initial entry describes its introduction (for example,
+`Initial pgTAP test suite.`) and uses the evidenced creation date. Later entries
+describe the test coverage added or changed for the relevant table or routine;
+an existing suite receives an update entry, not a new initial-suite entry.
+
+When an existing suite lacks a header, recover its initial entry and relevant
+subsequent coverage changes from verified Git or ticket evidence, then append
+the current change. Report missing historical details rather than guessing
+them. Adding the header must not change executable SQL, fixtures, assertions,
+or the pgTAP plan count.
+
+```sql
+/**
+ * OPAL Program
+ *
+ * MODULE      : <test_filename.sql>
+ *
+ * DESCRIPTION : <suite purpose and scope>
+ *
+ * CHANGE HISTORY:
+ *
+ * Date        Author        Ticket        Nature of Change
+ * ----------  ------------  ------------  ----------------------------------------
+ * DD/MM/YYYY  <contributor> <JIRA-KEY>    <change summary>
+ */
+```
+
+These conventions apply to new and amended suites; do not modify unrelated
+legacy tests solely to add headers.
+
 ### pgTAP scenario introductions
 
 Keep a single object-focused suite and retain its existing assertion
-descriptions. Immediately before each meaningful behavioural scenario, add a
-separator and a SQL comment header explaining `Scenario`, `Setup`, and
-`Expected`. Related schema assertions may share a header; do not add manually
+descriptions. Every new or amended suite must introduce each meaningful
+behavioural scenario with a SQL comment block explaining `Scenario`, `Setup`,
+and `Expected`, enclosed by matching separator lines above and below the block.
+Related schema assertions may share a header; do not add manually
 maintained test numbering. The required pgTAP `plan` remains unchanged for
 comment-only edits.
 
@@ -197,6 +239,7 @@ For example, a missing-parent scenario can be introduced with:
 -- Scenario: A Business Unit refers to a parent that does not exist.
 -- Setup: Insert a child with parent_business_unit_id = 31999, which is absent.
 -- Expected: The foreign key rejects the insert with SQLSTATE 23503.
+-- -----------------------------------------------------------------------------
 ```
 
 Keep headers accurate about fixture dependencies and outcomes, rather than

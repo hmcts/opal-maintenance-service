@@ -1,3 +1,18 @@
+/**
+ * OPAL Program
+ *
+ * MODULE      : draft_casefiles_pgtap_tests.sql
+ *
+ * DESCRIPTION : Verify the Draft Casefiles schema, integrity rules and caller rollback.
+ *
+ * CHANGE HISTORY:
+ *
+ * Date        Author        Ticket        Nature of Change
+ * ----------  ------------  ------------  ----------------------------------------
+ * 26/09/2026  Chris Larkin  PO-10299      Initial pgTAP test suite.
+ * 03/10/2026  Chris Larkin  PO-10659      Update coverage for the account foreign key and unrelated-row preservation.
+ */
+
 -- PO-10299: physical contract, synthetic integrity cases and caller rollback.
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap;
@@ -7,7 +22,7 @@ SELECT plan(119);
 -- -----------------------------------------------------------------------------
 -- Scenario: Physical schema and supporting objects
 -- Setup: Migrations applied; public schema selected
--- Expected: Exact TDIA contract with only the account foreign key deferred
+-- Expected: Exact TDIA contract including the publication account foreign key
 -- -----------------------------------------------------------------------------
 SELECT has_table('public', 'draft_casefiles', 'table exists');
 
@@ -125,7 +140,7 @@ SELECT is((SELECT array_agg(enumlabel::text ORDER BY enumsortorder) FROM pg_enum
 
 SELECT is((SELECT array_agg(enumlabel::text ORDER BY enumsortorder) FROM pg_enum WHERE enumtypid='public.t_draft_casefile_status_enum'::regtype), ARRAY['SUBMITTED','DELETED','REJECTED','PUBLISHING_PENDING','PUBLISHED','PUBLISHING_FAILED','RESUBMITTED']::text[], 't_draft_casefile_status_enum exact labels and order');
 
-SELECT is((SELECT array_agg(conname::text ORDER BY conname) FROM pg_constraint WHERE conrelid='public.draft_casefiles'::regclass), ARRAY['dcf_business_unit_id_fk','draft_casefiles_account_id_uk','draft_casefiles_pk']::text[], 'exact constraints; account foreign key deferred');
+SELECT is((SELECT array_agg(conname::text ORDER BY conname) FROM pg_constraint WHERE conrelid='public.draft_casefiles'::regclass AND contype IN ('p','f','u','c')), ARRAY['dcf_account_id_fk','dcf_business_unit_id_fk','draft_casefiles_account_id_uk','draft_casefiles_pk']::text[], 'exact constraints including publication account foreign key');
 
 SELECT is((SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid='public.draft_casefiles'::regclass AND conname='draft_casefiles_pk'), 'PRIMARY KEY (draft_casefile_id)', 'draft_casefiles_pk definition');
 
@@ -154,26 +169,45 @@ SELECT is((SELECT count(*) FROM pg_attribute WHERE attrelid='public.draft_casefi
 SELECT is((SELECT count(*) FROM pg_trigger WHERE tgrelid='public.draft_casefiles'::regclass AND NOT tgisinternal), 0::bigint, 'no backend-owned orchestration triggers');
 
 -- -----------------------------------------------------------------------------
--- Scenario: Empty initial table and collision-free fixtures
+-- Scenario: Collision-free synthetic fixtures
 -- Setup: No test rows inserted yet
--- Expected: No casefiles and no reserved synthetic Business Unit keys
+-- Expected: No reserved synthetic Business Unit keys; the runner proves initial emptiness
 -- -----------------------------------------------------------------------------
-SELECT is((SELECT count(*) FROM public.draft_casefiles), 0::bigint, 'table begins empty');
-
 SELECT is((SELECT count(*) FROM public.business_units WHERE business_unit_id IN (32091,-32092) OR business_unit_code='D991'), 0::bigint, 'synthetic fixture keys do not collide');
 
 -- -----------------------------------------------------------------------------
 -- Scenario: Valid inserts including VARCHAR boundaries
--- Setup: Create one synthetic Business Unit and capture two generated IDs
+-- Setup: Create an owned Business Unit/account, an unrelated draft, and two subject drafts
 -- Expected: Minimal and fully populated rows succeed without invented defaults
 -- -----------------------------------------------------------------------------
 SELECT lives_ok($sql$INSERT INTO public.business_units (business_unit_id,business_unit_code,business_unit_name,business_unit_type,welsh_language) VALUES (32091,'D991','Synthetic PO-10299 test unit','Area',false)$sql$, 'create owned Business Unit fixture');
+
+-- PO-10659: the complete draft now references its own generated Respondent Account.
+DO $fixture$ BEGIN IF NOT EXISTS (SELECT 1 FROM public.maintenance_applications) THEN RAISE EXCEPTION 'Required application reference data missing'; END IF; END $fixture$;
+CREATE TEMP TABLE dcf_respondent_parent AS WITH inserted AS (
+ INSERT INTO public.respondent_accounts(business_unit_id,account_number,application_id,account_balance,orders_balance,orders_amount,payment_period,total_arrears,account_status,last_movement_date,date_arrears_last_updated,allow_cheques,cheque_clearance_period,credit_trans_clearance_period,casefile_type,interest_flag,indexation,payment_arrangement,version_number)
+ SELECT 32091,'CV-DCF-PARENT',(SELECT min(application_id) FROM public.maintenance_applications),0,0,0,'Weekly',0,'L',TIMESTAMP '2026-01-01 12:00:00',TIMESTAMP '2026-01-01 12:00:00',true,10,0,'REMO In',false,'None','Court',1 RETURNING respondent_account_id)
+ SELECT respondent_account_id FROM inserted;
+
+-- Keep a separate synthetic draft outside the two subject rows, so fixture-scoped
+-- uniqueness checks cannot accidentally rely on an otherwise empty business table.
+CREATE TEMP TABLE dcf_unrelated AS
+WITH inserted AS (
+    INSERT INTO public.draft_casefiles
+        (business_unit_id, created_date, submitted_by, submitted_by_name, casefile,
+         casefile_snapshot, casefile_type, casefile_status, casefile_status_date, timeline_data)
+    VALUES
+        (32091, TIMESTAMP '2026-01-01 12:00:00', 'synthetic-other', 'Synthetic unrelated',
+         '{}', '{}', 'REMO In', 'SUBMITTED', TIMESTAMP '2026-01-01 12:00:00', '[]')
+    RETURNING *
+)
+SELECT draft_casefile_id, to_jsonb(inserted) AS before_image FROM inserted;
 
 CREATE TEMP TABLE dcf_test_ids (label text PRIMARY KEY, id bigint NOT NULL);
 
 SELECT lives_ok($sql$WITH ins AS (INSERT INTO public.draft_casefiles (business_unit_id,created_date,submitted_by,submitted_by_name,casefile,casefile_snapshot,casefile_type,casefile_status,casefile_status_date,timeline_data) VALUES (32091,TIMESTAMP '2026-01-01 12:00:00','synthetic-user','Synthetic User','{"synthetic":true}','{"reference":"test"}','REMO In','SUBMITTED',TIMESTAMP '2026-01-01 12:00:00','[{"label":"Submitted"}]') RETURNING draft_casefile_id) INSERT INTO dcf_test_ids SELECT 'minimal',draft_casefile_id FROM ins$sql$, 'minimal valid insert with generated ID');
 
-SELECT lives_ok($sql$WITH ins AS (INSERT INTO public.draft_casefiles (business_unit_id,created_date,submitted_by,submitted_by_name,casefile,casefile_snapshot,casefile_type,casefile_status,casefile_status_date,timeline_data,validated_date,validated_by,validated_by_name,status_message,account_number,account_id,version_number) VALUES (32091,TIMESTAMP '2026-01-01 12:00:00',repeat('u',20),repeat('n',100),'{"synthetic":true}','{"reference":"test"}','REMO In','SUBMITTED',TIMESTAMP '2026-01-01 12:00:00','[{"label":"Submitted"}]',TIMESTAMP '2026-01-02 12:00:00',repeat('v',20),repeat('w',100),'Synthetic status',repeat('a',25),9910099,0) RETURNING draft_casefile_id) INSERT INTO dcf_test_ids SELECT 'complete',draft_casefile_id FROM ins$sql$, 'complete valid insert with generated ID');
+SELECT lives_ok($sql$WITH ins AS (INSERT INTO public.draft_casefiles (business_unit_id,created_date,submitted_by,submitted_by_name,casefile,casefile_snapshot,casefile_type,casefile_status,casefile_status_date,timeline_data,validated_date,validated_by,validated_by_name,status_message,account_number,account_id,version_number) VALUES (32091,TIMESTAMP '2026-01-01 12:00:00',repeat('u',20),repeat('n',100),'{"synthetic":true}','{"reference":"test"}','REMO In','SUBMITTED',TIMESTAMP '2026-01-01 12:00:00','[{"label":"Submitted"}]',TIMESTAMP '2026-01-02 12:00:00',repeat('v',20),repeat('w',100),'Synthetic status',repeat('a',25),(SELECT respondent_account_id FROM dcf_respondent_parent),0) RETURNING draft_casefile_id) INSERT INTO dcf_test_ids SELECT 'complete',draft_casefile_id FROM ins$sql$, 'complete valid insert with generated ID');
 
 SELECT is((SELECT id FROM dcf_test_ids WHERE label='complete')-(SELECT id FROM dcf_test_ids WHERE label='minimal'), 1::bigint, 'adjacent generated sequence values increment by one');
 
@@ -247,7 +281,7 @@ SELECT throws_ok($sql$UPDATE public.draft_casefiles SET draft_casefile_id=(SELEC
 
 SELECT throws_ok($sql$UPDATE public.draft_casefiles SET business_unit_id=-32092 WHERE draft_casefile_id=(SELECT id FROM dcf_test_ids WHERE label='minimal')$sql$, '23503', NULL, 'unknown Business Unit rejected');
 
-SELECT throws_ok($sql$UPDATE public.draft_casefiles SET account_id=9910099 WHERE draft_casefile_id=(SELECT id FROM dcf_test_ids WHERE label='minimal')$sql$, '23505', NULL, 'duplicate non-null account rejected');
+SELECT throws_ok($sql$UPDATE public.draft_casefiles SET account_id=(SELECT respondent_account_id FROM dcf_respondent_parent) WHERE draft_casefile_id=(SELECT id FROM dcf_test_ids WHERE label='minimal')$sql$, '23505', NULL, 'duplicate non-null account rejected');
 
 SELECT throws_ok($sql$DELETE FROM public.business_units WHERE business_unit_id=32091$sql$, '23503', NULL, 'referenced Business Unit deletion rejected');
 
@@ -285,7 +319,7 @@ SELECT lives_ok($sql$UPDATE public.draft_casefiles SET casefile_status='RESUBMIT
 -- -----------------------------------------------------------------------------
 SELECT lives_ok($sql$UPDATE public.draft_casefiles SET account_id=NULL WHERE draft_casefile_id=(SELECT id FROM dcf_test_ids WHERE label='complete')$sql$, 'account can return to NULL');
 
-SELECT is((SELECT count(*) FROM public.draft_casefiles WHERE account_id IS NULL), 2::bigint, 'unique account constraint permits multiple NULLs');
+SELECT is((SELECT count(*) FROM public.draft_casefiles WHERE draft_casefile_id IN (SELECT id FROM dcf_test_ids) AND account_id IS NULL), 2::bigint, 'unique account constraint permits multiple NULLs');
 
 -- -----------------------------------------------------------------------------
 -- Scenario: Caller-owned rollback
@@ -299,6 +333,14 @@ UPDATE public.draft_casefiles SET status_message='rolled back' WHERE draft_casef
 ROLLBACK TO SAVEPOINT dcf_backend_transaction;
 
 SELECT is((SELECT status_message IS NULL FROM public.draft_casefiles WHERE draft_casefile_id=(SELECT id FROM dcf_test_ids WHERE label='minimal')), true, 'caller rollback restores prior state');
+
+-- -----------------------------------------------------------------------------
+-- Scenario: Unrelated draft preservation
+-- Setup: The separate draft was excluded from every subject mutation
+-- Expected: Its complete row still matches the captured before-image
+-- -----------------------------------------------------------------------------
+SELECT is((SELECT to_jsonb(d) FROM public.draft_casefiles d JOIN dcf_unrelated u USING (draft_casefile_id)),
+          (SELECT before_image FROM dcf_unrelated), 'unrelated draft remains unchanged');
 
 SELECT * FROM finish();
 ROLLBACK;
