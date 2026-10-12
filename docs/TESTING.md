@@ -144,6 +144,44 @@ real AAD/User Service setup; enable testing-support endpoints explicitly with
 `TESTING_SUPPORT_ENDPOINTS_ENABLED=true` before using its ping or authenticated
 diagnostic requests. Never place a bearer value in a tracked Bruno file.
 
+## Routine suites and framework gaps
+
+Follow the authoritative [pgTAP suite layout](#pgtap-suite-layout) for placement,
+single-suite ownership, SQL-only coordination, and the exceptions for existing
+suites, authoritative reference-data fixtures, and framework self-tests. Every
+new suite is flat; existing paths remain unless relocation is explicitly in
+scope. This section adds verification and tooling-gap requirements to that
+layout contract.
+
+Database contract assertions stay in SQL/pgTAP and execute through the existing
+Gradle-owned `dbUnitTest` framework. Do not introduce per-routine Python or shell
+database test runners for assertions or test coordination, including ignored,
+generated, or temporary scripts and runbook recipes. Unrelated metadata or
+documentation tooling and the existing shared Gradle lifecycle orchestration
+remain permitted.
+
+For a required multiple-session concurrency scenario, identify the actual
+SQL/pgTAP mechanism in the owning suite, its disposable-harness prerequisites,
+independent sessions, bounded coordination, command-failing assertions, and
+verified cleanup. In-suite test-only `dblink` coordination, as used by the
+account-number allocator suite, can execute through `dbUnitTest` without a
+separate Gradle orchestration hook. Confirm the mechanism's availability and
+execution evidence for the scenario; neither a missing shared hook nor test
+source alone establishes whether the required coverage is verified.
+
+The current `gradle/db-unit-test.gradle` implements the fresh DB-01 path and
+has no maintained predecessor target. A standalone upgrade recipe does not
+establish a maintained DB-03 framework capability.
+
+If the required mechanism is unavailable, record the scenario, tooling gap,
+responsible owner, and agreed separately scoped framework remediation in the
+plan and handoff. Keep the required coverage visible and unmet until the
+supported SQL/pgTAP mechanism can execute it through the maintained framework
+and execution evidence proves it. Do not omit
+coverage or claim availability based on a proposed hook. The existing
+[DB-03 unmet upgrade requirement policy](#db-04-pgtap-test-placement) still
+applies.
+
 ## DB-10 pgTAP execution
 
 Database contracts live under `src/dbUnitTest`. `dbUnitTest` discovers both
@@ -157,6 +195,8 @@ Follow the [pgTAP suite layout](#pgtap-suite-layout) for all new or updated
 database-owned tests.
 The existing Maintenance Applications suite combines these checks in
 `maintenanceApplicationsTest/maintenance_applications_pgtap_tests.sql`.
+Introduced or changed routines use the owning suite and framework-gap rules in
+[Routine suites and framework gaps](#routine-suites-and-framework-gaps).
 Discovered suites are part of Gradle and the normal `check` lifecycle.
 
 The task starts a fresh PostgreSQL 17 container with pgTAP, confirms the empty
