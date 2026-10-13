@@ -256,3 +256,45 @@ Moved request-input validation and propagated-error response/log handling requir
 identified backend tests before the helper call; UI checks alone are insufficient.
 Keep that dependency visible when its actual caller path or coverage is absent,
 and do not claim the common unchanged rethrow sanitises native diagnostics.
+
+## Debtor Detail insertion contract
+
+`public.p_insert_debtor_detail(IN JSON, IN VARCHAR, OUT BIGINT)` inserts one
+`public.debtor_detail` row per successful call and returns that row's generated
+ID. Canonical employer fields are nullable/partial; information is sourced only
+from the separate scalar. SQL NULL, JSON null and an empty object all support
+information-only persistence and still insert a row when the scalar is NULL.
+The intended orchestrator must distinguish information-only from no-detail,
+skip only the latter, and pass the returned BIGINT to Respondent Account
+creation. These are required caller contracts; implemented caller source and
+passing runtime evidence have not been established by this routine delivery.
+
+`employer_address.cjs_code` resolves exactly one `public.countries` row; code
+and technical ID are distinct. Missing/null code remains NULL; unknown/ambiguous
+code raises native P0002/P0003. Conversion/range, column-width and persisted-ID
+FK failures propagate as 22P02/22003, 22001 and 23503 with FK identity retained.
+The procedure performs no normalization, truncation, transaction completion,
+status/snapshot update, retry or active-Country filter. Repeats intentionally
+create distinct rows; caller rollback removes its row without reclaiming the
+sequence value. UI/API/backend completeness, contract alignment, validation,
+transaction/outcome/retry and service-role verification remain separately owned.
+
+The one flat `p_insert_debtor_detail_pgtap_tests.sql` owns catalogue and behavior,
+all synthetic fixtures, probes, real FK fault/cleanup, rollback and upgrade
+observations. It registers its actual allocated DDL candidate, scope both and
+data migration-created-only. No predecessor business fixture is added. Snapshot
+comparison passes only null-safe booleans to pgTAP; row payloads are not printed.
+
+Assertion inventory: catalogue 4; twenty successes x3 = 60; eighteen errors x3
+= 54; real FK fault 8; repeat 5; caller rollback 5; final row scope 4. Fresh is
+140, upgrade prepare 7, verify 145 (five preservation + the entire fresh body),
+cleanup 2. Cleanup commits only exact owned observation removal and independently
+reads back namespace/relation absence through a distinct bounded test backend.
+Native no-op/history checks and disposable target destruction are also mandatory.
+
+Run complete `./gradlew dbUnitTest --no-daemon` and final
+`./gradlew build --no-daemon`. Diagnostic `-PdbUnitTestUpgradeSuite=p_insert_debtor_detail_pgtap_tests.sql`
+still runs all fresh suites and is forbidden with check/build. Preserve actual
+P/C, source fingerprints, positive executed plans, native validate/zero-applied,
+full history, scoped preservation and cleanup evidence from unique run reports.
+Framework/creditor success or fresh-only execution does not verify this consumer.
