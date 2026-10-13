@@ -166,37 +166,36 @@ vectors and source padding review cover that limitation without a test parameter
 HTTP functional/smoke additions are not applicable: no HTTP, configuration,
 authentication or application caller behaviour is changed.
 
+# Maintained Flyway upgrade framework
 
-# Maintained Flyway upgrade framework (PO-10643 enabling package)
+Use the [maintained predecessor contract](../../docs/TESTING.md#maintained-predecessor-upgrade-contract)
+for complete fresh and registered upgrade coverage:
 
-The runner now supports the [maintained predecessor contract](../../docs/TESTING.md#maintained-predecessor-upgrade-contract).
-Use `./gradlew dbUnitTest --no-daemon` for complete fresh and registered upgrade
-coverage, `./gradlew dbUnitTestFrameworkTest --no-daemon` for framework regressions,
-and `./gradlew build --no-daemon` for the full baseline. The historical allocator
-evidence above is retained as recorded; framework delivery does not retrospectively
-verify its old standalone upgrade recipe.
+- `./gradlew dbUnitTest --no-daemon` runs the fresh suites and registered upgrades.
+- `./gradlew dbUnitTestFrameworkTest --no-daemon` runs framework regressions.
+- `./gradlew build --no-daemon` runs the full repository baseline.
 
-Register the actual selected migration in its one owning flat SQL suite using
-`OPAL-DB-UPGRADE` JSON. Implement owner phases `fresh`, `prepare`, `verify`, and
-`cleanup`; retain all core and real-session contracts in the same file. Preparation
-commits ordinary observations in a suite-owned schema, verification compares
-relevant predecessor state before functional mutations, and cleanup commits its
-removal. No additional predecessor business fixtures are needed for procedure
-creation. Full fresh and applicable upgrade phases require positive exact TAP
-plans, native boundary validation, unchanged complete repeat history and confirmed
-target destruction.
+The historical allocator evidence above remains as recorded. Framework availability
+does not retrospectively verify a standalone upgrade recipe.
 
-The adopted legacy inventory is fixed at the original 32 migrations on
-`847739c9ee40ca1c09687756212f7f0dcbb56e7d`; the new creditor migration is not exempt.
-The generic framework SQL suite owns history boundaries; fixed SQL-only fixtures
-under `framework/upgrade` exercise orchestration failures, not creditor behavior.
-Reports are retained under `build/reports/dbUnitTest/runs/<run-id>` with source
-fingerprints and per-target evidence.
+Register each new selected migration in its one owning flat SQL suite using
+`OPAL-DB-UPGRADE` JSON. Implement `fresh`, `prepare`, `verify`, and `cleanup`
+phases, retaining all functional and real-session assertions in the same file.
+Preparation commits observations in a suite-owned schema; verification compares
+relevant predecessor state before functional mutations and rolls back; cleanup
+checks ownership and commits removal. Add predecessor business fixtures only
+when an approved data-scenario contract requires them. Each applicable phase
+requires a positive exact TAP plan, native boundary validation, unchanged complete
+repeat history and confirmed target destruction.
 
-The PO-10643 creditor consumer remains a separate delivery. Its developer must
-register the actual globally allocated candidate, verify its actual predecessor,
-execute its full owning suite on fresh and candidate schemas, and map retained
-results to AC3/AC5. The framework package does not supply consumer/service-role,
-banking validation, or authenticated LLD publication evidence. Record the actual
-consumer revision and run identity after execution; do not infer success from
-framework availability.
+The adopted legacy inventory is fixed at the 32 selected migrations on
+`847739c9ee40ca1c09687756212f7f0dcbb56e7d`. Every later selected migration requires
+registration; do not extend the adoption inventory to exempt it. The generic SQL
+suite owns history boundaries. Fixed SQL-only fixtures under `framework/upgrade`
+exercise orchestration failures. Reports retain source fingerprints and per-target
+evidence under `build/reports/dbUnitTest/runs/<run-id>`.
+
+Each consumer must execute its full owning suite on fresh and candidate schemas
+and retain its actual revision, predecessor/candidate identities and run results.
+Framework acceptance does not establish consumer verification or satisfy separately
+owned application, service-role or documentation requirements.
