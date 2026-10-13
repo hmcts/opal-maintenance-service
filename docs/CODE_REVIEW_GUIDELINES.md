@@ -17,6 +17,28 @@ implementation preferences.
 
 Optional improvements are not findings unless advisory feedback was requested.
 
+## Design and implementation-plan review
+
+Use [Design and planning evidence](CONTRIBUTING.md#design-and-planning-evidence)
+and [Required prerequisite delivery](CONTRIBUTING.md#required-prerequisite-delivery)
+to check every Acceptance Criterion and mandatory repository requirement has
+a concrete route to completion, separately from assessing the proposed code.
+
+- Verification uses a currently supported mechanism, or an enabling task or
+  linked work package defines the missing capability, ownership, sequencing,
+  consumer integration and acceptance evidence.
+- Separately owned work retains its agreed scope. Missing prerequisites are
+  explicitly identified; independent work and blocked delivery steps are
+  distinguished without claiming unsupported execution or completion.
+- Review records the remaining prerequisite delivery and consumer evidence.
+  A sound routine design or absence of SQL findings does not establish that
+  the full delivery plan is executable or that the ticket is complete.
+
+Report an unspecified mandatory completion route as a delivery finding when
+reviewing a plan intended to cover the whole delivery. A future check with a
+concrete task, dependency and required evidence is not a defect merely because
+the implementation has not yet run it.
+
 ## Backend review checks
 
 - Request and response correctness, validation, exception mapping, and HTTP
@@ -39,6 +61,12 @@ Optional improvements are not findings unless advisory feedback was requested.
   Formatting alone remains outside defect findings under the review objective.
 
 ## Database review checks
+
+For database designs and implementation plans, apply the
+[general plan-review checks](#design-and-implementation-plan-review) and verify
+the applicable migration, SQL-testing and upgrade requirements. Work affecting
+both backend and database concerns must satisfy both sets of relevant review
+checks.
 
 Use the [routine responsibility contract](DATABASE_MIGRATIONS.md#planned-db-06-stored-procedure-responsibility-contract),
 [routine LLD guidance](DATABASE_MIGRATIONS.md#routine-lld-documentation), and
