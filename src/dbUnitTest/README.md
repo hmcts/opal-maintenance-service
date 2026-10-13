@@ -257,58 +257,33 @@ identified backend tests before the helper call; UI checks alone are insufficien
 Keep that dependency visible when its actual caller path or coverage is absent,
 and do not claim the common unchanged rethrow sanitises native diagnostics.
 
-## Debtor Detail insertion contract
+## Routine coverage across migration boundaries
 
-`public.p_insert_debtor_detail(IN JSON, IN VARCHAR, OUT BIGINT)` inserts one
-`public.debtor_detail` row per successful call and returns that row's generated
-ID. Canonical employer fields are nullable/partial; information is sourced only
-from the separate scalar. SQL NULL, JSON null and an empty object all support
-information-only persistence and still insert a row when the scalar is NULL.
-The intended orchestrator must distinguish information-only from no-detail,
-skip only the latter, and pass the returned BIGINT to Respondent Account
-creation. These are required caller contracts; implemented caller source and
-passing runtime evidence have not been established by this routine delivery.
+Follow the [routine testing requirements](../../docs/TESTING.md#planned-db-06-procedure-side-testing)
+and [owning-suite layout](../../docs/TESTING.md#pgtap-suite-layout). Combine
+catalogue checks with observable behavior: parameter and result contracts,
+affected rows, error propagation, repeat calls and caller rollback. Cover
+applicable null, empty, partial, reference and boundary inputs, using expected
+values established independently of the routine under test. For bounded text,
+include exact limits and over-limit non-space and trailing-space inputs against
+the required contract. Keep required real-session concurrency checks in that
+same suite.
 
-`employer_address.cjs_code` resolves exactly one `public.countries` row; code
-and technical ID are distinct. Missing/null code remains NULL; unknown/ambiguous
-code raises native P0002/P0003. Conversion/range and persisted-ID FK failures
-propagate as 22P02/22003 and 23503 with FK identity retained. V1_35 replaces the
-V1_34 procedure with explicit character-width rejection for all ten mapped
-strings and the separate scalar: name 50, reference 35, email 80, telephone 35,
-each of five address lines 35, postcode 10 and information 200. It raises 22001
-with a fixed safe message before INSERT, after strict Country resolution.
-This guard is required because native VARCHAR assignment silently discards
-excess trailing spaces; non-space overlength and excess-space inputs must both
-fail. NULL and exact-width/within-width whitespace retain their existing behavior.
-The procedure performs no normalization, truncation, transaction completion,
-status/snapshot update, retry or active-Country filter. Repeats intentionally
-create distinct rows; caller rollback removes its row without reclaiming the
-sequence value. UI/API/backend completeness, contract alignment, validation,
-transaction/outcome/retry and service-role verification remain separately owned.
+One owning suite can register successive migrations that change its routine.
+Dispatch by the supplied scenario identity and validate the expected predecessor
+state: creation and replacement may require different object-presence checks.
+Verify the contract installed at each candidate; do not require behavior from a
+later migration. Keep each phase's positive exact TAP plan aligned with the
+assertions actually executed. Earlier candidate results establish their
+historical contracts; the latest fresh and applicable candidate runs must prove
+the current behavior.
 
-The one flat `p_insert_debtor_detail_pgtap_tests.sql` owns catalogue and behavior,
-all synthetic fixtures, probes, real FK fault/cleanup, rollback and upgrade
-observations. It registers both `ddl/V1_34__create_p_insert_debtor_detail_procedure.sql`
-(`p_insert_debtor_detail.create`) and
-`ddl/V1_35__replace_p_insert_debtor_detail_strict_widths.sql`
-(`p_insert_debtor_detail.strict_widths`), scope both and data migration-created-only.
-The original create predecessor must lack the procedure; the strict-width
-replacement predecessor must already contain it. No predecessor business fixture
-is added. Snapshot comparison passes only null-safe booleans to pgTAP; row payloads are not printed.
-
-Assertion inventory: catalogue 4; twenty successes x3 = 60; eighteen original
-errors x3 = 54; real FK fault 8; repeat 5; caller rollback 5; final row scope 4.
-Current fresh adds eleven excess-space failures x3 = 33, so fresh is 173.
-V1_35 candidate verify is 178 (five preservation + the current 173 body).
-Immutable V1_34 candidate verify retains 145 (five preservation + original 140);
-this is legacy coverage and does not establish the full strict-width contract.
-Each registered boundary uses prepare 7 and cleanup 2. Cleanup commits only exact
-owned observation removal and independently reads back namespace/relation absence through a distinct bounded test backend.
-Native no-op/history checks and disposable target destruction are also mandatory.
-
-Run complete `./gradlew dbUnitTest --no-daemon` and final
-`./gradlew build --no-daemon`. Diagnostic `-PdbUnitTestUpgradeSuite=p_insert_debtor_detail_pgtap_tests.sql`
-still runs all fresh suites and is forbidden with check/build. Preserve actual
-P/C, source fingerprints, positive executed plans, native validate/zero-applied,
-full history, scoped preservation and cleanup evidence from unique run reports.
-Framework/creditor success or fresh-only execution does not verify this consumer.
+Preserve the evidence required by the
+[maintained predecessor contract](../../docs/TESTING.md#maintained-predecessor-upgrade-contract),
+including actual revision, source fingerprints, predecessor/candidate identities,
+executed plans, native validation, repeat history, scoped preservation and cleanup.
+Compare preserved application state through null-safe boolean assertions so
+row payloads do not appear in TAP diagnostics. Where observations persist across
+connections, verify committed removal independently. Record missing caller,
+service-role or publication evidence separately; passing routine tests do not
+establish those outcomes.
