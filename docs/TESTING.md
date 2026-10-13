@@ -164,14 +164,26 @@ The current `gradle/db-unit-test.gradle` implements the fresh DB-01 path and
 has no maintained predecessor target. A standalone upgrade recipe does not
 establish a maintained DB-03 framework capability.
 
-If the required mechanism is unavailable, record the scenario, tooling gap,
-responsible owner, and agreed separately scoped framework remediation in the
-plan and handoff. Keep the required coverage visible and unmet until the
-supported SQL/pgTAP mechanism can execute it through the maintained framework
-and execution evidence proves it. Do not omit
-coverage or claim availability based on a proposed hook. The existing
+If mandatory coverage requires an unavailable mechanism, include a concrete
+enabling task or linked, independently reviewable work package under
+[Required prerequisite delivery](CONTRIBUTING.md#required-prerequisite-delivery).
+Record the scenario and tooling gap, and make the package's owner or assignment
+status, deliverable and current versus proposed interface, consuming-suite
+integration, sequence and acceptance evidence explicit. An owner or future
+framework reference alone is insufficient. The full delivery plan is blocked
+while that package or a required decision is absent; bounded routine work that
+does not depend on it can still progress. Keep the required coverage visible
+and unmet until the supported SQL/pgTAP mechanism can execute it through the
+maintained framework and execution evidence proves it. Do not omit coverage or
+claim availability based on a proposed hook. The existing
 [DB-03 unmet upgrade requirement policy](#db-04-pgtap-test-placement) still
 applies.
+
+Any future framework phases that carry test observations across connections
+must define their state lifetime, ownership and cleanup, with a coordinated,
+narrowly scoped amendment to the transaction guidance when the framework is
+delivered. A proposed phase interface grants no transaction exception: the
+current pgTAP suite requirement to end with `ROLLBACK` remains in force.
 
 ## DB-10 pgTAP execution
 

@@ -336,21 +336,61 @@ does not create a second framework and must not use Spring or backend
 integration-test fixtures. Testing owns the suite's availability status; the
 following requirements describe the planned workflow only.
 
+Resolve the actual candidate and its immediate predecessor from the selected
+Flyway migration locations at the implementation baseline. The predecessor is
+the greatest selected version below the candidate, using Flyway's numerical
+version ordering across those locations. Do not infer it from lexical filename
+order, the preceding DDL file, or the candidate number minus one.
+
 For a candidate migration with an immediate predecessor, use this
 Flyway-native sequence:
 
-1. Start a disposable PostgreSQL instance.
-2. Apply the selected migration locations only through the candidate's
-   immediate predecessor, allowing existing migrations to establish the prior
-   schema and normal reference data.
-3. Add no further rows when the candidate does not depend on existing data. If
-   it does, require an approved data-scenario contract that defines the
+1. Start a disposable PostgreSQL 17 instance, retaining DB-01's empty-start,
+   explicit-location, external-target refusal, and connection-safety rules.
+2. Migrate and validate only through the actual predecessor, allowing existing
+   migrations to establish the prior schema and normal reference data. Assert
+   the exact successful selected history prefix, with no candidate or later
+   migration applied.
+3. Add no further business rows when the candidate does not depend on existing
+   data. If it does, require an approved data-scenario contract that defines the
    pre-change conditions, business and edge cases, and expected outcomes. The
    process and owner for producing and approving that contract remain to be
    decided. Translate only its approved cases into the smallest deterministic
    synthetic dataset.
-4. Apply the candidate migration.
-5. Assert the relevant schema, reference-data, and affected-row outcomes.
+4. Capture the relevant scoped predecessor rows and objects through the owning
+   SQL/pgTAP suite. Keep test observation state outside application objects and
+   preserve it across the migration and verification phases.
+5. Apply only the candidate as the next migration and validate at that same
+   candidate boundary. No later migration may run before candidate assertions.
+6. Compare the scoped predecessor rows and objects before functional fixtures
+   or routine calls mutate them, then assert the relevant schema,
+   reference-data, and affected-row outcomes and applicable database contract.
+   Capture the complete candidate Flyway history for the repeat comparison.
+7. Migrate and validate again at the same candidate boundary. Require native
+   evidence of zero newly applied migrations and complete Flyway history
+   equality with the captured candidate history; counts or script names alone
+   do not prove this. History equality does not replace row/object preservation
+   assertions.
+8. Remove and verify removal of test-owned observation state, then destroy the
+   disposable database and container automatically and confirm cleanup.
+
+Any future maintained DB-03 implementation that uses separate SQL connections
+must give predecessor observations a durable lifetime inside the disposable
+target. TEMP objects and rolled-back observations cannot carry evidence between
+those connections. Committing narrowly owned test observation state during
+preparation and its removal during cleanup requires an explicit, narrow
+exception to the [pgTAP transaction contract](TESTING.md#db-10-pgtap-execution),
+documented and delivered with the maintained framework before use. This planned
+requirement grants no current suite permission to commit and does not change
+production routine transaction ownership.
+
+Retain non-sensitive evidence of actual candidate/predecessor paths and versions,
+selected locations, phase results and assertion counts, validation, native repeat
+results, history equality, scoped preservation, and confirmed test-state and
+target cleanup. Migration, validation, SQL, assertion, or cleanup failure must
+fail the maintained command. Preserve primary and cleanup failures and identify
+unexecuted phases when a failure stops the workflow; an incomplete run cannot
+establish upgrade verification.
 
 An initial migration with no predecessor uses the fresh-database path from an
 empty disposable database. Record its predecessor and upgrade setup as not
