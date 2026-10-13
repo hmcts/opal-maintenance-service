@@ -461,8 +461,8 @@ dependencies {
   implementation 'uk.gov.hmcts:opal-common-lib:0.3.35'
   implementation 'org.mapstruct:mapstruct:1.6.3'
 
-  zephyrCucumberReportProcessor 'uk.gov.hmcts:zephyr-automation:1.2.2'
-  testImplementation 'uk.gov.hmcts:zephyr-automation:1.2.2'
+  zephyrCucumberReportProcessor 'uk.gov.hmcts:zephyr-automation:2.0.1'
+  testImplementation 'uk.gov.hmcts:zephyr-automation:2.0.1'
   testImplementation 'com.launchdarkly:launchdarkly-java-server-sdk:7.17.2'
 
   openapiImplementation "io.swagger.parser.v3:swagger-parser:2.1.48"
@@ -504,7 +504,7 @@ dependencies {
   implementation 'org.apache.qpid:qpid-jms-client:2.11.0'
   implementation 'com.google.guava:guava:33.7.2-jre'
 
-  implementation 'com.networknt:json-schema-validator:3.0.7'
+  implementation 'com.networknt:json-schema-validator:3.0.8'
   implementation 'com.jayway.jsonpath:json-path:3.0.0'
 
   implementation 'org.openapitools:jackson-databind-nullable:0.2.12'
