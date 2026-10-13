@@ -77,12 +77,11 @@ suite and explain why its assertions remain sufficient. If no direct boundary
 assertion is required, use the DB-04 exception wording and record its reason.
 
 Each migration-focused specification must state whether its assertions apply
-to the fresh DB-01 path, the DB-03 upgrade path, or both. The current
-`dbUnitTest` task executes the fresh DB-01 path. Until DB-03 is implemented, an
-applicable upgrade-path requirement remains unmet and must be reported rather
-than claimed as verified. Representative upgrade setup and synthetic data
+to the fresh DB-01 path, the DB-03 upgrade path, or both. The `dbUnitTest` task executes the fresh DB-01 path and every registered
+applicable DB-03 predecessor upgrade. Missing registration or execution evidence
+remains unmet and must not be claimed as verified. Representative upgrade setup and synthetic data
 rules remain owned by the
-[planned DB-03 guidance](DATABASE_MIGRATIONS.md#planned-db-03-upgrade-path-validation).
+[DB-03 guidance](DATABASE_MIGRATIONS.md#planned-db-03-upgrade-path-validation).
 
 Select assertions from the migration-specific categories in the
 [DB-04 database contract](DATABASE_MIGRATIONS.md#db-04-migration-specific-boundary-contract)
@@ -160,9 +159,9 @@ separate Gradle orchestration hook. Confirm the mechanism's availability and
 execution evidence for the scenario; neither a missing shared hook nor test
 source alone establishes whether the required coverage is verified.
 
-The current `gradle/db-unit-test.gradle` implements the fresh DB-01 path and
-has no maintained predecessor target. A standalone upgrade recipe does not
-establish a maintained DB-03 framework capability.
+The maintained `gradle/db-unit-test.gradle` implements fresh DB-01 and registered
+DB-03 predecessor targets. Use the same owning SQL suite through the phase
+contract below. A standalone upgrade recipe is not maintained verification.
 
 If mandatory coverage requires an unavailable mechanism, include a concrete
 enabling task or linked, independently reviewable work package under
@@ -179,11 +178,9 @@ claim availability based on a proposed hook. The existing
 [DB-03 unmet upgrade requirement policy](#db-04-pgtap-test-placement) still
 applies.
 
-Any future framework phases that carry test observations across connections
-must define their state lifetime, ownership and cleanup, with a coordinated,
-narrowly scoped amendment to the transaction guidance when the framework is
-delivered. A proposed phase interface grants no transaction exception: the
-current pgTAP suite requirement to end with `ROLLBACK` remains in force.
+The delivered phase contract below defines the narrow preparation/cleanup
+transaction exception for durable test observations. Production routines retain
+backend-owned transaction boundaries.
 
 ## DB-10 pgTAP execution
 
@@ -210,8 +207,13 @@ container cleanup. It fails closed when application or external Flyway target
 settings are present, so it cannot fall back to a developer-owned or shared
 database. Failure output lists setting names only and never their values.
 
-Each pgTAP suite must start a transaction, create the `pgtap` extension if
-required, declare an exact `plan`, call `finish()`, and end with `ROLLBACK`.
+Every fresh and functional verification phase must start a transaction, create
+the `pgtap` extension if required, declare a positive exact `plan`, call
+`finish()`, and end with `ROLLBACK`. Only upgrade preparation and observation
+cleanup commit ordinary test-owned state across connections. The generic
+framework also commits its history snapshots at predecessor/candidate (and the
+fresh no-op snapshot) boundaries. Each such phase has its own positive exact
+plan and `finish()`; no production transaction ownership changes.
 The framework also runs a deliberate failing fixture to prove that a non-zero
 `pg_prove` result fails closed. pgTAP is test-only: do not add it to production
 Flyway migrations, application dependencies, or shared databases.
@@ -225,6 +227,92 @@ Run the database unit-test suite with:
 Raw TAP diagnostics and a non-sensitive execution summary are written under
 `build/reports/dbUnitTest`. The current Countries contract is
 `src/dbUnitTest/countriesTest/countries_pgtap_tests.sql`.
+
+### Maintained predecessor upgrade contract
+
+Normal `./gradlew dbUnitTest` runs the complete latest fresh suite set, then all
+registered upgrades in native numerical order, each in a new disposable target.
+`check` and `build` inherit all registrations. No upgrade skip or external target
+property exists. The three selected locations remain `ddl`, `data/allEnvs`, and
+`data/dev`; other environment locations have no implicit coverage.
+
+Add one line after the human-attributed header in the owning flat SQL suite:
+
+```sql
+-- OPAL-DB-UPGRADE {"id":"object.change","candidate":"ddl/V1_33__example.sql","scope":"both","data":"migration-created-only"}
+```
+
+The filename above is illustrative; allocate the actual migration globally.
+The four required string fields are `id`, `candidate`, `scope` (`both` or
+`upgrade`), and `data` (`migration-created-only` or `approved-synthetic`). IDs
+are globally unique lowercase `[a-z][a-z0-9._-]*`. Candidates are canonical
+paths relative to `src/main/resources/db/migration`. Metadata is flat JSON with
+plain constrained strings; escaped strings, unknown/missing/duplicate fields,
+duplicate IDs, multiple owners, absent/unselected candidates and unsupported
+migration categories fail before target creation. Approved synthetic scenarios
+also require an `Approved data scenario:` comment naming the approved contract;
+the handoff/README must evidence that approval. The marker does not grant it.
+
+The fixed adoption inventory in the runner pins paths, normalized numerical
+versions and SHA-256 bytes for the 32 selected migrations at
+`847739c9ee40ca1c09687756212f7f0dcbb56e7d`. Missing or changed adoption files fail.
+Every later selected migration requires exactly one registration; never extend
+that inventory to exempt a new migration. Existing registrations can cover
+historical migrations explicitly, without claiming historical backfill.
+
+The runner cross-checks native Flyway `info` against the selected files before
+migration. It applies/validates P, runs framework predecessor assertions and
+owner preparation, applies/validates only C, runs framework candidate and owner
+verification, repeats/validates at C with native zero-applied evidence and SQL
+full-history equality, runs owner/framework cleanup, and destroys the target.
+Later versions remain excluded until the candidate's assertions finish.
+A true initial migration receives explicit upgrade N/A plus the full fresh run.
+
+Owner suites receive `opal_phase=fresh|prepare|verify|cleanup`,
+`opal_scenario_id`, `opal_candidate_version`, and `opal_predecessor_version`.
+Omitted owner phase defaults to `fresh` in the suite. Upgrade phases must validate
+required variables, scenario/version ownership and the existing harness identity
+(`opal_maintenance_db_unit_test`, role `postgres`). Use `pg_prove --set` values as
+psql values, never executable SQL fragments. Every invocation is a new connection.
+Prepare commits observations in an ordinary suite-owned schema, verify compares
+named application state before functional mutations and rolls back, and cleanup
+checks ownership then commits removal. TEMP or rolled-back snapshots cannot carry
+observations. Do not include test extensions/observation schemas in application
+catalogue preservation. Keep all functional/concurrency assertions in the same
+owning suite; retain explicit remote-session cleanup.
+
+The generic flat `db_upgrade_framework_pgtap_tests.sql` owns exact expected
+history prefixes, successful checksummed SQL, complete predecessor row equality,
+exactly one candidate, complete repeat equality and framework-state cleanup.
+Its internal phases are `fresh`, `snapshot`, `predecessor`, `candidate`, `repeat`,
+`cleanup`; `snapshot` records complete history for fresh repeat verification.
+Native `validate` proves source checksum agreement; SHA-256 adoption checks are
+not Flyway checksum comparisons.
+
+For diagnosis only:
+
+```bash
+./gradlew dbUnitTest --no-daemon -PdbUnitTestUpgradeSuite=object_pgtap_tests.sql
+```
+
+The selector still validates all registrations and runs every fresh suite; it
+selects only the named owner's upgrades. Unknown/empty selections fail, and
+selection with `check`/`build` fails. Complete normal execution is final evidence.
+
+`./gradlew dbUnitTestFrameworkTest --no-daemon` exercises fixed framework-only
+SQL/migration fixtures through the same orchestration, including native ordering,
+later exclusion, durability, controlled unchanged-byte retry, phase failures and
+cleanup diagnostics. Fixtures under `framework/upgrade` are the narrow framework
+regression exception, never routine support SQL or production migrations.
+
+Reports retain unique `build/reports/dbUnitTest/runs/<run-id>/` directories with
+source fingerprints, revision/dirty paths, native command exits/timings, exact
+TAP plans/executed counts, per-target phase status and confirmed container absence.
+Top-level `summary.txt`, `pg-prove.log`, and `framework-self-test.log` remain latest
+run entry points. An earlier completed report survives a later scenario failure.
+Scheduled unexecuted phases/scenarios remain Not run. Cleanup failure fails the
+command and is retained alongside any primary error. Framework tests use only
+fixed internal injections; callers cannot inject commands, targets or failures.
 
 ### pgTAP file headers
 
