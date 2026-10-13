@@ -10,10 +10,12 @@
  * Date        Author        Ticket        Nature of Change
  * ----------  ------------  ------------  ----------------------------------------
  * 13/10/2026  Frankie Moran  PO-10644  Initial pgTAP test suite.
+ * 13/10/2026  Frankie Moran  PO-10644  Verify strict widths and forward replacement.
  */
 -- OPAL-DB-UPGRADE {"id":"p_insert_debtor_detail.create","candidate":"ddl/V1_34__create_p_insert_debtor_detail_procedure.sql","scope":"both","data":"migration-created-only"}
--- DB-04/DB-06: catalogue, mapping, native errors, row scope, repeat and caller rollback.
--- All functional assertions apply to DB-01 fresh and DB-03 candidate verification.
+-- OPAL-DB-UPGRADE {"id":"p_insert_debtor_detail.strict_widths","candidate":"ddl/V1_35__replace_p_insert_debtor_detail_strict_widths.sql","scope":"both","data":"migration-created-only"}
+-- DB-04/DB-06: catalogue, mapping, errors, row scope, repeat and caller rollback.
+-- Original coverage applies at create; strict-width regressions apply on fresh/replacement.
 \set ON_ERROR_STOP on
 \if :{?opal_phase}
 \else
@@ -23,7 +25,8 @@ SELECT :'opal_phase' IN ('fresh','prepare','verify','cleanup') AS valid_phase,
        :'opal_phase'='prepare' AS is_prepare,
        :'opal_phase'='verify' AS is_verify,
        :'opal_phase'='cleanup' AS is_cleanup,
-       :'opal_phase'<>'fresh' AS needs_identity
+       :'opal_phase'<>'fresh' AS needs_identity,
+       :'opal_phase'='fresh' AS strict_widths
 \gset
 \if :valid_phase
 \else
@@ -48,13 +51,16 @@ SELECT :'opal_phase' IN ('fresh','prepare','verify','cleanup') AS valid_phase,
     \gset
     DO $guard$
     BEGIN
-        IF CURRENT_SETTING('opal.dd_scenario')<>'p_insert_debtor_detail.create'
+        IF CURRENT_SETTING('opal.dd_scenario') NOT IN
+               ('p_insert_debtor_detail.create','p_insert_debtor_detail.strict_widths')
            OR CURRENT_SETTING('opal.dd_candidate')=''
            OR CURRENT_SETTING('opal.dd_predecessor')='' THEN
             RAISE EXCEPTION 'Invalid debtor upgrade identity';
         END IF;
     END;
     $guard$;
+    SELECT CURRENT_SETTING('opal.dd_scenario')='p_insert_debtor_detail.strict_widths' AS strict_widths
+    \gset
 \endif
 DO $target$
 BEGIN
@@ -136,10 +142,15 @@ $state$;
     -- -------------------------------------------------------------------------
     -- Scenario: Observe the real predecessor before routine-only installation.
     -- Setup: Native selected P migrations only; no extra business fixtures.
-    -- Expected: Candidate absent, dependencies/seeds present, durable owned state.
+    -- Expected: Create predecessor lacks procedure; replacement predecessor has it.
     -- -------------------------------------------------------------------------
-    SELECT ok(TO_REGPROCEDURE('public.p_insert_debtor_detail(json,character varying)') IS NULL,
-        'debtor procedure absent at predecessor');
+    \if :strict_widths
+        SELECT ok(TO_REGPROCEDURE('public.p_insert_debtor_detail(json,character varying)') IS NOT NULL,
+            'debtor procedure exists before strict-width replacement');
+    \else
+        SELECT ok(TO_REGPROCEDURE('public.p_insert_debtor_detail(json,character varying)') IS NULL,
+            'debtor procedure absent at create predecessor');
+    \endif
     SELECT ok(TO_REGCLASS('public.debtor_detail') IS NOT NULL
         AND TO_REGCLASS('public.countries') IS NOT NULL,'debtor tables exist');
     SELECT ok(TO_REGCLASS('public.debtor_detail_id_seq') IS NOT NULL
@@ -213,7 +224,11 @@ $state$;
     ROLLBACK;
 \else
     \if :is_verify
-        SELECT plan(145);
+        \if :strict_widths
+            SELECT plan(178);
+        \else
+            SELECT plan(145);
+        \endif
         -- ---------------------------------------------------------------------
         -- Scenario: Installation preserves predecessor rows, objects and sequences.
         -- Setup: Compare durable P state before any fixture, CALL or NEXTVAL.
@@ -242,7 +257,7 @@ $state$;
         SELECT ok(TO_REGPROCEDURE('public.p_insert_debtor_detail(json,character varying)') IS NOT NULL,
             'debtor procedure installed before functional mutation');
     \else
-        SELECT plan(140);
+        SELECT plan(173);
     \endif
 
 -- -----------------------------------------------------------------------------
@@ -414,10 +429,27 @@ INSERT INTO dd_error_cases
 SELECT 'address line '||n||' over width',
     JSONB_BUILD_OBJECT('employer_address',JSONB_BUILD_OBJECT('address_line_'||n,REPEAT('A',36)))::JSON,
     NULL,'22001' FROM GENERATE_SERIES(1,5) n;
+-- The immutable create boundary retains its original legacy contract coverage.
+-- Current fresh/replacement paths additionally reject excess trailing spaces.
+\if :strict_widths
+INSERT INTO dd_error_cases VALUES
+('name excess trailing space',JSONB_BUILD_OBJECT('employer_name',REPEAT('N',50)||' ')::JSON,NULL,'22001'),
+('reference excess trailing space',JSONB_BUILD_OBJECT('employee_reference',REPEAT('R',35)||' ')::JSON,NULL,'22001'),
+('email excess trailing space',JSONB_BUILD_OBJECT('employer_email_address',REPEAT('E',80)||' ')::JSON,NULL,'22001'),
+('telephone excess trailing space',JSONB_BUILD_OBJECT('employer_telephone_number',REPEAT('T',35)||' ')::JSON,NULL,'22001'),
+('postcode excess trailing space',JSONB_BUILD_OBJECT('employer_address',JSONB_BUILD_OBJECT('postcode',REPEAT('P',10)||' '))::JSON,NULL,'22001'),
+('information excess trailing space',NULL,REPEAT('I',200)||' ','22001');
+INSERT INTO dd_error_cases
+SELECT 'address line '||n||' excess trailing space',
+    JSONB_BUILD_OBJECT('employer_address',JSONB_BUILD_OBJECT('address_line_'||n,REPEAT('A',35)||' '))::JSON,
+    NULL,'22001' FROM GENERATE_SERIES(1,5) n;
+\endif
+SELECT SET_CONFIG('opal.dd_strict_widths',:'strict_widths',false) AS strict_width_flag \gset
 DO $guard$
 BEGIN
-    IF (SELECT COUNT(*) FROM dd_error_cases)<>18 THEN
-        RAISE EXCEPTION 'Debtor native failure inventory must contain eighteen cases';
+    IF (SELECT COUNT(*) FROM dd_error_cases)<>
+       (CASE WHEN CURRENT_SETTING('opal.dd_strict_widths')::BOOLEAN THEN 29 ELSE 18 END) THEN
+        RAISE EXCEPTION 'Debtor failure inventory must contain eighteen legacy or twenty-nine current cases';
     END IF;
 END;
 $guard$;
@@ -428,7 +460,7 @@ DECLARE v_before JSONB; v_outcome JSONB;
 BEGIN
     v_before := pg_temp.dd_rows();
     v_outcome := pg_temp.dd_probe(p_payload,p_info);
-    RETURN NEXT is(v_outcome->>'state',p_state,p_label||': native SQLSTATE propagates');
+    RETURN NEXT is(v_outcome->>'state',p_state,p_label||': required SQLSTATE propagates');
     RETURN NEXT ok(v_outcome->>'id' IS NULL,p_label||': no successful ID');
     RETURN NEXT ok(v_before IS NOT DISTINCT FROM pg_temp.dd_rows(),
         p_label||': all prior detail rows unchanged');
@@ -436,8 +468,8 @@ END;
 $test$;
 -- -----------------------------------------------------------------------------
 -- Scenario: Width, conversion and strict-lookup failures propagate atomically.
--- Setup: Eighteen invalid calls, unique/duplicate fixture codes, no narrowed casts.
--- Expected: Native SQLSTATE, no successful ID, no persisted row or overwrite.
+-- Setup: Eighteen legacy calls plus eleven excess-space cases on current paths.
+-- Expected: Required SQLSTATE, no successful ID, no persisted row or overwrite.
 -- -----------------------------------------------------------------------------
 SELECT test.* FROM dd_error_cases c CROSS JOIN LATERAL
     pg_temp.dd_failure(c.payload,c.info,c.state,c.label) test;

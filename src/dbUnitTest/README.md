@@ -271,8 +271,15 @@ passing runtime evidence have not been established by this routine delivery.
 
 `employer_address.cjs_code` resolves exactly one `public.countries` row; code
 and technical ID are distinct. Missing/null code remains NULL; unknown/ambiguous
-code raises native P0002/P0003. Conversion/range, column-width and persisted-ID
-FK failures propagate as 22P02/22003, 22001 and 23503 with FK identity retained.
+code raises native P0002/P0003. Conversion/range and persisted-ID FK failures
+propagate as 22P02/22003 and 23503 with FK identity retained. V1_35 replaces the
+V1_34 procedure with explicit character-width rejection for all ten mapped
+strings and the separate scalar: name 50, reference 35, email 80, telephone 35,
+each of five address lines 35, postcode 10 and information 200. It raises 22001
+with a fixed safe message before INSERT, after strict Country resolution.
+This guard is required because native VARCHAR assignment silently discards
+excess trailing spaces; non-space overlength and excess-space inputs must both
+fail. NULL and exact-width/within-width whitespace retain their existing behavior.
 The procedure performs no normalization, truncation, transaction completion,
 status/snapshot update, retry or active-Country filter. Repeats intentionally
 create distinct rows; caller rollback removes its row without reclaiming the
@@ -281,15 +288,22 @@ transaction/outcome/retry and service-role verification remain separately owned.
 
 The one flat `p_insert_debtor_detail_pgtap_tests.sql` owns catalogue and behavior,
 all synthetic fixtures, probes, real FK fault/cleanup, rollback and upgrade
-observations. It registers its actual allocated DDL candidate, scope both and
-data migration-created-only. No predecessor business fixture is added. Snapshot
-comparison passes only null-safe booleans to pgTAP; row payloads are not printed.
+observations. It registers both `ddl/V1_34__create_p_insert_debtor_detail_procedure.sql`
+(`p_insert_debtor_detail.create`) and
+`ddl/V1_35__replace_p_insert_debtor_detail_strict_widths.sql`
+(`p_insert_debtor_detail.strict_widths`), scope both and data migration-created-only.
+The original create predecessor must lack the procedure; the strict-width
+replacement predecessor must already contain it. No predecessor business fixture
+is added. Snapshot comparison passes only null-safe booleans to pgTAP; row payloads are not printed.
 
-Assertion inventory: catalogue 4; twenty successes x3 = 60; eighteen errors x3
-= 54; real FK fault 8; repeat 5; caller rollback 5; final row scope 4. Fresh is
-140, upgrade prepare 7, verify 145 (five preservation + the entire fresh body),
-cleanup 2. Cleanup commits only exact owned observation removal and independently
-reads back namespace/relation absence through a distinct bounded test backend.
+Assertion inventory: catalogue 4; twenty successes x3 = 60; eighteen original
+errors x3 = 54; real FK fault 8; repeat 5; caller rollback 5; final row scope 4.
+Current fresh adds eleven excess-space failures x3 = 33, so fresh is 173.
+V1_35 candidate verify is 178 (five preservation + the current 173 body).
+Immutable V1_34 candidate verify retains 145 (five preservation + original 140);
+this is legacy coverage and does not establish the full strict-width contract.
+Each registered boundary uses prepare 7 and cleanup 2. Cleanup commits only exact
+owned observation removal and independently reads back namespace/relation absence through a distinct bounded test backend.
 Native no-op/history checks and disposable target destruction are also mandatory.
 
 Run complete `./gradlew dbUnitTest --no-daemon` and final
