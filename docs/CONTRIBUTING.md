@@ -46,6 +46,40 @@ repository standards as well as internal consistency and spec coverage. Carry
 the same evidence and constraints into delegated review and implementation
 briefs, including when work moves to another worktree.
 
+### Required prerequisite delivery
+
+When a mandatory capability or separately owned change is unavailable, include
+a concrete enabling task within the authorised scope or link a delivery work
+package. Keep shared framework, routine and consumer work independently
+reviewable; a dependency does not automatically expand the selected ticket.
+
+For each prerequisite, record:
+
+- The affected Acceptance Criterion or repository requirement, required
+  scenario, current capability and evidenced gap.
+- The responsible delivery role, actual assignment status, and work-package
+  reference/revision. Do not invent a person, ticket key or completed agreement.
+- The deliverables, scope and interface contract. Distinguish existing supported
+  interfaces from proposed ones that must be implemented and verified first.
+- The consuming work's integration tasks, owner and delivery order, including
+  what may progress independently and what depends on the prerequisite.
+- The prerequisite's acceptance checks and the consumer's required execution
+  evidence. Capability delivery alone does not verify the consuming criterion.
+
+If the enabling package or a necessary scope decision is absent, identify the
+outstanding planning work and state that the full delivery plan is blocked.
+Independent authorised work may still progress. A design or bounded routine
+plan can be reviewed with these gaps visible, but must not be presented as an
+executable route to complete all Acceptance Criteria. An owner label and a
+statement to await future support are insufficient to close that planning gap.
+
+Reuse a shared enabling package across its consumers rather than designing a
+new framework per ticket. After delivery, reconcile the actual revision and
+supported interfaces, execute each consumer's required checks, and replace
+only the resolved dependency with its evidence. Proposed commands and a
+successful plan review do not establish implementation or verification
+completion; the applicable Definitions of Done still govern handoff.
+
 ## Branches
 
 Use the Jira key as the branch identifier for ticketed work, for example
