@@ -10,6 +10,7 @@
  * Date        Author         Ticket    Nature of Change
  * ----------  -------------  --------  -----------------------------------------
  * 13/10/2026  Frankie Moran  PO-10643  Initial pgTAP test suite.
+ * 13/10/2026  Frankie Moran  PO-10643  Add SQL-session creditor creation and cleanup checks
  */
 -- DB-04/DB-06: routine catalogue, direct outcomes, errors, row scope and rollback.
 -- DB-01 fresh and DB-03 predecessor paths are both applicable.
@@ -272,7 +273,7 @@ BEGIN
     END IF;
 END;
 $case_count$;
-SELECT plan(177);
+SELECT plan(180);
 -- -----------------------------------------------------------------------------
 -- Scenario: The delivered procedure exposes the exact effective CALL contract.
 -- Setup: Inspect independent catalogue expectations, not declaration text.
@@ -402,20 +403,349 @@ SELECT is((SELECT COUNT(*) FROM public.creditor_accounts),(SELECT accounts FROM 
 SELECT is((SELECT COUNT(*) FROM public.account_number_index),(SELECT allocations FROM ca_rollback_before),'caller rollback removes reservation');
 SELECT isnt((SELECT id FROM ca_outputs WHERE label='none'),(SELECT id FROM ca_outputs WHERE label='none-repeat'),'repeat creates distinct ID');
 SELECT isnt((SELECT number FROM ca_outputs WHERE label='none'),(SELECT number FROM ca_outputs WHERE label='none-repeat'),'repeat creates distinct number');
-SELECT results_eq($q$
-    SELECT 'business_units' AS object,business_unit_id AS id,ROW_TO_JSON(u)::TEXT AS value FROM public.business_units u
-    UNION ALL SELECT 'parties',party_id,ROW_TO_JSON(p)::TEXT FROM public.parties p
-    UNION ALL SELECT 'contacts',third_party_contact_id,ROW_TO_JSON(c)::TEXT FROM public.third_party_contact c
-    UNION ALL SELECT 'majors',major_creditor_id,ROW_TO_JSON(m)::TEXT FROM public.major_creditors m
-    UNION ALL SELECT 'drafts',draft_casefile_id,ROW_TO_JSON(d)::TEXT FROM public.draft_casefiles d
-    ORDER BY object,id$q$,'SELECT * FROM ca_before_references ORDER BY object,id',
-    'references and Draft Casefile status/snapshot remain unchanged');
-SELECT results_eq($q$SELECT c.creditor_account_id AS id,ROW_TO_JSON(c)::TEXT AS value FROM public.creditor_accounts c
-    WHERE NOT EXISTS (SELECT 1 FROM ca_outputs o WHERE o.id=c.creditor_account_id) ORDER BY id$q$,
-    'SELECT * FROM ca_before_accounts ORDER BY id','unrelated creditor accounts unchanged');
-SELECT results_eq($q$SELECT * FROM public.account_number_index WHERE business_unit_id NOT IN (31981,31982,31984)
-    ORDER BY account_number_index_id$q$,'SELECT * FROM ca_before_allocations ORDER BY account_number_index_id',
-    'unrelated allocations unchanged');
+
+-- -----------------------------------------------------------------------------
+-- Scenario: Real creditor callers commit, roll back or use independent Business Units.
+-- Setup: Disposable-only READ COMMITTED dblink workers and committed owned fixtures.
+-- Expected: Observed blockers, persisted pairs, open-transaction independence and cleanup.
+-- -----------------------------------------------------------------------------
+DO $gate$
+BEGIN
+    IF CURRENT_DATABASE()<>'opal_maintenance_db_unit_test' OR current_user<>'postgres' THEN
+        RAISE EXCEPTION 'Creditor race requires the harness-owned disposable database';
+    END IF;
+
+    IF NOT EXISTS(SELECT 1 FROM pg_available_extensions WHERE name='dblink') THEN
+        RAISE EXCEPTION 'SQL-only concurrency tooling unavailable: dblink extension files missing';
+    END IF;
+END;
+$gate$;
+CREATE EXTENSION IF NOT EXISTS dblink WITH SCHEMA public;
+DO $namespace$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM pg_extension
+                  WHERE extname='dblink' AND extnamespace='public'::regnamespace) THEN
+        RAISE EXCEPTION 'Expected test dblink functions in public schema';
+    END IF;
+END;
+$namespace$;
+
+CREATE FUNCTION pg_temp.creditor_call_race(mode TEXT)
+RETURNS void LANGUAGE plpgsql AS $race$
+DECLARE
+    connection TEXT;
+    name TEXT;
+    fixture_owned BOOLEAN:=false;
+    failed_state TEXT;
+    failed_message TEXT;
+    cleanup_errors TEXT[]:=ARRAY[]::TEXT[];
+    a_pid INTEGER;
+    b_pid INTEGER;
+    a_major BIGINT;
+    second_major BIGINT;
+    b_major BIGINT;
+    b_bu SMALLINT;
+    a_year TEXT;
+    b_year TEXT;
+    a_id BIGINT;
+    b_id BIGINT;
+    a_number VARCHAR;
+    b_number VARCHAR;
+    command TEXT;
+    deadline TIMESTAMPTZ;
+    expected_rows BIGINT;
+    rows_left BIGINT;
+    still_open BOOLEAN;
+
+BEGIN
+    IF mode IS NULL OR mode NOT IN ('commit','rollback','independent') THEN
+        RAISE EXCEPTION 'Unknown creditor race mode';
+    END IF;
+
+    IF COALESCE(public.DBLINK_GET_CONNECTIONS(),ARRAY[]::TEXT[])
+       && ARRAY['pica_fixture','pica_a','pica_b']::TEXT[] THEN
+        RAISE EXCEPTION 'Creditor race connection-name collision';
+    END IF;
+
+    connection:=FORMAT(
+        'host=127.0.0.1 port=5432 dbname=%L user=postgres connect_timeout=5 options=%L',
+        CURRENT_DATABASE(),
+        '-csearch_path=pg_catalog,public -cstatement_timeout=20000 -clock_timeout=15000 -ctimezone=UTC -cidle_in_transaction_session_timeout=30000');
+
+    BEGIN
+        PERFORM public.DBLINK_CONNECT('pica_fixture',connection);
+        PERFORM public.DBLINK_EXEC('pica_fixture',$setup$
+            BEGIN;
+            DO $guard$
+            BEGIN
+                IF EXISTS(SELECT 1 FROM public.business_units
+                          WHERE business_unit_id IN (31881,31882)
+                             OR business_unit_code IN ('CR81','CR82')) THEN
+                    RAISE EXCEPTION 'Creditor concurrent fixture collision';
+                END IF;
+            END;
+            $guard$;
+            INSERT INTO public.business_units
+                (business_unit_id,business_unit_code,business_unit_name,business_unit_type,welsh_language)
+            VALUES (31881,'CR81','Synthetic creditor race A','Area',false),
+                   (31882,'CR82','Synthetic creditor race B','Area',false);
+            INSERT INTO public.major_creditors
+                (business_unit_id,major_creditor_code,name,address_line_1,active,central_authority)
+            VALUES (31881,'CR81','Synthetic race Major A','Synthetic Address',true,false),
+                   (31882,'CR82','Synthetic race Major B','Synthetic Address',true,false);
+            COMMIT;
+        $setup$);
+        fixture_owned:=true;
+        SELECT id INTO STRICT a_major FROM public.DBLINK('pica_fixture',
+            'SELECT major_creditor_id FROM public.major_creditors WHERE business_unit_id=31881 AND major_creditor_code=''CR81''')
+            AS x(id BIGINT);
+        SELECT id INTO STRICT second_major FROM public.DBLINK('pica_fixture',
+            'SELECT major_creditor_id FROM public.major_creditors WHERE business_unit_id=31882 AND major_creditor_code=''CR82''')
+            AS x(id BIGINT);
+        PERFORM public.DBLINK_CONNECT('pica_a',connection);
+        PERFORM public.DBLINK_CONNECT('pica_b',connection);
+        SELECT pid INTO a_pid FROM public.DBLINK('pica_a','SELECT PG_BACKEND_PID()') AS x(pid INTEGER);
+        SELECT pid INTO b_pid FROM public.DBLINK('pica_b','SELECT PG_BACKEND_PID()') AS x(pid INTEGER);
+        PERFORM public.DBLINK_EXEC('pica_a','BEGIN ISOLATION LEVEL READ COMMITTED');
+        SELECT yy INTO a_year FROM public.DBLINK('pica_a','SELECT TO_CHAR(NOW(),''YY'')') AS x(yy TEXT);
+        command:=FORMAT(
+            'CALL public.p_insert_creditor_accounts(31881::SMALLINT,NULL::json,%s::BIGINT,NULL::BIGINT,NULL::BIGINT,NULL::BIGINT,NULL::VARCHAR)',
+            a_major);
+        SELECT id,number INTO STRICT a_id,a_number FROM public.DBLINK('pica_a',command)
+            AS x(id BIGINT,number VARCHAR);
+
+        IF a_id IS NULL OR a_number IS NULL THEN
+            RAISE EXCEPTION 'First creditor CALL returned an incomplete pair';
+        END IF;
+
+        PERFORM public.DBLINK_EXEC('pica_b','BEGIN ISOLATION LEVEL READ COMMITTED');
+        SELECT yy INTO b_year FROM public.DBLINK('pica_b','SELECT TO_CHAR(NOW(),''YY'')') AS x(yy TEXT);
+
+        IF b_year IS DISTINCT FROM a_year THEN
+            RAISE EXCEPTION 'Creditor race crossed the transaction-year boundary; rerun';
+        END IF;
+
+        b_bu:=CASE WHEN mode='independent' THEN 31882 ELSE 31881 END;
+        b_major:=CASE WHEN mode='independent' THEN second_major ELSE a_major END;
+        command:=FORMAT(
+            'CALL public.p_insert_creditor_accounts(%s::SMALLINT,NULL::json,%s::BIGINT,NULL::BIGINT,NULL::BIGINT,NULL::BIGINT,NULL::VARCHAR)',
+            b_bu,b_major);
+
+        IF public.DBLINK_SEND_QUERY('pica_b',command)<>1 THEN
+            RAISE EXCEPTION 'Second creditor CALL was not dispatched';
+        END IF;
+
+        deadline:=CLOCK_TIMESTAMP()+interval '10 seconds';
+
+        IF mode='independent' THEN
+            WHILE public.DBLINK_IS_BUSY('pica_b')=1 LOOP
+                IF CLOCK_TIMESTAMP()>deadline THEN
+                    RAISE EXCEPTION 'Independent creditor Business Unit did not complete';
+                END IF;
+
+                PERFORM PG_SLEEP(0.01);
+            END LOOP;
+            SELECT value INTO still_open FROM public.DBLINK('pica_a',
+                'SELECT PG_CURRENT_XACT_ID_IF_ASSIGNED() IS NOT NULL') AS x(value BOOLEAN);
+
+            IF still_open IS DISTINCT FROM true THEN
+                RAISE EXCEPTION 'First creditor transaction was not still open';
+            END IF;
+        ELSE
+            WHILE NOT(a_pid=ANY(PG_BLOCKING_PIDS(b_pid))) LOOP
+                IF public.DBLINK_IS_BUSY('pica_b')=0 OR CLOCK_TIMESTAMP()>deadline THEN
+                    RAISE EXCEPTION 'Second creditor CALL did not demonstrably block on first';
+                END IF;
+
+                PERFORM PG_SLEEP(0.01);
+            END LOOP;
+            PERFORM public.DBLINK_EXEC('pica_a',
+                CASE WHEN mode='rollback' THEN 'ROLLBACK' ELSE 'COMMIT' END);
+        END IF;
+
+        -- One CALL: collect its OUT row, then drain its terminal empty result.
+        SELECT id,number INTO STRICT b_id,b_number FROM public.DBLINK_GET_RESULT('pica_b')
+            AS x(id BIGINT,number VARCHAR);
+        PERFORM id FROM public.DBLINK_GET_RESULT('pica_b') AS x(id BIGINT,number VARCHAR);
+        PERFORM public.DBLINK_EXEC('pica_b','COMMIT');
+
+        IF mode='independent' THEN PERFORM public.DBLINK_EXEC('pica_a','COMMIT'); END IF;
+
+        IF b_id IS NULL OR b_number IS NULL OR b_id=a_id THEN
+            RAISE EXCEPTION 'Concurrent creditor CALL did not produce a distinct complete ID pair';
+        END IF;
+
+        IF (mode='commit' AND b_number=a_number)
+           OR (mode IN ('rollback','independent') AND b_number IS DISTINCT FROM a_number) THEN
+            RAISE EXCEPTION 'Concurrent creditor number outcome differs from declared mode';
+        END IF;
+
+        expected_rows:=CASE WHEN mode='rollback' THEN 1 ELSE 2 END;
+
+        IF (SELECT COUNT(*) FROM public.creditor_accounts WHERE business_unit_id IN (31881,31882))<>expected_rows
+           OR (SELECT COUNT(*) FROM public.account_number_index WHERE business_unit_id IN (31881,31882))<>expected_rows THEN
+            RAISE EXCEPTION 'Wrong committed creditor or allocation row COUNT';
+        END IF;
+
+        IF NOT EXISTS(SELECT 1 FROM public.creditor_accounts c
+            JOIN public.account_number_index a USING(business_unit_id,account_number)
+            WHERE c.creditor_account_id=b_id AND c.account_number=b_number AND c.business_unit_id=b_bu
+              AND c.creditor_account_type='MJ' AND c.major_creditor_id=b_major
+              AND c.minor_creditor_party_id IS NULL AND c.third_party_contact_id IS NULL
+              AND NOT c.from_suspense AND NOT c.hold_payout AND NOT c.pay_by_bacs
+              AND c.bank_sort_code IS NULL AND c.bank_account_number IS NULL
+              AND c.bank_account_name IS NULL AND c.bank_account_reference IS NULL
+              AND c.non_uk_bank_detail IS NULL AND c.last_changed_date IS NULL
+              AND c.version_number IS NULL AND a.associated_record_type='creditor_accounts') THEN
+            RAISE EXCEPTION 'Second output pair, Major mapping or allocation differs from persisted rows';
+        END IF;
+
+        IF mode='rollback' THEN
+            IF EXISTS(SELECT 1 FROM public.creditor_accounts WHERE creditor_account_id=a_id) THEN
+                RAISE EXCEPTION 'Rolled-back first creditor account survived';
+            END IF;
+        ELSIF NOT EXISTS(SELECT 1 FROM public.creditor_accounts c
+            JOIN public.account_number_index a USING(business_unit_id,account_number)
+            WHERE c.creditor_account_id=a_id AND c.account_number=a_number AND c.business_unit_id=31881
+              AND c.creditor_account_type='MJ' AND c.major_creditor_id=a_major
+              AND c.minor_creditor_party_id IS NULL AND c.third_party_contact_id IS NULL
+              AND NOT c.from_suspense AND NOT c.hold_payout AND NOT c.pay_by_bacs
+              AND c.bank_sort_code IS NULL AND c.bank_account_number IS NULL
+              AND c.bank_account_name IS NULL AND c.bank_account_reference IS NULL
+              AND c.non_uk_bank_detail IS NULL AND c.last_changed_date IS NULL
+              AND c.version_number IS NULL AND a.associated_record_type='creditor_accounts') THEN
+            RAISE EXCEPTION 'First output pair, Major mapping or allocation differs from persisted rows';
+        END IF;
+
+        IF EXISTS(SELECT 1 FROM public.creditor_accounts WHERE business_unit_id IN (31881,31882)
+                  GROUP BY business_unit_id,account_number HAVING COUNT(*)>1) THEN
+            RAISE EXCEPTION 'Duplicate committed creditor Business Unit and number';
+        END IF;
+
+    EXCEPTION
+        WHEN query_canceled THEN failed_state:=SQLSTATE; failed_message:=SQLERRM;
+        WHEN OTHERS THEN failed_state:=SQLSTATE; failed_message:=SQLERRM;
+    END;
+
+    -- Disconnect rolls back still-open workers. Never command an undrained async worker.
+    FOREACH name IN ARRAY ARRAY['pica_a','pica_b'] LOOP
+        IF name=ANY(COALESCE(public.DBLINK_GET_CONNECTIONS(),ARRAY[]::TEXT[])) THEN
+            BEGIN
+                PERFORM public.DBLINK_DISCONNECT(name);
+            EXCEPTION WHEN OTHERS THEN
+                cleanup_errors:=ARRAY_APPEND(cleanup_errors,
+                    FORMAT('Disconnect %s: %s: %s',name,SQLSTATE,SQLERRM));
+            END;
+        END IF;
+    END LOOP;
+
+    BEGIN
+        IF 'pica_fixture'=ANY(COALESCE(public.DBLINK_GET_CONNECTIONS(),ARRAY[]::TEXT[])) THEN
+
+            IF NOT fixture_owned THEN PERFORM public.DBLINK_EXEC('pica_fixture','ROLLBACK'); END IF;
+
+            IF fixture_owned THEN
+                -- If ID readback failed, recover only fixture-owned IDs identified by guarded BU/code.
+                IF a_major IS NULL THEN
+                    SELECT id INTO a_major FROM public.DBLINK('pica_fixture',
+                        'SELECT major_creditor_id FROM public.major_creditors WHERE business_unit_id=31881 AND major_creditor_code=''CR81''') AS x(id BIGINT);
+                END IF;
+
+                IF second_major IS NULL THEN
+                    SELECT id INTO second_major FROM public.DBLINK('pica_fixture',
+                        'SELECT major_creditor_id FROM public.major_creditors WHERE business_unit_id=31882 AND major_creditor_code=''CR82''') AS x(id BIGINT);
+                END IF;
+
+                PERFORM public.DBLINK_EXEC('pica_fixture',FORMAT($cleanup$
+                    BEGIN;
+                    DELETE FROM public.creditor_accounts WHERE business_unit_id IN (31881,31882);
+                    DELETE FROM public.account_number_index WHERE business_unit_id IN (31881,31882);
+                    DELETE FROM public.major_creditors
+                      WHERE (major_creditor_id=%s AND business_unit_id=31881 AND major_creditor_code='CR81')
+                         OR (major_creditor_id=%s AND business_unit_id=31882 AND major_creditor_code='CR82');
+                    DELETE FROM public.business_units
+                      WHERE (business_unit_id=31881 AND business_unit_code='CR81')
+                         OR (business_unit_id=31882 AND business_unit_code='CR82');
+                    COMMIT;
+                $cleanup$,a_major,second_major));
+                SELECT n INTO rows_left FROM public.DBLINK('pica_fixture',$verify$
+                    SELECT (SELECT COUNT(*) FROM public.creditor_accounts WHERE business_unit_id IN (31881,31882))
+                         + (SELECT COUNT(*) FROM public.account_number_index WHERE business_unit_id IN (31881,31882))
+                         + (SELECT COUNT(*) FROM public.major_creditors WHERE business_unit_id IN (31881,31882))
+                         + (SELECT COUNT(*) FROM public.business_units WHERE business_unit_id IN (31881,31882))
+                $verify$) AS x(n BIGINT);
+
+                IF rows_left<>0 THEN RAISE EXCEPTION 'Creditor race fixture cleanup incomplete'; END IF;
+            END IF;
+
+            PERFORM public.DBLINK_DISCONNECT('pica_fixture');
+        END IF;
+    EXCEPTION WHEN OTHERS THEN
+        cleanup_errors:=ARRAY_APPEND(cleanup_errors,
+            FORMAT('Remote fixture cleanup: %s: %s',SQLSTATE,SQLERRM));
+    END;
+
+    IF 'pica_fixture'=ANY(COALESCE(public.DBLINK_GET_CONNECTIONS(),ARRAY[]::TEXT[])) THEN
+        BEGIN
+            PERFORM public.DBLINK_DISCONNECT('pica_fixture');
+        EXCEPTION WHEN OTHERS THEN
+            cleanup_errors:=ARRAY_APPEND(cleanup_errors,
+                FORMAT('Fixture disconnect: %s: %s',SQLSTATE,SQLERRM));
+        END;
+    END IF;
+
+    IF COALESCE(CARDINALITY(cleanup_errors),0)>0 THEN
+        RAISE EXCEPTION USING ERRCODE=COALESCE(failed_state,'P0001'),
+            MESSAGE=FORMAT('Creditor race failed; primary %s: %s; cleanup %s',
+                failed_state,failed_message,ARRAY_TO_STRING(cleanup_errors,'; '));
+    END IF;
+
+    IF failed_state IS NOT NULL THEN RAISE EXCEPTION USING ERRCODE=failed_state,MESSAGE=failed_message; END IF;
+END;
+$race$;
+CREATE FUNCTION pg_temp.assert_creditor_race_clean()
+RETURNS void LANGUAGE plpgsql AS $clean$
+BEGIN
+    IF COALESCE(public.DBLINK_GET_CONNECTIONS(),ARRAY[]::TEXT[])
+       && ARRAY['pica_fixture','pica_a','pica_b']::TEXT[]
+       OR EXISTS(SELECT 1 FROM public.business_units
+                 WHERE business_unit_id IN (31881,31882) OR business_unit_code IN ('CR81','CR82'))
+       OR EXISTS(SELECT 1 FROM public.creditor_accounts WHERE business_unit_id IN (31881,31882))
+       OR EXISTS(SELECT 1 FROM public.account_number_index WHERE business_unit_id IN (31881,31882))
+       OR EXISTS(SELECT 1 FROM public.major_creditors WHERE business_unit_id IN (31881,31882)) THEN
+        RAISE EXCEPTION 'Creditor race cleanup uncertain; destroy disposable database';
+    END IF;
+END;
+$clean$;
+SET LOCAL statement_timeout='50s';
+
+-- -----------------------------------------------------------------------------
+-- Scenario: Winner commits while a same-BU creditor caller waits.
+-- Setup: Observed blocker A; real worker CALL outputs and committed rows.
+-- Expected: Distinct creditor IDs/numbers and matching allocation rows.
+-- -----------------------------------------------------------------------------
+SELECT lives_ok($q$SELECT pg_temp.creditor_call_race('commit')$q$,
+    'Winner commits: waiting helper creates distinct pair and matching allocation');
+DO $verify$ BEGIN PERFORM pg_temp.assert_creditor_race_clean(); END; $verify$;
+
+-- -----------------------------------------------------------------------------
+-- Scenario: Winner rolls back while a same-BU creditor caller waits.
+-- Setup: Observed blocker A; real worker CALL outputs and committed rows.
+-- Expected: Released number reused with a distinct generated ID; A leaves no account.
+-- -----------------------------------------------------------------------------
+SELECT lives_ok($q$SELECT pg_temp.creditor_call_race('rollback')$q$,
+    'Winner rolls back: waiting helper reuses number with distinct generated ID');
+DO $verify$ BEGIN PERFORM pg_temp.assert_creditor_race_clean(); END; $verify$;
+
+-- -----------------------------------------------------------------------------
+-- Scenario: A different Business Unit completes while A remains open.
+-- Setup: Different BU/Major reference and A has an assigned open transaction.
+-- Expected: B completes without releasing A; each persisted pair has its allocation.
+-- -----------------------------------------------------------------------------
+SELECT lives_ok($q$SELECT pg_temp.creditor_call_race('independent')$q$,
+    'Separate Business Unit helper completes while first transaction stays open');
+DO $verify$ BEGIN PERFORM pg_temp.assert_creditor_race_clean(); END; $verify$;
+SET LOCAL statement_timeout='30s';
 
 -- -----------------------------------------------------------------------------
 -- Scenario: Helper preserves real allocator errors and bounded retry diagnostics.
@@ -478,5 +808,26 @@ SELECT is((SELECT COUNT(*) FROM public.account_number_index),(SELECT allocations
 DROP TRIGGER po10643_inject_allocation ON public.account_number_index;
 DROP FUNCTION pg_temp.ca_inject_allocation();
 SELECT is((SELECT COUNT(*) FROM pg_trigger WHERE tgname='po10643_inject_allocation'),0::BIGINT,'test injection removed');
+
+-- -----------------------------------------------------------------------------
+-- Scenario: Completed calls and failure cleanup preserve unrelated record scope.
+-- Setup: Original reference/account/allocation snapshots and completed race cleanup.
+-- Expected: References, Draft Casefile status/snapshot and unrelated rows unchanged.
+-- -----------------------------------------------------------------------------
+SELECT results_eq($q$
+    SELECT 'business_units' AS object,business_unit_id AS id,ROW_TO_JSON(u)::TEXT AS value FROM public.business_units u
+    UNION ALL SELECT 'parties',party_id,ROW_TO_JSON(p)::TEXT FROM public.parties p
+    UNION ALL SELECT 'contacts',third_party_contact_id,ROW_TO_JSON(c)::TEXT FROM public.third_party_contact c
+    UNION ALL SELECT 'majors',major_creditor_id,ROW_TO_JSON(m)::TEXT FROM public.major_creditors m
+    UNION ALL SELECT 'drafts',draft_casefile_id,ROW_TO_JSON(d)::TEXT FROM public.draft_casefiles d
+    ORDER BY object,id$q$,'SELECT * FROM ca_before_references ORDER BY object,id',
+    'references and Draft Casefile status/snapshot remain unchanged');
+SELECT results_eq($q$SELECT c.creditor_account_id AS id,ROW_TO_JSON(c)::TEXT AS value FROM public.creditor_accounts c
+    WHERE NOT EXISTS (SELECT 1 FROM ca_outputs o WHERE o.id=c.creditor_account_id) ORDER BY id$q$,
+    'SELECT * FROM ca_before_accounts ORDER BY id','unrelated creditor accounts unchanged');
+SELECT results_eq($q$SELECT * FROM public.account_number_index WHERE business_unit_id NOT IN (31981,31982,31984)
+    ORDER BY account_number_index_id$q$,'SELECT * FROM ca_before_allocations ORDER BY account_number_index_id',
+    'unrelated allocations unchanged');
+
 SELECT * FROM finish();
 ROLLBACK;
