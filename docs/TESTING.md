@@ -239,7 +239,7 @@ property exists. The three selected locations remain `ddl`, `data/allEnvs`, and
 Add one line after the human-attributed header in the owning flat SQL suite:
 
 ```sql
--- OPAL-DB-UPGRADE {"id":"object.change","candidate":"ddl/V1_33__example.sql","scope":"both","data":"migration-created-only"}
+-- OPAL-DB-UPGRADE {"id":"object.change","candidate":"ddl/V2_0__example.sql","scope":"both","data":"migration-created-only"}
 ```
 
 The filename above is illustrative; allocate the actual migration globally.
