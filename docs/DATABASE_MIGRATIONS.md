@@ -329,12 +329,18 @@ Representative predecessor-based upgrades remain owned by the
 owns migration-specific boundary assertions; DB-01 requires their relevant
 outcomes without redefining that contract here.
 
-### Planned DB-03 upgrade-path validation
+<a id="planned-db-03-upgrade-path-validation"></a>
+
+### DB-03 upgrade-path validation
 
 DB-03 extends the DB-01 database-owned `dbUnitTest` framework. It
 does not create a second framework and must not use Spring or backend
-integration-test fixtures. Testing owns the suite's availability status; the
-following requirements describe the planned workflow only.
+integration-test fixtures. The maintained registration, phase, adoption and report contract is documented
+in [Testing](TESTING.md#maintained-predecessor-upgrade-contract). Normal
+`./gradlew dbUnitTest` executes every registered applicable scenario; `check` and
+`build` inherit that coverage. Framework delivery alone does not prove a
+consumer: record its actual registration, predecessor, candidate, owning-suite
+assertions and retained passing execution evidence.
 
 Resolve the actual candidate and its immediate predecessor from the selected
 Flyway migration locations at the implementation baseline. The predecessor is
@@ -374,15 +380,14 @@ Flyway-native sequence:
 8. Remove and verify removal of test-owned observation state, then destroy the
    disposable database and container automatically and confirm cleanup.
 
-Any future maintained DB-03 implementation that uses separate SQL connections
-must give predecessor observations a durable lifetime inside the disposable
-target. TEMP objects and rolled-back observations cannot carry evidence between
-those connections. Committing narrowly owned test observation state during
-preparation and its removal during cleanup requires an explicit, narrow
-exception to the [pgTAP transaction contract](TESTING.md#db-10-pgtap-execution),
-documented and delivered with the maintained framework before use. This planned
-requirement grants no current suite permission to commit and does not change
-production routine transaction ownership.
+The maintained DB-03 phases use separate SQL connections, so predecessor
+observations have an ordinary, committed lifetime inside the disposable target.
+TEMP objects and rolled-back observations cannot carry evidence between those
+connections. Only narrowly owned test observation preparation, history snapshots
+and their cleanup commit under the [pgTAP transaction contract](TESTING.md#db-10-pgtap-execution).
+Fresh and functional verification retain rollback, and production routines retain
+backend-owned transaction boundaries. Every phase requires a positive exact TAP
+plan; target destruction remains mandatory after success or failure.
 
 Retain non-sensitive evidence of actual candidate/predecessor paths and versions,
 selected locations, phase results and assertion counts, validation, native repeat
