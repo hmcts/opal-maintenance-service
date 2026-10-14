@@ -2,18 +2,22 @@ package uk.gov.hmcts.opal.steps;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static uk.gov.hmcts.opal.assertions.ProblemDetailAssertions.assertProblemDetail;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.cucumber.datatable.DataTable;
+import io.cucumber.java.en.Given;
 import io.cucumber.java.en.Then;
 import io.cucumber.java.en.When;
 import io.restassured.response.Response;
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,6 +31,44 @@ public class ResultsStepDef extends BaseStepDef {
     static final String MALFORMED_REQUEST_PATH = "/results?order_term=not-a-boolean&active=true";
 
     private Response latestResponse;
+    private String selectedId;
+
+    @Given("I have selected the Result with identifier {string}")
+    public void selectResult(String resultId) {
+        assertTrue("MLUMP".equals(resultId) || "ZZZZZZ".equals(resultId),
+            "Use the seeded or documented absent Result identifier");
+        selectedId = resultId;
+    }
+
+    @When("I request the selected Result details")
+    public void requestSelectedResult() {
+        latestResponse = getWithBearer(resultsTarget(), resultPath(), BearerTokenStepDef.getToken());
+    }
+
+    @When("I request the selected Result details without authentication")
+    public void requestSelectedResultWithoutAuthentication() {
+        latestResponse = getWithoutBearer(resultsTarget(), resultPath());
+    }
+
+    @Then("the selected Result identity and parameter metadata are returned")
+    public void resultDetailsAreReturned() throws IOException {
+        assertSelectedResultResponse(latestResponse(), "MLUMP", "Lump sum order");
+    }
+
+    @Then("the metadata describes the expected amount input")
+    public void amountMetadataIsAvailable() throws IOException {
+        assertAmountMetadata(latestResponse());
+    }
+
+    @Then("a correlated Result not-found response is returned without Result data")
+    public void missingResultIsCorrelated() throws IOException {
+        assertMissingResultResponse(latestResponse());
+    }
+
+    @Then("Result details require authentication without exposing Result data")
+    public void resultAuthenticationIsRequired() throws IOException {
+        assertUnauthorizedResultResponse(latestResponse());
+    }
 
     @When("I request active Results available as Order Terms")
     public void requestActiveResults() {
@@ -171,4 +213,72 @@ public class ResultsStepDef extends BaseStepDef {
     void latestResponse(Response response) {
         latestResponse = response;
     }
+
+    static void assertSelectedResultResponse(Response response, String id, String title) throws IOException {
+        assertEquals(200, response.statusCode(), "Result detail request did not succeed");
+        assertTrue(response.contentType() != null && response.contentType().startsWith("application/json"));
+        JsonNode body = OBJECT_MAPPER.readTree(response.asString());
+        assertTrue(body.isObject(), "Expected one Result object");
+        assertTrue(body.path("result_id").isTextual());
+        assertEquals(id, body.path("result_id").textValue());
+        assertTrue(body.path("result_title").isTextual());
+        assertEquals(title, body.path("result_title").textValue());
+        assertTrue(body.path("result_parameters").isTextual(), "Expected JSON-encoded parameter metadata");
+        JsonNode parameters = OBJECT_MAPPER.readTree(body.path("result_parameters").textValue());
+        assertTrue(parameters != null && parameters.isArray() && !parameters.isEmpty());
+        for (JsonNode parameter : parameters) {
+            assertTrue(parameter.isObject(), "Expected parameter objects");
+        }
+    }
+
+    static void assertAmountMetadata(Response response) throws IOException {
+        JsonNode outer = OBJECT_MAPPER.readTree(response.asString());
+        assertTrue(outer.path("result_parameters").isTextual(), "Expected encoded metadata");
+        JsonNode parameters = OBJECT_MAPPER.readTree(outer.path("result_parameters").textValue());
+        assertTrue(parameters != null && parameters.isArray(), "Expected parameter array");
+        List<JsonNode> amounts = new ArrayList<>();
+        for (JsonNode parameter : parameters) {
+            if ("Amount".equals(parameter.path("name").textValue())) {
+                amounts.add(parameter);
+            }
+        }
+        assertEquals(1, amounts.size(), "Expected one configured Amount parameter");
+        JsonNode amount = amounts.get(0);
+        assertEquals("Amount of order", amount.path("prompt").textValue());
+        assertEquals("decimal-2dp", amount.path("type").textValue());
+        assertTrue(amount.path("mandatory").isBoolean() && amount.path("mandatory").booleanValue());
+        assertTrue(amount.path("min").isNumber());
+        assertEquals(0, amount.path("min").decimalValue().compareTo(BigDecimal.ZERO));
+        assertTrue(amount.path("max").isNumber());
+        assertEquals(0, amount.path("max").decimalValue().compareTo(new BigDecimal("9999999999.99")));
+    }
+
+    static void assertMissingResultResponse(Response response) throws IOException {
+        assertProblemDetail(response, 404, "https://hmcts.gov.uk/problems/entity-not-found",
+            "Entity Not Found", "The requested entity could not be found", "instance", "operation_id");
+        JsonNode problem = assertNoResultData(response);
+        assertEquals("Result not found", problem.path("reason").textValue());
+    }
+
+    static void assertUnauthorizedResultResponse(Response response) throws IOException {
+        assertProblemDetail(response, 401, "https://hmcts.gov.uk/problems/unauthorized",
+            "Unauthorized", "You are not authorized to access this resource", "instance", "operation_id");
+        assertNoResultData(response);
+    }
+
+    private static JsonNode assertNoResultData(Response response) throws IOException {
+        JsonNode problem = OBJECT_MAPPER.readTree(response.asString());
+        for (String field : new String[] {"result_id", "result_title", "result_parameters", "refData"}) {
+            assertFalse(problem.has(field), "Problem response exposes Result data: " + field);
+        }
+        assertFalse(problem.has("stackTrace"), "Problem response exposes a stack trace");
+        assertFalse(problem.has("exception"), "Problem response exposes an exception");
+        return problem;
+    }
+
+    private String resultPath() {
+        assertNotNull(selectedId, "Select a Result before requesting its details");
+        return "/results/" + selectedId;
+    }
+
 }

@@ -12,6 +12,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mockStatic;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.cucumber.datatable.DataTable;
 import io.cucumber.datatable.DataTableTypeRegistry;
 import io.cucumber.datatable.DataTableTypeRegistryTableConverter;
@@ -24,6 +26,8 @@ import org.mockito.MockedStatic;
 import org.springframework.http.MediaType;
 
 class ResultsStepDefTest {
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private static final String MATCHING_TARGET = "TEST_URL";
 
@@ -255,6 +259,39 @@ class ResultsStepDefTest {
         assertEquals("TEST_URL", failure.getMessage());
     }
 
+    @Test
+    void unauthenticatedDetailRequestUsesNormalService() {
+        WireMockServer server = new WireMockServer(options().dynamicPort());
+        server.start();
+        try {
+            server.stubFor(get(urlEqualTo("/results/MLUMP")).willReturn(okJson("{}")));
+            ResultsStepDef steps = normalServiceSteps("http://localhost:" + server.port());
+            steps.selectResult("MLUMP");
+            steps.requestSelectedResultWithoutAuthentication();
+            assertEquals(200, steps.latestResponse().statusCode());
+            server.verify(1, getRequestedFor(urlEqualTo("/results/MLUMP")));
+        } finally {
+            server.stop();
+        }
+    }
+
+    @Test
+    void authenticatedDetailRequestUsesNormalService() {
+        Response detail = result("MLUMP", "Lump sum order", seededAmountMetadata());
+        try (MockedStatic<BaseStepDef> http = mockStatic(BaseStepDef.class);
+             MockedStatic<BearerTokenStepDef> token = mockStatic(BearerTokenStepDef.class)) {
+            token.when(BearerTokenStepDef::getToken).thenReturn("synthetic-test-token");
+            http.when(() -> BaseStepDef.getWithBearer(
+                "https://example.test", "/results/MLUMP", "synthetic-test-token")).thenReturn(detail);
+            ResultsStepDef steps = normalServiceSteps("https://example.test/");
+            steps.selectResult("MLUMP");
+            steps.requestSelectedResult();
+            assertSame(detail, steps.latestResponse());
+            http.verify(() -> BaseStepDef.getWithBearer(
+                "https://example.test", "/results/MLUMP", "synthetic-test-token"));
+        }
+    }
+
     private DataTable expectedResults() {
         return DataTable.create(List.of(
             List.of("result_id", "result_title"),
@@ -315,5 +352,122 @@ class ResultsStepDefTest {
                 }
                 """.formatted(additionalField))
             .build();
+    }
+
+    private static String seededAmountMetadata() {
+        return """
+            [{"name":"Amount","prompt":"Amount of order","type":"decimal-2dp",
+              "mandatory":true,"min":0,"max":9999999999.99},
+             {"name":"Frequency","type":"read-only"}]
+            """;
+    }
+
+    @Test
+    void selectsSeededAndAbsentResultIdentifiers() {
+        ResultsStepDef steps = new ResultsStepDef();
+        assertDoesNotThrow(() -> steps.selectResult("MLUMP"));
+        assertDoesNotThrow(() -> steps.selectResult("ZZZZZZ"));
+    }
+
+    @Test
+    void acceptsSeededResultIdentityAndEncodedMetadata() {
+        assertDoesNotThrow(() -> ResultsStepDef.assertSelectedResultResponse(
+            result("MLUMP", "Lump sum order", seededAmountMetadata()), "MLUMP", "Lump sum order"));
+    }
+
+    @Test
+    void acceptsAmountWithinMultiParameterMetadata() {
+        assertDoesNotThrow(() -> ResultsStepDef.assertAmountMetadata(
+            result("MLUMP", "Lump sum order", seededAmountMetadata())));
+    }
+
+    @Test
+    void rejectsAnIncorrectSeededAmountLimit() {
+        assertThrows(AssertionError.class, () -> ResultsStepDef.assertAmountMetadata(
+            result("MLUMP", "Lump sum order", seededAmountMetadata().replace("9999999999.99", "10000"))));
+    }
+
+    @Test
+    void rejectsStringMandatoryFlagForSeededAmount() {
+        assertThrows(AssertionError.class, () -> ResultsStepDef.assertAmountMetadata(
+            result("MLUMP", "Lump sum order", seededAmountMetadata().replace("true", "\"true\""))));
+    }
+
+    @Test
+    void rejectsResultMetadataAsAnOuterJsonArray() throws Exception {
+        ObjectNode body = resultBody("MLUMP", "Lump sum order", seededAmountMetadata());
+        body.set("result_parameters", MAPPER.readTree(seededAmountMetadata()));
+        assertThrows(AssertionError.class, () -> ResultsStepDef.assertSelectedResultResponse(
+            response(200, body), "MLUMP", "Lump sum order"));
+    }
+
+    @Test
+    void rejectsSeededResultWithWrongIdentity() {
+        assertThrows(AssertionError.class, () -> ResultsStepDef.assertSelectedResultResponse(
+            result("MAT", "Lump sum order", seededAmountMetadata()), "MLUMP", "Lump sum order"));
+    }
+
+    @Test
+    void rejectsSeededResultWithWrongTitle() {
+        assertThrows(AssertionError.class, () -> ResultsStepDef.assertSelectedResultResponse(
+            result("MLUMP", "Another title", seededAmountMetadata()), "MLUMP", "Lump sum order"));
+    }
+
+    @Test
+    void acceptsCorrelatedNotFoundWithoutResultData() {
+        assertDoesNotThrow(() -> ResultsStepDef.assertMissingResultResponse(response(404, problem(404))));
+    }
+
+    @Test
+    void rejectsMissingCorrelation() {
+        ObjectNode body = problem(404);
+        body.remove("operation_id");
+        assertThrows(AssertionError.class,
+            () -> ResultsStepDef.assertMissingResultResponse(response(404, body)));
+    }
+
+    @Test
+    void rejectsUnauthorizedResultDisclosure() {
+        ObjectNode body = problem(401);
+        body.put("result_parameters", "[]");
+        assertThrows(AssertionError.class,
+            () -> ResultsStepDef.assertUnauthorizedResultResponse(response(401, body)));
+    }
+
+    private static Response result(String id, String title, String metadata) {
+        return response(200, resultBody(id, title, metadata));
+    }
+
+    private static ObjectNode resultBody(String id, String title, String metadata) {
+        ObjectNode body = MAPPER.createObjectNode().put("result_id", id).put("result_title", title);
+        if (metadata == null) {
+            body.putNull("result_parameters");
+        } else {
+            body.put("result_parameters", metadata);
+        }
+        return body;
+    }
+
+    private static ObjectNode problem(int status) {
+        boolean missing = status == 404;
+        ObjectNode body = MAPPER.createObjectNode()
+            .put("type", "https://hmcts.gov.uk/problems/" + (missing ? "entity-not-found" : "unauthorized"))
+            .put("title", missing ? "Entity Not Found" : "Unauthorized")
+            .put("status", status)
+            .put("detail", missing ? "The requested entity could not be found"
+                : "You are not authorized to access this resource")
+            .put("instance", "/results/ZZZZZZ")
+            .put("operation_id", "synthetic-operation-id")
+            .put("retriable", false);
+        if (missing) {
+            body.put("reason", "Result not found");
+        }
+        return body;
+    }
+
+    private static Response response(int status, ObjectNode body) {
+        return new ResponseBuilder().setStatusCode(status)
+            .setContentType(status == 200 ? "application/json" : "application/problem+json")
+            .setBody(body.toString()).build();
     }
 }
