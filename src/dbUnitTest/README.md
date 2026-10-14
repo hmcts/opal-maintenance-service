@@ -3,7 +3,9 @@
 The two self-contained SQL suites live directly under `src/dbUnitTest` and are
 found by `./gradlew dbUnitTest`. Fixtures, temporary observation helpers,
 range tests and multi-session coordination stay inside the owning suite.
-No test subdirectory, support SQL, SQL include or shell test runner is added.
+This historical allocator delivery added no test subdirectory, support SQL,
+SQL include or shell test runner. The maintained shared lifecycle exception
+below applies to subsequent upgrade integration.
 Existing suites retain their established paths.
 
 ## Contracts and dependencies
@@ -129,8 +131,9 @@ error-diagnostics contract.
 Run `./gradlew --no-daemon dbUnitTest` for the complete fresh stack and
 `./gradlew --no-daemon build` for unit, database, integration, static-analysis
 and packaging regression checks. Evidence belongs in `build/reports/dbUnitTest`
-and the local ignored execution report. The fresh runner is not an upgrade
-runner. An explicit disposable predecessor-upgrade run applies through V1_30,
+and the local ignored execution report. In this historical allocator validation,
+the then-fresh runner was not an upgrade runner. An explicit disposable
+predecessor-upgrade run applies through V1_30,
 then helper V1_31, validates helper answers, forces allocator failure only in a
 temporary migration copy, and confirms helper committed/allocator absent with
 history ending at V1_31. It retries the unchanged real V1_32, validates, runs
@@ -169,33 +172,44 @@ authentication or application caller behaviour is changed.
 # Maintained Flyway upgrade framework
 
 Use the [maintained predecessor contract](../../docs/TESTING.md#maintained-predecessor-upgrade-contract)
-for complete fresh and registered upgrade coverage:
+and [SQL suite ownership](../../docs/TESTING.md#pgtap-suite-layout):
 
-- `./gradlew dbUnitTest --no-daemon` runs the fresh suites and registered upgrades.
-- `./gradlew dbUnitTestFrameworkTest --no-daemon` runs framework regressions.
-- `./gradlew build --no-daemon` runs the full repository baseline.
+- `./gradlew dbUnitTest --no-daemon -PdbUnitTestComparisonRef=origin/codex/parent` runs every fresh suite and affected upgrades against a locally available immediate base.
+- `./gradlew dbUnitTest --no-daemon -PdbUnitTestUpgradeMode=full` replays all discovered historical registrations; use it after shared infrastructure changes.
+- `./gradlew dbUnitTestSelectionTest --no-daemon` checks selection regressions.
+- `./gradlew dbUnitTestFrameworkTest --no-daemon` checks disposable orchestration regressions.
+- `./gradlew build --no-daemon` runs the repository baseline with the same affected/full selection contract.
 
-The historical allocator evidence above remains as recorded. Framework availability
-does not retrospectively verify a standalone upgrade recipe.
+Missing, shallow or ambiguous comparison context falls back to full replay.
+Reports distinguish Not selected from verified scenarios. The historical allocator
+evidence above remains as recorded; framework availability does not retrospectively
+verify a standalone recipe.
 
 Register each new selected migration in its one owning flat SQL suite using
-`OPAL-DB-UPGRADE` JSON. Implement `fresh`, `prepare`, `verify`, and `cleanup`
-phases, retaining all functional and real-session assertions in the same file.
-Preparation commits observations in a suite-owned schema; verification compares
-relevant predecessor state before functional mutations and rolls back; cleanup
-checks ownership and commits removal. Add predecessor business fixtures only
-when an approved data-scenario contract requires them. Each applicable phase
-requires a positive exact TAP plan, native boundary validation, unchanged complete
-repeat history and confirmed target destruction.
+`OPAL-DB-UPGRADE` JSON. The required `id`, `candidate`, `scope` and `data` fields
+remain supported; optional `inputs` lists additional canonical repository-relative
+dependencies. The owner and candidate are implicit inputs. Implement `fresh`,
+`prepare`, `verify` and `cleanup`, retaining owner snapshots and all functional,
+fixture, preservation and real-session assertions in that same file. Only the
+fixed `framework/upgrade_lifecycle.sql` include shares lifecycle mechanics.
+Preparation commits observations; verification compares predecessor state before
+functional mutations and rolls back; cleanup validates ownership, commits removal
+and confirms absence from a distinct backend. Embedded row/text snapshot strings
+must remain exact. Each phase has a positive exact TAP plan, native boundary
+validation, complete repeat-history equality and confirmed target destruction.
+Predecessor business fixtures require an approved data-scenario contract.
 
 The adopted legacy inventory is fixed at the 32 selected migrations on
 `847739c9ee40ca1c09687756212f7f0dcbb56e7d`. Every later selected migration requires
-registration; do not extend the adoption inventory to exempt it. The generic SQL
-suite owns history boundaries. Fixed SQL-only fixtures under `framework/upgrade`
-exercise orchestration failures. Reports retain source fingerprints and per-target
-evidence under `build/reports/dbUnitTest/runs/<run-id>`.
+registration; do not extend the inventory to exempt it. The generic SQL suite owns
+complete native history boundaries and repeat equality. Fixed SQL-only fixtures
+under `framework/upgrade` exercise orchestration failures. Source fingerprints and
+per-target evidence remain under `build/reports/dbUnitTest/runs/<run-id>`.
 
 Each consumer must execute its full owning suite on fresh and candidate schemas
-and retain its actual revision, predecessor/candidate identities and run results.
-Framework acceptance does not establish consumer verification or satisfy separately
-owned application, service-role or documentation requirements.
+and retain its actual revision, predecessor/candidate identities, comparison
+provenance, selected/attempted/passed results and cleanup evidence. Framework
+acceptance does not establish consumer verification or satisfy separately owned
+application, service-role or documentation requirements. The one-owner
+`dbUnitTestUpgradeSuite` diagnostic selector cannot be used under `check`/`build`
+or replace required affected/full evidence.

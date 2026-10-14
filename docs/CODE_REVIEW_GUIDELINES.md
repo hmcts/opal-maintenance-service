@@ -93,7 +93,10 @@ against the changed contract and its delivery evidence:
   behavioural assertions, fixtures, test-only SQL helpers, and cleanup.
   Database assertions and test coordination stay in SQL/pgTAP and run through
   the existing Gradle-owned `dbUnitTest` framework. New suites are directly
-  under `src/dbUnitTest`, with no new subdirectories or separate support SQL;
+  under `src/dbUnitTest`, with no object-specific subdirectories or support SQL.
+  Only the fixed framework lifecycle include and framework regression fixtures
+  have the narrow layout exceptions. Snapshots, functional assertions, fixtures
+  and concurrency remain owner SQL;
   existing paths remain unless relocation is explicitly in scope.
   Consolidation retains all applicable coverage and uses existing discovery.
   Do not introduce separate Python or shell database test runners, including

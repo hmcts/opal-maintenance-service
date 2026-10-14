@@ -5,6 +5,9 @@ import java.util.concurrent.TimeUnit
 import org.gradle.api.GradleException
 import org.gradle.api.tasks.PathSensitivity
 
+apply from: "$rootDir/gradle/db-upgrade-selection.gradle"
+apply from: "$rootDir/gradle/db-upgrade-selection-test.gradle"
+
 // Fixed adoption foundation: 847739c9ee40ca1c09687756212f7f0dcbb56e7d.
 // Never advance this list to exempt a new migration from upgrade registration.
 def adoptedMigrations = [
@@ -101,31 +104,13 @@ def inventory = { File root, List locations ->
   }
   entries
 }
-// Registration is deliberately a flat JSON object of constrained string values.
-// Validate tokens before JsonSlurper (which otherwise accepts duplicate object keys).
-def parseMetadata = { String input, String source ->
-  if (!(input ==~ /\s*\{\s*"[a-z]+"\s*:\s*"[A-Za-z0-9_.\/-]+"(?:\s*,\s*"[a-z]+"\s*:\s*"[A-Za-z0-9_.\/-]+")*\s*\}\s*/)) {
-    throw new GradleException("Malformed upgrade metadata at ${source}; expected flat string JSON")
-  }
-  def keys = (input =~ /"([a-z]+)"\s*:/).collect { it[1] }
-  if (keys.toSet().size() != keys.size()) { throw new GradleException("Duplicate metadata field at ${source}") }
-  if (keys.toSet() != ['id', 'candidate', 'scope', 'data'].toSet()) {
-    throw new GradleException("Unknown or missing metadata field at ${source}")
-  }
-  def item = new JsonSlurper().parseText(input)
-  if (!(item.id ==~ /[a-z][a-z0-9._-]*/) || !(item.scope in ['both', 'upgrade'])
-    || !(item.data in ['migration-created-only', 'approved-synthetic'])) {
-    throw new GradleException("Invalid metadata value at ${source}")
-  }
-  if (item.candidate.startsWith('/') || item.candidate.split('/').any { it in ['.', '..', ''] }) {
-    throw new GradleException("Noncanonical candidate path at ${source}")
-  }
-  item
-}
+// The selection module validates constrained registration metadata before JSON parsing.
+def parseMetadata = project.ext.parseDbUpgradeMetadata
 def resolveRegistrations = { List items, List entries ->
   items.each { item ->
     def candidate = entries.find { it.path == item.candidate }
     if (candidate == null) { throw new GradleException("Missing or unselected candidate at ${item.source}: ${item.candidate}") }
+    project.ext.validateDbUpgradeInputs(item, rootDir)
     item.version = candidate.version
     if (new File(migrationRoot, item.candidate).canonicalFile != new File(migrationRoot, item.candidate).absoluteFile) {
       throw new GradleException("Noncanonical candidate at ${item.source}")
@@ -190,7 +175,8 @@ def newRun = { String mode ->
   directory.mkdirs()
   def git = execute(['git', 'rev-parse', 'HEAD'])
   def dirty = execute(['git', 'status', '--short'])
-  def fingerprintFiles = [file('gradle/db-unit-test.gradle'), dockerfile] + fileTree(sqlRoot).files + fileTree(migrationRoot).files
+  def fingerprintFiles = [file('gradle/db-unit-test.gradle'), file('gradle/db-upgrade-selection.gradle'),
+    file('gradle/db-upgrade-selection-test.gradle'), dockerfile] + fileTree(sqlRoot).files + fileTree(migrationRoot).files
   def fingerprints = fingerprintFiles.findAll { it.isFile() }.sort { it.path }.collect { "${relative(rootDir, it)} ${digest(it)}" }
   new File(directory, 'source-sha256.txt').text = fingerprints.join('\n') + '\n'
   [base: base, directory: directory, started: System.nanoTime(), evidence: ["Mode: ${mode}", "Requested tasks: ${gradle.startParameter.taskNames}",
@@ -198,13 +184,13 @@ def newRun = { String mode ->
     "Dirty files:\n${dirty.stdout}", "Source fingerprints: source-sha256.txt",
     'Adoption foundation: 847739c9ee40ca1c09687756212f7f0dcbb56e7d; 32 selected migrations',
     "Java: ${System.getProperty('java.version')}; Gradle: ${gradle.gradleVersion}", "Flyway image: ${flywayImage}",
-    'Application Flyway plugin/runtime: 13.10.0 (unchanged)'], statuses: [:], discovered: 0, scheduled: 0, attempted: 0]
+    'Application Flyway plugin/runtime: 13.10.0 (unchanged)'], statuses: [:], discovered: 0, scheduled: 0, attempted: 0, completed: 0]
 }
 def finishRun = { Map run, Throwable failure ->
   if (failure != null) {
     run.statuses.replaceAll { name, status -> status == 'RUNNING' ? 'FAILED' : status == 'Not run' ? 'Not run — earlier failure' : status }
   }
-  run.evidence.add("Upgrade scenarios: discovered ${run.discovered}; scheduled ${run.scheduled}; attempted ${run.attempted}")
+  run.evidence.add("Upgrade scenarios: discovered ${run.discovered}; selected ${run.scheduled}; attempted ${run.attempted}; completed ${run.completed}")
   run.evidence.add("Duration milliseconds: ${TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - run.started)}")
   run.statuses.each { name, status -> run.evidence.add("Scenario ${name}: ${status}") }
   run.evidence.add(failure == null ? 'Result: PASS' : "Result: FAILED - ${failure.message}")
@@ -279,15 +265,27 @@ def targetLifecycle = { Map run, String id, File root, List locations, String in
   def directory = new File(run.directory, id)
   directory.mkdirs()
   def target = [name: "opal-maintenance-db-unit-test-${UUID.randomUUID()}", directory: directory,
-    base: run.base, started: System.nanoTime(), sequence: 0, injection: injection, evidence: [], phases: [:], declared: [], created: false, absent: true]
+    base: run.base, started: System.nanoTime(), sequence: 0, injection: injection, evidence: [], phases: [:], declared: [], created: false, absent: true,
+    volumeNames: [], volumesInspected: false, volumesAbsent: true]
   Throwable primary = null
   Throwable cleanup = null
   try {
     // Flag before docker run: even a failed/ambiguous start must attempt owned-name cleanup.
     target.created = true
     target.absent = false
+    target.volumesAbsent = false
     requireCommand(target, 'start', ['docker','run','--detach','--rm','--name',target.name,
       '--env','POSTGRES_HOST_AUTH_METHOD=trust','--env',"POSTGRES_DB=${databaseName}",postgresImage])
+    def mounts = new JsonSlurper().parseText(requireCommand(target, 'owned-volume-mounts',
+      ['docker','inspect','--format','{{json .Mounts}}',target.name]).stdout)
+    if (!(mounts instanceof List)) { throw new GradleException('Cannot identify owned anonymous target volumes') }
+    // docker run supplies no volume names: these mounts were created for this exact UUID target.
+    target.volumeNames = mounts.findAll { it.Type == 'volume' }.collect { it.Name }
+    if (!target.volumeNames.every { it instanceof String && it ==~ /[a-f0-9]{64}/ }) {
+      throw new GradleException('Disposable target contains an unexpected named volume')
+    }
+    target.volumesInspected = true
+    target.evidence.add("Owned anonymous volumes: ${target.volumeNames}")
     boolean ready = false
     for (int attempt = 0; attempt < 60; attempt++) {
       def process = command(target, 'postgres-process', ['docker','exec',target.name,'cat','/proc/1/comm'])
@@ -315,28 +313,40 @@ def targetLifecycle = { Map run, String id, File root, List locations, String in
   finally {
     if (target.created) {
       try {
-        requireCommand(target, 'remove', ['docker','rm','--force',target.name])
+        requireCommand(target, 'remove', ['docker','rm','--force','--volumes',target.name])
         def remaining = requireCommand(target, 'absence', ['docker','ps','-a','--format','{{.Names}}'])
         target.absent = !remaining.stdout.readLines().contains(target.name.toString())
         if (!target.absent) { throw new GradleException("Owned container remains: ${target.name}") }
+        if (!target.volumesInspected) { throw new GradleException('Owned volume inventory was not confirmed') }
+        target.volumeNames.each { volume ->
+          def retained = requireCommand(target, 'volume-absence',
+            ['docker','volume','ls','--quiet','--filter',"name=^${volume}\$".toString()])
+          if (!retained.stdout.isBlank()) { throw new GradleException("Owned anonymous volume remains: ${volume}") }
+        }
+        target.volumesAbsent = true
       } catch (Throwable failure) { cleanup = failure }
       // Fixed self-test injections must never leak their real container. This cannot turn failure into PASS.
-      if (injection in ['remove','absence']) {
-        def removed = execute(['docker','rm','--force',target.name])
+      if (injection in ['remove','absence','volume-absence']) {
+        def removed = execute(['docker','rm','--force','--volumes',target.name])
         def remaining = execute(['docker','ps','-a','--format','{{.Names}}'])
         target.evidence.add("Self-test remediation removal exit: ${removed.exitCode}")
         target.absent = remaining.exitCode == 0 && !remaining.stdout.readLines().contains(target.name.toString())
+        target.volumesAbsent = target.volumesInspected && target.volumeNames.every { volume ->
+          def retained = execute(['docker','volume','ls','--quiet','--filter',"name=^${volume}\$".toString()])
+          retained.exitCode == 0 && retained.stdout.isBlank()
+        }
+        target.evidence.add("Self-test remediation owned volume absence: ${target.volumesAbsent}")
       }
     }
     target.evidence.add("Duration milliseconds: ${TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - target.started)}")
     target.declared.each { label -> target.evidence.add("Phase ${label}: ${target.phases[label] ?: 'Not run'}") }
-    target.evidence.add("Owned container: ${target.name}; absence confirmed: ${target.absent}")
+    target.evidence.add("Owned container: ${target.name}; absence confirmed: ${target.absent}; owned volume absence confirmed: ${target.volumesAbsent}")
     if (primary != null) { target.evidence.add("Primary failure: ${primary.message}") }
     if (cleanup != null) { target.evidence.add("Cleanup failure: ${cleanup.message}") }
     new File(directory, 'summary.txt').text = target.evidence.join('\n') + '\n'
-    run.evidence.add("Target ${id}: ${target.name}; absence confirmed: ${target.absent}")
+    run.evidence.add("Target ${id}: ${target.name}; absence confirmed: ${target.absent}; owned volume absence confirmed: ${target.volumesAbsent}")
     if (primary != null && cleanup != null) { primary.addSuppressed(cleanup) }
-    if (!target.absent && cleanup == null) { cleanup = new GradleException("Cleanup unconfirmed: ${target.name}") }
+    if ((!target.absent || !target.volumesAbsent) && cleanup == null) { cleanup = new GradleException("Cleanup unconfirmed: ${target.name}") }
   }
   if (primary != null) { throw primary }
   if (cleanup != null) { throw cleanup }
@@ -398,6 +408,7 @@ def runRegisteredScenario = { Map run, List entries, Map scenario, File root, Li
       runUpgrade(target, entries, scenario, testCase)
     }
     run.statuses[scenario.id] = 'PASS'
+    run.completed++
   }
 }
 def buildImage = { Map run ->
@@ -409,12 +420,13 @@ def buildImage = { Map run ->
 tasks.register('dbUnitTest') {
   description = 'Runs fresh and registered predecessor SQL contracts in disposable PostgreSQL'
   group = 'Verification'
-  inputs.file(dockerfile).withPathSensitivity(PathSensitivity.RELATIVE)
+  inputs.files(dockerfile, file('gradle/db-unit-test.gradle'), file('gradle/db-upgrade-selection.gradle'))
+    .withPathSensitivity(PathSensitivity.RELATIVE)
   inputs.files(fileTree(migrationRoot), fileTree(sqlRoot)).withPathSensitivity(PathSensitivity.RELATIVE)
   outputs.dir(layout.buildDirectory.dir('reports/dbUnitTest'))
   outputs.upToDateWhen { false }
   doLast {
-    def run = newRun('complete fresh plus registered upgrades')
+    def run = newRun('complete fresh plus selected registered upgrades')
     Throwable failure = null
     try {
       refuseExternal(System.getenv())
@@ -423,13 +435,27 @@ tasks.register('dbUnitTest') {
       def entries = inventory(migrationRoot, selectedLocations)
       def allScenarios = registrations(suites, entries)
       validateAdoption(entries, allScenarios, adoptedMigrations)
-      def scenarios = validateOptions(providers.gradleProperty('dbUnitTestUpgradeSuite').orNull,
+      def diagnostic = providers.gradleProperty('dbUnitTestUpgradeSuite').orNull
+      def eligible = validateOptions(diagnostic,
         gradle.taskGraph.allTasks.any { it.name in ['check', 'build'] }, allScenarios)
+      def selection = project.ext.selectDbUpgradeScenarios(allScenarios, rootDir, [
+        comparisonRef:providers.gradleProperty('dbUnitTestComparisonRef').orNull,
+        mode:providers.gradleProperty('dbUnitTestUpgradeMode').orElse('affected').get(), environment:System.getenv()])
+      // The manual one-owner diagnostic deliberately chooses its owner even with no Git impact.
+      def scenarios = diagnostic == null ? selection.selected : eligible
       run.discovered = allScenarios.size()
       run.scheduled = scenarios.size()
-      run.evidence.add("Selected locations: ${selectedLocations}; discovered ${allScenarios.size()}; scheduled ${scenarios.size()}")
+      run.evidence.add("Selected locations: ${selectedLocations}; discovered ${allScenarios.size()}; selected ${scenarios.size()}")
+      run.evidence.add("Upgrade selection mode: ${diagnostic == null ? selection.mode : 'diagnostic'}; context: ${selection.context}")
+      run.evidence.add("Comparison ref: ${selection.comparisonRef}; base SHA: ${selection.baseSha}; merge base SHA: ${selection.mergeBaseSha}; tested source SHA: ${selection.testedSourceSha}")
+      run.evidence.add("Comparison boundary: ${selection.boundary}; fallback: ${selection.fallbackReason ?: 'none'}")
+      run.evidence.add("Changed paths: ${selection.changedPaths}")
       run.statuses.fresh = 'Not run'
-      scenarios.each { run.statuses[it.id] = 'Not run' }
+      allScenarios.each { scenario ->
+        boolean selected = scenarios.any { it.id == scenario.id }
+        run.statuses[scenario.id] = selected ? 'Not run' : diagnostic == null ? 'Not selected — unchanged' : 'Not selected — manual owner diagnostic'
+        run.evidence.add("Selection ${scenario.id}: ${diagnostic == null ? selection.reasons[scenario.id] : selected ? 'Selected — manual owner diagnostic' : 'Not selected — manual owner diagnostic'}")
+      }
       buildImage(run)
       run.statuses.fresh = 'RUNNING'
       targetLifecycle(run, 'fresh', migrationRoot, selectedLocations, null) { target ->
@@ -543,6 +569,29 @@ tasks.register('dbUnitTestFrameworkTest') {
       // negative control proves fresh-only execution cannot substitute for staging.
       targetLifecycle(run, 'framework-self-tests/fresh-initial-and-later-control', fixtureRoot, ['ddl','data'], null) { target ->
         crossCheckNative(target, entries)
+        // Exercise include-time guards in native new connections. These controls
+        // require the actual SQL diagnostic, independently of positive TAP parsing.
+        def helperCommand = ['docker','exec',target.name,'psql','-X','-v','ON_ERROR_STOP=1',
+          '-U','postgres','-d',databaseName,'-f','/tmp/opal-db-unit-test/framework/upgrade_lifecycle.sql']
+        requireCommand(target, 'helper-default-fresh', helperCommand)
+        def guardCases = [
+          'unknown-phase':[variables:[opal_phase:'unknown'], diagnostic:'Unknown upgrade lifecycle phase'],
+          'missing-scenario':[variables:[opal_phase:'prepare',opal_candidate_version:'1.10',opal_predecessor_version:'1.9'], diagnostic:'requires scenario identity'],
+          'missing-candidate':[variables:[opal_phase:'prepare',opal_scenario_id:scenario.id,opal_predecessor_version:'1.9'], diagnostic:'requires candidate identity'],
+          'missing-predecessor':[variables:[opal_phase:'prepare',opal_scenario_id:scenario.id,opal_candidate_version:'1.10'], diagnostic:'requires predecessor identity'],
+          'wrong-database':[variables:[:], diagnostic:'requires its disposable harness database and role'],
+          'wrong-role':[variables:[:], diagnostic:'requires its disposable harness database and role']]
+        guardCases.each { name, control ->
+          def args = new ArrayList(helperCommand)
+          if (name == 'wrong-database') { args[args.indexOf('-d') + 1] = 'postgres' }
+          if (name == 'wrong-role') { args.addAll(2, ['--env','PGOPTIONS=-c role=pg_read_all_data']) }
+          control.variables.each { key, value -> args.addAll(['--set',"${key}=${value}"]) }
+          def outcome = command(target, "helper-${name}", args)
+          if (outcome.exitCode == 0 || !(outcome.stdout + outcome.stderr).contains(control.diagnostic)) {
+            throw new GradleException("Shared helper guard ${name} failed without its intended SQL diagnostic")
+          }
+          run.evidence.add("Regression helper-${name}: actual native rejection and SQL diagnostic verified")
+        }
         def vars = [opal_scenario_id:scenario.id, opal_candidate_version:'1.10', opal_predecessor_version:'1.9', opal_test_case:'good']
         nativeFlyway(target, 'migrate', '1.9')
         nativeFlyway(target, 'validate', '1.9')
@@ -619,23 +668,30 @@ tasks.register('dbUnitTestFrameworkTest') {
       }
       def scheduledRun = newRun('framework expected later scenario failure')
       scheduledRun.statuses.fresh = 'PASS'
-      ['completed','failing','pending'].each { scheduledRun.statuses[it] = 'Not run' }
+      [scenario.id,'failing','pending'].each { scheduledRun.statuses[it] = 'Not run' }
       Throwable scenarioFailure = null
       try {
-        runRegisteredScenario(scheduledRun, entries, scenario + [id:'completed'], fixtureRoot, ['ddl','data'], 'good')
-        runRegisteredScenario(scheduledRun, entries, scenario + [id:'failing'], fixtureRoot, ['ddl','data'], 'sql-prepare')
-        runRegisteredScenario(scheduledRun, entries, scenario + [id:'pending'], fixtureRoot, ['ddl','data'], 'good')
+        // Retain the owner's exact registered tuple; reporting labels belong to
+        // targets/statuses and must never replace the identity supplied to SQL.
+        runRegisteredScenario(scheduledRun, entries, scenario, fixtureRoot, ['ddl','data'], 'good')
+        scheduledRun.statuses.failing = 'RUNNING'
+        scheduledRun.attempted++
+        targetLifecycle(scheduledRun, 'upgrades/failing', fixtureRoot, ['ddl','data'], null) { target ->
+          runUpgrade(target, entries, scenario, 'sql-prepare')
+        }
+        scheduledRun.statuses.failing = 'PASS'
+        scheduledRun.completed++
       } catch (GradleException expected) { scenarioFailure = expected }
       finishRun(scheduledRun, scenarioFailure)
       def scheduledSummary = new File(scheduledRun.directory, 'summary.txt').text
-      if (scenarioFailure == null || !scheduledSummary.contains('Scenario completed: PASS')
+      if (scenarioFailure == null || !scheduledSummary.contains("Scenario ${scenario.id}: PASS")
         || !scheduledSummary.contains('Scenario failing: FAILED') || !scheduledSummary.contains('Scenario pending: Not run')
-        || !new File(scheduledRun.directory, 'upgrades/completed/summary.txt').isFile()
+        || !new File(scheduledRun.directory, "upgrades/${scenario.id}/summary.txt").isFile()
         || new File(scheduledRun.directory, 'upgrades/pending').exists()) {
         throw new GradleException('Failed run lost completed evidence or unexecuted scenario status')
       }
       run.evidence.add("Early failure report: ${earlyRun.directory.name}; later failure report: ${scheduledRun.directory.name}")
-      ['readiness','flyway-info-latest','remove','absence'].each { injection ->
+      ['readiness','flyway-info-latest','remove','absence','volume-absence'].each { injection ->
         expectFailure(injection, injection == 'readiness' ? 'readiness failed' : "${injection} failed", {
           targetLifecycle(run, "framework-self-tests/${injection}", fixtureRoot, ['ddl','data'], injection) { target ->
             crossCheckNative(target, entries)
@@ -665,4 +721,4 @@ tasks.register('dbUnitTestFrameworkTest') {
   }
 }
 
-tasks.named('check') { dependsOn tasks.named('dbUnitTest') }
+tasks.named('check') { dependsOn tasks.named('dbUnitTest'), tasks.named('dbUnitTestSelectionTest') }
