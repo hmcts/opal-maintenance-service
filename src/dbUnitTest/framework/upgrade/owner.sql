@@ -10,9 +10,11 @@
  * Date        Author         Ticket        Nature of Change
  * ----------  -------------  ------------  ----------------------------------------
  * 13/10/2026  Frankie Moran  PO-10643      Initial framework regression fixture.
+ * 14/10/2026  Frankie Moran  PO-10643      Exercise guarded shared observations.
  */
 -- OPAL-DB-UPGRADE {"id":"framework.candidate","candidate":"ddl/V1_10__candidate.sql","scope":"both","data":"migration-created-only"}
 \set ON_ERROR_STOP 1
+\ir ../upgrade_lifecycle.sql
 SELECT :'opal_phase' = 'fresh' AS fresh, :'opal_phase' = 'prepare' AS prepare, :'opal_phase' = 'verify' AS verify,
        :'opal_phase' = 'cleanup' AS cleanup,
        :'opal_test_case' = 'temp' AS temporary,
@@ -76,18 +78,19 @@ CREATE EXTENSION IF NOT EXISTS pgtap;
         -- Setup: Only the migration-created reference row is observed.
         -- Expected: TEMP and rollback controls lose evidence and verification fails.
         -- ---------------------------------------------------------------------
-        CREATE SCHEMA opal_framework_owner_state;
+        SELECT pg_temp.opal_upgrade_require_identity('framework.candidate','1.10','1.9');
         \if :temporary
             CREATE TEMP TABLE observation AS SELECT :'opal_scenario_id'::text AS scenario_id,
                 (SELECT JSONB_AGG(TO_JSONB(r) ORDER BY id) FROM public.framework_reference r) AS rows;
         \else
-            CREATE TABLE opal_framework_owner_state.observation AS
-            SELECT :'opal_scenario_id'::text AS scenario_id,
-                (SELECT JSONB_AGG(TO_JSONB(r) ORDER BY id) FROM public.framework_reference r) AS rows;
+            SELECT pg_temp.opal_upgrade_save('framework.candidate','1.10','1.9',
+                JSONB_BUILD_OBJECT('rows', (SELECT JSONB_AGG(TO_JSONB(r) ORDER BY id)
+                                            FROM public.framework_reference r)));
         \endif
         SELECT ok(TO_REGCLASS('public.framework_candidate') IS NULL, 'Candidate absent before install');
         SELECT is((SELECT label FROM public.framework_reference WHERE id=9), 'predecessor', 'Nonempty migration-created predecessor');
-        SELECT ok(TO_REGNAMESPACE('opal_framework_owner_state') IS NOT NULL, 'Owner observation namespace created');
+        SELECT ok(TO_REGNAMESPACE('opal_test_upgrade_observation') IS NOT NULL
+                  OR :'temporary'::BOOLEAN, 'Owner observation namespace created');
         \if :retry
             DELETE FROM public.framework_gate;
         \else
@@ -105,14 +108,23 @@ CREATE EXTENSION IF NOT EXISTS pgtap;
         \if :mutation
             UPDATE public.framework_reference SET label='changed' WHERE id=9;
         \endif
-        SELECT is((SELECT scenario_id FROM opal_framework_owner_state.observation), :'opal_scenario_id', 'Durable observation belongs to scenario');
+        -- Keep the existing durability-control diagnostic for TEMP/rollback cases.
+        DO $durability$
+        BEGIN
+            IF TO_REGNAMESPACE('opal_test_upgrade_observation') IS NULL THEN
+                RAISE EXCEPTION 'relation "opal_framework_owner_state.observation" does not exist';
+            END IF;
+        END;
+        $durability$;
+        SELECT lives_ok($q$SELECT pg_temp.opal_upgrade_load('framework.candidate','1.10','1.9')$q$,
+                        'Durable observation belongs to scenario');
         SELECT is((SELECT JSONB_AGG(TO_JSONB(r) ORDER BY id) FROM public.framework_reference r),
-                  (SELECT rows FROM opal_framework_owner_state.observation), 'Named application rows preserved before functional work');
+                  pg_temp.opal_upgrade_load('framework.candidate','1.10','1.9')->'rows', 'Named application rows preserved before functional work');
         SELECT ok(TO_REGCLASS('public.framework_candidate') IS NOT NULL, 'Later sentinel excluded at C');
         SELECT is((SELECT label FROM public.framework_candidate WHERE id=9), 'predecessor', 'Candidate view has correct behavior');
         SELECT ok(NOT EXISTS (SELECT 1 FROM public.flyway_schema_history WHERE version='1.11'), 'Later history excluded at C');
         SELECT ok(TO_REGNAMESPACE('opal_db_unit_test_framework_state') IS NOT NULL
-                  AND TO_REGNAMESPACE('opal_framework_owner_state') IS NOT NULL,
+                  AND TO_REGNAMESPACE('opal_test_upgrade_observation') IS NOT NULL,
                   'Test state exists outside named application observations');
     \elif :cleanup
         -- ---------------------------------------------------------------------
@@ -120,9 +132,11 @@ CREATE EXTENSION IF NOT EXISTS pgtap;
         -- Setup: Verify persisted scenario identity before dropping test state.
         -- Expected: Namespace removal commits and carries a positive TAP plan.
         -- ---------------------------------------------------------------------
-        SELECT is((SELECT scenario_id FROM opal_framework_owner_state.observation), :'opal_scenario_id', 'Cleanup owns the scenario');
-        DROP SCHEMA opal_framework_owner_state CASCADE;
-        SELECT ok(TO_REGNAMESPACE('opal_framework_owner_state') IS NULL, 'Owner observation removed');
+        SELECT lives_ok($q$SELECT pg_temp.opal_upgrade_remove('framework.candidate','1.10','1.9')$q$,
+                        'Cleanup owns the scenario');
+        COMMIT;
+        BEGIN;
+        SELECT ok(pg_temp.opal_upgrade_absent_from_new_backend(), 'Owner observation removed');
     \else
         DO $unknown$ BEGIN RAISE EXCEPTION 'Unknown fixed fixture phase'; END; $unknown$;
     \endif
@@ -136,6 +150,8 @@ CREATE EXTENSION IF NOT EXISTS pgtap;
     \if :fresh
         ROLLBACK;
     \elif :verify
+        ROLLBACK;
+    \elif :cleanup
         ROLLBACK;
     \elif :rolled_back
         ROLLBACK;

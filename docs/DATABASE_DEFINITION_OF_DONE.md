@@ -95,7 +95,12 @@ and [Testing](TESTING.md#infrastructure-and-evidence).
   `src/dbUnitTest`; existing paths remain unless relocation is explicitly in scope.
   Required database coverage and coordination stay in the owning SQL/pgTAP
   suite and existing framework, including supported in-suite concurrency
-  mechanisms. Framework gaps are recorded and resolved before
+  mechanisms. Only the fixed shared framework lifecycle include and framework
+  regression fixtures use the documented layout exceptions; owner snapshots,
+  fixtures, preservation assertions and concurrency remain in the flat owning
+  suite. Required affected/full replay evidence identifies comparison provenance,
+  fallback, selected/excluded status and each consumer's actual execution.
+  Framework gaps are recorded and resolved before
   claiming the affected verification complete.
 - [ ] SQL tests cover applicable success, empty, validation, failure, boundary,
   repeat, concurrency, and row-scope outcomes.
