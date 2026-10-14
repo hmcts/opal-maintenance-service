@@ -17,14 +17,14 @@ plugins {
   id 'org.sonarqube' version '7.5.0.8588'
   id 'uk.gov.hmcts.java' version '0.12.70'
   id 'org.flywaydb.flyway' version '13.10.0'
-  id 'net.serenity-bdd.serenity-gradle-plugin' version '5.3.9'
+  id 'net.serenity-bdd.serenity-gradle-plugin' version '5.4.1'
   id "org.openapi.generator" version "7.26.0"
 }
 
 ext {
   log4JVersion = "2.26.1"
-  cucumberVersion = "7.34.9"
-  serenityVersion = "5.3.11"
+  cucumberVersion = "8.0.4"
+  serenityVersion = "5.4.1"
 }
 
 def ciEnvironmentVariables = ['CI', 'GITHUB_ACTIONS', 'JENKINS_HOME', 'BUILD_ID']
@@ -551,7 +551,9 @@ dependencies {
   testImplementation "net.serenity-bdd:serenity-rest-assured:${serenityVersion}"
   testImplementation "net.serenity-bdd:serenity-report-resources:${serenityVersion}"
 
-  testImplementation "net.serenity-bdd:serenity-cucumber:${serenityVersion}"
+  testImplementation("net.serenity-bdd:serenity-cucumber:${serenityVersion}") {
+    exclude group: 'io.cucumber', module: 'cucumber-junit'
+  }
   testImplementation "net.serenity-bdd:serenity-ensure:${serenityVersion}"
   testImplementation 'com.azure:azure-messaging-servicebus:7.18.1'
 
