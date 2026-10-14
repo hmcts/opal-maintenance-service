@@ -337,8 +337,11 @@ DB-03 extends the DB-01 database-owned `dbUnitTest` framework. It
 does not create a second framework and must not use Spring or backend
 integration-test fixtures. The maintained registration, phase, adoption and report contract is documented
 in [Testing](TESTING.md#maintained-predecessor-upgrade-contract). Normal
-`./gradlew dbUnitTest` executes every registered applicable scenario; `check` and
-`build` inherit that coverage. Framework delivery alone does not prove a
+`./gradlew dbUnitTest` runs every fresh suite and affected registered upgrades;
+`check` and `build` inherit that coverage. Explicit full replay and conservative
+full fallback follow the linked selection contract. Excluded scenarios are Not
+selected, not verified. Shared database-test infrastructure changes require full
+historical replay. Framework delivery alone does not prove a
 consumer: record its actual registration, predecessor, candidate, owning-suite
 assertions and retained passing execution evidence.
 
@@ -383,7 +386,13 @@ Flyway-native sequence:
 The maintained DB-03 phases use separate SQL connections, so predecessor
 observations have an ordinary, committed lifetime inside the disposable target.
 TEMP objects and rolled-back observations cannot carry evidence between those
-connections. Only narrowly owned test observation preparation, history snapshots
+connections. Use only the fixed shared framework lifecycle include under the
+[SQL ownership contract](TESTING.md#pgtap-suite-layout); owner-produced snapshots,
+preservation assertions, fixtures and concurrency stay in the one flat owning
+suite. Store owner-provided observations without parsing or normalising embedded
+row/text strings. Exact ownership checks precede loading/removal; removal must
+be committed and absence checked from a distinct backend. Only narrowly owned
+test observation preparation, history snapshots
 and their cleanup commit under the [pgTAP transaction contract](TESTING.md#db-10-pgtap-execution).
 Fresh and functional verification retain rollback, and production routines retain
 backend-owned transaction boundaries. Every phase requires a positive exact TAP
@@ -451,8 +460,10 @@ evidence format. DB-04 defines the required migration-specific contract and
 outcomes without duplicating those mechanics.
 Follow the [pgTAP suite layout](TESTING.md#pgtap-suite-layout): one
 self-contained SQL suite per function or procedure, with new suites directly
-under `src/dbUnitTest` and no subdirectories, separate support SQL or shell
-test scripts.
+under `src/dbUnitTest` and no object-specific subdirectories, support SQL or
+shell test scripts. Only the fixed shared lifecycle include and framework
+regression fixtures use the narrow layout exceptions; routine SQL ownership
+remains in the flat suite.
 
 ### Planned DB-06 stored-procedure responsibility contract
 

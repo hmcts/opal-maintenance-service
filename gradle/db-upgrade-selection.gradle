@@ -1,0 +1,202 @@
+import groovy.json.JsonSlurper
+import java.nio.file.Files
+import org.gradle.api.GradleException
+
+// Frankie Moran — PO-10643 — 14/10/2026
+// Selection uses only local Git evidence; target creation remains in db-unit-test.gradle.
+def canonicalPath = { Object value ->
+  value instanceof String && value ==~ /[A-Za-z0-9_.\/-]+/ && !value.startsWith('/') &&
+    !value.split('/', -1).any { it in ['', '.', '..'] }
+}
+def localGit = { File repository, List arguments ->
+  def builder = new ProcessBuilder(['git', '-C', repository.absolutePath] + arguments)
+  builder.environment().put('GIT_NO_LAZY_FETCH', '1')
+  builder.environment().put('GIT_TERMINAL_PROMPT', '0')
+  def process = builder.start()
+  String out = '', err = ''
+  // Preserve NUL-delimited bytes: Groovy's line consumer inserts spurious newlines.
+  def stdoutReader = Thread.start { out = process.inputStream.getText('UTF-8') }
+  def stderrReader = Thread.start { err = process.errorStream.getText('UTF-8') }
+  process.waitFor(); stdoutReader.join(); stderrReader.join()
+  [exitCode:process.exitValue(), stdout:out, stderr:err]
+}
+def validRef = { Object value ->
+  value instanceof String && value ==~ /[A-Za-z0-9][A-Za-z0-9_.\/-]*/ &&
+    !value.contains('..') && !value.contains('//') && !value.endsWith('/') && !value.endsWith('.')
+}
+ext.parseDbUpgradeMetadata = { String input, String source ->
+  // Reject escapes, nested objects, non-string fields and duplicate keys before parsing.
+  def value = /(?:"[A-Za-z0-9_.\/-]+"|\[\s*(?:"[A-Za-z0-9_.\/-]+"(?:\s*,\s*"[A-Za-z0-9_.\/-]+")*)?\s*\])/
+  if (!(input ==~ /\s*\{\s*"[a-z]+"\s*:\s*${value}(?:\s*,\s*"[a-z]+"\s*:\s*${value})*\s*\}\s*/)) {
+    throw new GradleException("Malformed upgrade metadata at ${source}; expected constrained JSON")
+  }
+  def keys = (input =~ /"([a-z]+)"\s*:/).collect { it[1] }
+  if (keys.toSet().size() != keys.size()) { throw new GradleException("Duplicate metadata field at ${source}") }
+  def required = ['id','candidate','scope','data'].toSet()
+  if (!keys.containsAll(required) || !(['id','candidate','scope','data','inputs'].containsAll(keys))) {
+    throw new GradleException("Unknown or missing metadata field at ${source}")
+  }
+  def item = new JsonSlurper().parseText(input)
+  if (!required.every { item[it] instanceof String } || !(item.id ==~ /[a-z][a-z0-9._-]*/) ||
+      !(item.scope in ['both','upgrade']) || !(item.data in ['migration-created-only','approved-synthetic'])) {
+    throw new GradleException("Invalid metadata value at ${source}")
+  }
+  if (!canonicalPath(item.candidate)) { throw new GradleException("Noncanonical candidate path at ${source}") }
+  if (!item.containsKey('inputs')) { item.inputs = [] }
+  if (!(item.inputs instanceof List) || !item.inputs.every { canonicalPath(it) } ||
+      item.inputs.toSet().size() != item.inputs.size()) {
+    throw new GradleException("Invalid or duplicate dependency inputs at ${source}")
+  }
+  item
+}
+ext.validateDbUpgradeInputs = { Map scenario, File repository ->
+  def ownerPath = repository.toPath().relativize(scenario.owner.toPath()).toString().replace(File.separator,'/')
+  def implicit = [ownerPath, "src/main/resources/db/migration/${scenario.candidate}".toString()]
+  def inputs = scenario.inputs ?: []
+  if (!(inputs instanceof List) || !inputs.every { canonicalPath(it) } ||
+      inputs.toSet().size() != inputs.size() || inputs.any { it in implicit }) {
+    throw new GradleException("Invalid or duplicate dependency inputs at ${scenario.source ?: scenario.id}")
+  }
+  inputs.each { path ->
+    // File.canonicalFile can equal the lexical path for a dangling link. Inspect
+    // every declared component without following links, including missing parents.
+    def component = repository.canonicalFile.toPath()
+    path.split('/').each { part ->
+      component = component.resolve(part)
+      if (Files.isSymbolicLink(component)) {
+        throw new GradleException("Symbolic dependency input at ${scenario.id}: ${path}")
+      }
+    }
+    def target = new File(repository, path)
+    if (target.canonicalFile != new File(repository.canonicalFile, path).absoluteFile) {
+      throw new GradleException("Noncanonical dependency input at ${scenario.id}: ${path}")
+    }
+    if (target.exists() && !target.isFile()) {
+      throw new GradleException("Unknown dependency file at ${scenario.id}: ${path}")
+    }
+    // A deleted tracked dependency is still meaningful evidence and must remain selectable.
+    if (!target.isFile() && localGit(repository, ['ls-files','--error-unmatch','--',path]).exitCode != 0) {
+      def prior = localGit(repository, ['log','--all','--diff-filter=AM','-1','--format=%H','--',path])
+      def revision = prior.stdout.trim()
+      def kind = revision ? localGit(repository, ['cat-file','-t',"${revision}:${path}".toString()]) : null
+      if (prior.exitCode != 0 || kind == null || kind.exitCode != 0 || kind.stdout.trim() != 'blob') {
+        throw new GradleException("Unknown dependency input at ${scenario.id}: ${path}")
+      }
+    }
+  }
+  implicit + inputs
+}
+ext.selectDbUpgradeScenarios = { List scenarios, File repository, Map options ->
+  def mode = options.mode == null ? 'affected' : options.mode
+  if (!(mode in ['affected','full'])) { throw new GradleException('dbUnitTestUpgradeMode must be affected or full') }
+  def explicit = options.comparisonRef
+  if (explicit != null && !validRef(explicit)) { throw new GradleException('Invalid dbUnitTestComparisonRef') }
+  def declared = scenarios.collectEntries { scenario ->
+    [(scenario.id): project.ext.validateDbUpgradeInputs(scenario, repository)]
+  }
+  def result = [selected:[], mode:mode, comparisonRef:explicit, context:'none', baseSha:null,
+    mergeBaseSha:null, testedSourceSha:null, changedPaths:[], reasons:[:], fallbackReason:null,
+    boundary:'merge-base to actual tested HEAD, plus index/worktree/untracked paths']
+  def full = { String reason ->
+    result.mode = 'full'; result.fallbackReason = reason; result.selected = scenarios
+    scenarios.each { result.reasons[it.id] = "Selected — ${reason}".toString() }
+    result
+  }
+  def resolve = { String ref ->
+    def git = localGit(repository, ['-c','core.warnAmbiguousRefs=true','rev-parse','--verify','--end-of-options',"${ref}^{commit}".toString()])
+    git.exitCode == 0 && git.stderr.isBlank() ? git.stdout.trim() : null
+  }
+  try {
+    result.testedSourceSha = resolve('HEAD')
+    if (result.testedSourceSha == null) { return full('Actual tested Git source is unavailable') }
+    String base = explicit
+    def env = options.environment ?: [:]
+    boolean github = env.GITHUB_EVENT_NAME || env.GITHUB_EVENT_PATH
+    boolean jenkins = env.CHANGE_ID || env.CHANGE_TARGET
+    if (base != null) { result.context = 'explicit comparison ref' }
+    else if (github && jenkins) { return full('Conflicting GitHub and Jenkins comparison context') }
+    else if (github) {
+      result.context = 'GitHub pull request event'
+      if (env.GITHUB_EVENT_NAME != 'pull_request' || !env.GITHUB_EVENT_PATH || !env.GITHUB_SHA) {
+        return full('Missing or unsupported GitHub pull request context')
+      }
+      def eventFile = new File(env.GITHUB_EVENT_PATH.toString())
+      if (!eventFile.isFile() || eventFile.length() > 4 * 1024 * 1024) { return full('GitHub event is unavailable or oversized') }
+      def event = new JsonSlurper().parse(eventFile)
+      def baseValue = event?.pull_request?.base?.sha
+      def headValue = event?.pull_request?.head?.sha
+      if (!(baseValue instanceof String) || !(headValue instanceof String) ||
+          !(baseValue ==~ /[0-9a-f]{40}/) || !(headValue ==~ /[0-9a-f]{40}/) ||
+          env.GITHUB_SHA != result.testedSourceSha) { return full('Conflicting or malformed GitHub source identities') }
+      def parents = localGit(repository, ['show','-s','--format=%P',result.testedSourceSha]).stdout.trim().split(' ') as List
+      if (result.testedSourceSha != headValue && parents != [baseValue,headValue]) {
+        return full('GitHub tested source is neither the recorded head nor its exact merge checkout')
+      }
+      base = baseValue
+    } else if (jenkins) {
+      result.context = 'Jenkins immediate pull request target'
+      if (!env.CHANGE_ID || !validRef(env.CHANGE_TARGET) || env.GIT_COMMIT != result.testedSourceSha) {
+        return full('Missing or conflicting Jenkins source/target context')
+      }
+      def target = env.CHANGE_TARGET.toString()
+      def available = ["refs/heads/${target}","refs/remotes/origin/${target}"].collect { resolve(it.toString()) }.findAll { it }.unique()
+      if (available.size() != 1) { return full('Missing or ambiguous Jenkins immediate target') }
+      base = available.first()
+    } else { return full(mode == 'full' ? 'Explicit full replay' : 'No trustworthy comparison base supplied') }
+    result.comparisonRef = base
+    result.baseSha = resolve(base)
+    if (!result.baseSha) { return full('Comparison base commit is unavailable or ambiguous locally') }
+    def shallow = localGit(repository, ['rev-parse','--is-shallow-repository'])
+    if (shallow.exitCode != 0 || shallow.stdout.trim() != 'false') { return full('Git history is shallow or cannot be verified') }
+    def merge = localGit(repository, ['merge-base','--all',result.baseSha,result.testedSourceSha])
+    def boundaries = merge.stdout.readLines().findAll { it }
+    if (merge.exitCode != 0 || boundaries.size() != 1) { return full('Comparison history is unrelated or has an ambiguous merge base') }
+    result.mergeBaseSha = boundaries.first()
+    if (localGit(repository, ['merge-base','--is-ancestor',result.baseSha,result.testedSourceSha]).exitCode != 0) {
+      return full('Comparison base has advanced or diverged beyond the actual tested source')
+    }
+    def paths = [] as Set
+    [['diff','--name-only','--no-renames','-z',result.mergeBaseSha,result.testedSourceSha,'--'],
+     ['diff','--cached','--name-only','--no-renames','-z','HEAD','--'],
+     ['diff','--name-only','--no-renames','-z','--'],
+     ['ls-files','--others','--exclude-standard','-z']].each { args ->
+      def diff = localGit(repository,args)
+      if (diff.exitCode != 0) { throw new GradleException('Cannot inspect complete local Git changes') }
+      paths.addAll(diff.stdout.split('\u0000').findAll { it })
+    }
+    // A newly introduced declared input must be selected even when a local
+    // exclude rule hides that input from the ordinary untracked inventory.
+    declared.values().flatten().unique().each { path ->
+      if (new File(repository, path).isFile() &&
+          localGit(repository, ['cat-file','-e',"${result.mergeBaseSha}:${path}".toString()]).exitCode != 0) {
+        paths.add(path)
+      }
+    }
+    result.changedPaths = paths.toList().sort()
+    if (mode == 'full') { return full('Explicit full replay') }
+    def shared = { String path ->
+      path in ['build.gradle','settings.gradle','gradle.properties','gradlew','gradlew.bat','Jenkinsfile',
+        'Dockerfile','.dockerignore','compose.yml','compose.yaml','bin/run-in-docker.sh',
+        '.java-version','.tool-versions','.sdkmanrc','build.gradle.kts','settings.gradle.kts'] ||
+      path.startsWith('Jenkinsfile') || path.startsWith('docker-compose.') ||
+      ['gradle/','docker/','charts/','.github/workflows/','src/dbUnitTest/framework/',
+       'src/main/java/','src/main/resources/application'].any { path.startsWith(it) } ||
+      path.startsWith('src/dbUnitTest/db_upgrade_') || path.startsWith('src/dbUnitTest/upgrade_lifecycle')
+    }
+    def sharedPaths = result.changedPaths.findAll { shared(it) }
+    if (sharedPaths) { return full("Shared database/build input changed: ${sharedPaths.join(', ')}".toString()) }
+    def known = declared.values().flatten().toSet()
+    def unknown = result.changedPaths.findAll { path ->
+      (path.startsWith('src/main/resources/db/') || path.startsWith('src/dbUnitTest/')) && !known.contains(path)
+    }
+    if (unknown) { return full("Unclassified database input changed: ${unknown.join(', ')}".toString()) }
+    scenarios.each { scenario ->
+      def affected = declared[scenario.id].findAll { it in paths }
+      result.reasons[scenario.id] = affected ? "Selected — changed inputs: ${affected.join(', ')}".toString() : 'Not selected — unchanged'
+      if (affected) { result.selected.add(scenario) }
+    }
+    result
+  } catch (Exception problem) {
+    full("Comparison evidence unavailable: ${problem.class.simpleName}".toString())
+  }
+}

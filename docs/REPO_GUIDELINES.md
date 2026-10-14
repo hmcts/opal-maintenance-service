@@ -22,8 +22,10 @@ the same change.
   HTTP tests, and `src/smokeTest/java` for smoke tests.
 - Place new database-owned pgTAP suites directly under `src/dbUnitTest`, named
   `*_pgtap_tests.sql` for the database object they verify. Each function or
-  procedure has one self-contained suite. Do not add subdirectories, support
-  SQL or shell test scripts. Follow the authoritative
+  procedure has one self-contained suite. Do not add object-specific subdirectories,
+  support SQL or shell test scripts. Only the fixed framework lifecycle include
+  and framework regression fixtures have the narrow documented exceptions.
+  Follow the authoritative
   [pgTAP suite layout](TESTING.md#pgtap-suite-layout).
 - Keep Helm deployment configuration under `charts/`, quality and security-tool
   configuration under `config/`, supporting assets under `lib/`, and local or

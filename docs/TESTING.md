@@ -77,9 +77,12 @@ suite and explain why its assertions remain sufficient. If no direct boundary
 assertion is required, use the DB-04 exception wording and record its reason.
 
 Each migration-focused specification must state whether its assertions apply
-to the fresh DB-01 path, the DB-03 upgrade path, or both. The `dbUnitTest` task executes the fresh DB-01 path and every registered
-applicable DB-03 predecessor upgrade. Missing registration or execution evidence
-remains unmet and must not be claimed as verified. Representative upgrade setup and synthetic data
+to the fresh DB-01 path, the DB-03 upgrade path, or both. The `dbUnitTest` task
+executes the complete fresh DB-01 path and selected
+DB-03 predecessor upgrades under the [maintained selection contract](#maintained-predecessor-upgrade-contract).
+Missing required registration or execution evidence remains unmet and must not
+be claimed as verified; unchanged excluded scenarios are not verified by that run.
+Representative upgrade setup and synthetic data
 rules remain owned by the
 [DB-03 guidance](DATABASE_MIGRATIONS.md#planned-db-03-upgrade-path-validation).
 
@@ -230,11 +233,54 @@ Raw TAP diagnostics and a non-sensitive execution summary are written under
 
 ### Maintained predecessor upgrade contract
 
-Normal `./gradlew dbUnitTest` runs the complete latest fresh suite set, then all
-registered upgrades in native numerical order, each in a new disposable target.
-`check` and `build` inherit all registrations. No upgrade skip or external target
+Normal `./gradlew dbUnitTest` runs the complete latest fresh suite set, then
+affected registered upgrades in native numerical order, each in a new disposable
+target. `check` and `build` inherit this selection contract. Every invocation
+validates the entire selected migration inventory, adoption checksums and required
+registrations before selecting upgrades. No fresh-suite skip or external target
 property exists. The three selected locations remain `ddl`, `data/allEnvs`, and
 `data/dev`; other environment locations have no implicit coverage.
+
+```bash
+./gradlew dbUnitTest --no-daemon -PdbUnitTestComparisonRef=origin/codex/parent
+./gradlew dbUnitTest --no-daemon -PdbUnitTestUpgradeMode=full
+./gradlew dbUnitTestSelectionTest --no-daemon
+```
+
+`dbUnitTestUpgradeMode` accepts `affected` (default) or `full`. Full mode replays
+all discovered historical registrations and is required after shared runner,
+lifecycle SQL, framework fixture, database image, or relevant build/toolchain
+infrastructure changes. Automatic selection also forces full replay for these
+inputs and for unknown relevant database dependencies. Relevant shared inputs
+include Gradle/wrapper files, Docker/Compose configuration, charts, workflows,
+Jenkinsfile, application Java/configuration, framework SQL and regression fixtures.
+Unclassified paths under `src/main/resources/db/` or `src/dbUnitTest/` also force
+full replay; declare object-specific dependencies through `inputs`.
+
+An explicit `dbUnitTestComparisonRef` takes priority over supported CI context.
+Use the immediate reviewed PR base, resolving it locally to a commit; the
+same-name feature upstream is not an implicit comparison base. Reports record
+tested HEAD, resolved base, merge base, context provenance and changed paths.
+Selection includes committed differences and actual staged, unstaged and
+untracked changes, deletions and both sides of renames. GitHub merge checkouts
+require `GITHUB_EVENT_NAME=pull_request`, a readable `GITHUB_EVENT_PATH` with
+`pull_request.base.sha` and `head.sha`, and `GITHUB_SHA` equal to tested HEAD.
+The tested revision must be that head or its exact two-parent base/head merge
+checkout. Jenkins requires `CHANGE_ID`, `CHANGE_TARGET` naming the immediate
+PR target, and `GIT_COMMIT` equal to tested HEAD. Its local branch or
+`origin` remote-tracking target must resolve to one unambiguous commit. Ensure
+checkout history and the immediate base are available locally before invoking
+Gradle; otherwise use full mode and retain the fallback evidence.
+No implicit fetch occurs. Missing refs, shallow or
+insufficient history, ambiguous or contradictory context fail closed to full
+replay with the reason recorded. A valid no-impact comparison may select zero
+upgrades while every fresh suite still runs; absent comparison evidence cannot.
+
+New candidate registrations, changed owning suites/registrations and intersecting
+declared dependencies select their scenarios. The owning suite and candidate are
+implicit dependency inputs. Keep additional dependency declarations complete;
+shared infrastructure changes require full replay even when a consumer itself
+is unchanged.
 
 Add one line after the human-attributed header in the owning flat SQL suite:
 
@@ -246,8 +292,13 @@ The filename above is illustrative; allocate the actual migration globally.
 The four required string fields are `id`, `candidate`, `scope` (`both` or
 `upgrade`), and `data` (`migration-created-only` or `approved-synthetic`). IDs
 are globally unique lowercase `[a-z][a-z0-9._-]*`. Candidates are canonical
-paths relative to `src/main/resources/db/migration`. Metadata is flat JSON with
-plain constrained strings; escaped strings, unknown/missing/duplicate fields,
+paths relative to `src/main/resources/db/migration`. The optional `inputs` array
+declares additional canonical repository-relative
+dependency file paths. Paths must name existing files or tracked deletions,
+contain no absolute/dot/parent segments, and must not repeat the implicit owning
+suite/candidate paths. Existing four-field registrations remain supported. Metadata
+contains constrained strings and this optional array, never executable SQL;
+unsafe, unknown or duplicate inputs, escaped strings, unknown/missing/duplicate fields,
 duplicate IDs, multiple owners, absent/unselected candidates and unsupported
 migration categories fail before target creation. Approved synthetic scenarios
 also require an `Approved data scenario:` comment naming the approved contract;
@@ -274,12 +325,46 @@ Omitted owner phase defaults to `fresh` in the suite. Upgrade phases must valida
 required variables, scenario/version ownership and the existing harness identity
 (`opal_maintenance_db_unit_test`, role `postgres`). Use `pg_prove --set` values as
 psql values, never executable SQL fragments. Every invocation is a new connection.
-Prepare commits observations in an ordinary suite-owned schema, verify compares
+Use the fixed shared SQL lifecycle described below for observation ownership. Prepare
+commits observations in an ordinary test-owned schema, verify compares
 named application state before functional mutations and rolls back, and cleanup
 checks ownership then commits removal. TEMP or rolled-back snapshots cannot carry
 observations. Do not include test extensions/observation schemas in application
 catalogue preservation. Keep all functional/concurrency assertions in the same
 owning suite; retain explicit remote-session cleanup.
+
+The fixed include in an owning flat suite is:
+
+```sql
+\ir framework/upgrade_lifecycle.sql
+```
+
+It defaults an omitted `opal_phase` to `fresh`, validates phase/required identity
+variables and guards the disposable database/role. It exports `valid_phase`,
+`is_prepare`, `is_verify`, `is_cleanup` and `needs_identity` psql Booleans.
+It defines connection-local
+functions in `pg_temp`; the owner supplies the expected scenario, candidate and
+predecessor strings rather than trusting received identity alone:
+
+| Function | Arguments | Result |
+| --- | --- | --- |
+| `opal_upgrade_require_identity` | expected scenario, candidate, predecessor (`TEXT`) | Rejects mismatched identity |
+| `opal_upgrade_save` | expected identity tuple, owner observation (`JSONB`) | Creates test-owned observation state; caller commits preparation |
+| `opal_upgrade_load` | expected identity tuple | Returns exact owner payload after provenance/ownership validation |
+| `opal_upgrade_remove` | expected identity tuple | Removes validated test-owned objects without CASCADE; caller commits cleanup |
+| `opal_upgrade_absent_from_new_backend` | none | Boolean absence readback from a distinct backend after cleanup commit |
+
+Call these as `pg_temp.opal_upgrade_*`. The fixed ordinary observation schema is
+`opal_test_upgrade_observation`; it must have the expected owner, exactly one
+observation row and expected relation inventory. Database OID/name, role and the
+exact identity tuple must agree. Collisions, missing state and unexpected objects
+fail closed. Save/load preserve owner-produced JSONB payloads, including embedded
+row/text strings without parsing or normalising them. The helper does not own
+application snapshots, expected outcomes, TAP plans, functional assertions or
+concurrency. Cleanup readback requires the disposable image's test-only `dblink`
+extension. After committing removal, begin a new transaction, assert the returned
+Boolean with pgTAP, call `finish()` and roll back that readback transaction.
+Retain explicit cleanup for the owner's concurrency sessions.
 
 The generic flat `db_upgrade_framework_pgtap_tests.sql` owns exact expected
 history prefixes, successful checksummed SQL, complete predecessor row equality,
@@ -297,7 +382,9 @@ For diagnosis only:
 
 The selector still validates all registrations and runs every fresh suite; it
 selects only the named owner's upgrades. Unknown/empty selections fail, and
-selection with `check`/`build` fails. Complete normal execution is final evidence.
+this diagnostic selector with `check`/`build` fails. Automatic affected selection
+and explicit full mode are supported under `check`/`build`. A diagnostic run
+does not replace required affected or full replay evidence.
 
 `./gradlew dbUnitTestFrameworkTest --no-daemon` exercises fixed framework-only
 SQL/migration fixtures through the same orchestration, including native ordering,
@@ -307,10 +394,17 @@ regression exception, never routine support SQL or production migrations.
 
 Reports retain unique `build/reports/dbUnitTest/runs/<run-id>/` directories with
 source fingerprints, revision/dirty paths, native command exits/timings, exact
-TAP plans/executed counts, per-target phase status and confirmed container absence.
+TAP plans/executed counts, per-target phase status, exact UUID-owned container
+removal and confirmed absence, and removal and confirmed absence of that target's
+owned anonymous volumes. Cleanup is limited to those disposable task-owned
+resources; it must not prune global Docker resources or developer-owned named
+volumes.
 Top-level `summary.txt`, `pg-prove.log`, and `framework-self-test.log` remain latest
 run entry points. An earlier completed report survives a later scenario failure.
-Scheduled unexecuted phases/scenarios remain Not run. Cleanup failure fails the
+Reports distinguish discovered, selected, attempted and passed scenarios, with
+selection mode, reasons, changed inputs, comparison validity and fallback reason.
+Excluded unchanged scenarios are **Not selected**, never PASS or upgrade N/A.
+Selected unexecuted phases/scenarios remain **Not run**. Cleanup failure fails the
 command and is retained alongside any primary error. Framework tests use only
 fixed internal injections; callers cannot inject commands, targets or failures.
 
@@ -368,7 +462,12 @@ legacy tests solely to add headers.
 - Keep routine-specific setup, synthetic fixtures, independent expected
   results, temporary SQL helpers and cleanup inside the owning suite. Do not
   split them into separate setup, fixture, boundary or concurrency SQL files,
-  and do not include another suite or support SQL using `\i` or `\ir`.
+  and do not include another suite or object-specific support SQL using `\i`
+  or `\ir`. The sole shared lifecycle include exception is the fixed
+  framework-owned `framework/upgrade_lifecycle.sql` described in the
+  [maintained predecessor contract](#maintained-predecessor-upgrade-contract).
+  Framework regression fixtures retain their separate existing exception; neither
+  exception permits extracting routine assertions, snapshots or coordination.
 - Database assertions, routine test coordination, fixtures, test-only SQL
   helpers and cleanup stay inside self-contained SQL/pgTAP suites. Run the
   suites through the existing Gradle-owned `dbUnitTest` framework. Do not add
