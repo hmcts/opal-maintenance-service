@@ -12,70 +12,17 @@
  * 13/10/2026  Frankie Moran  PO-10643  Initial pgTAP test suite.
  * 13/10/2026  Frankie Moran  PO-10643  Add SQL-session creditor creation and cleanup checks
  * 13/10/2026  Frankie Moran  PO-10643  Verify maintained predecessor installation and cleanup
+ * 14/10/2026  Frankie Moran  PO-10643  Adopt enabling shared upgrade lifecycle.
  */
 -- OPAL-DB-UPGRADE {"id":"p_insert_creditor_accounts.create","candidate":"ddl/V1_33__create_p_insert_creditor_accounts_procedure.sql","scope":"both","data":"migration-created-only"}
 -- DB-04/DB-06: routine catalogue, direct outcomes, errors, row scope and rollback.
 -- DB-01 fresh and DB-03 predecessor paths are both applicable.
 -- DB-03 uses the registered real predecessor/candidate through the maintained runner.
 -- Bank request validation is owned upstream; this suite proves accepted-value mapping.
-\set ON_ERROR_STOP on
-\if :{?opal_phase}
-\else
-    \set opal_phase fresh
-\endif
-SELECT :'opal_phase' IN ('fresh','prepare','verify','cleanup') AS valid_phase,
-       :'opal_phase' = 'prepare' AS is_prepare,
-       :'opal_phase' = 'verify' AS is_verify,
-       :'opal_phase' = 'cleanup' AS is_cleanup
-\gset
-\if :valid_phase
-\else
-    DO $invalid$ BEGIN RAISE EXCEPTION 'Unknown creditor suite phase'; END; $invalid$;
-\endif
-\if :is_prepare
-    \set needs_identity true
-\elif :is_verify
-    \set needs_identity true
-\elif :is_cleanup
-    \set needs_identity true
-\else
-    \set needs_identity false
-\endif
+\ir framework/upgrade_lifecycle.sql
 \if :needs_identity
-    \if :{?opal_scenario_id}
-    \else
-        DO $invalid$ BEGIN RAISE EXCEPTION 'Missing upgrade scenario'; END; $invalid$;
-    \endif
-    \if :{?opal_candidate_version}
-    \else
-        DO $invalid$ BEGIN RAISE EXCEPTION 'Missing upgrade candidate'; END; $invalid$;
-    \endif
-    \if :{?opal_predecessor_version}
-    \else
-        DO $invalid$ BEGIN RAISE EXCEPTION 'Missing upgrade predecessor'; END; $invalid$;
-    \endif
-    SELECT SET_CONFIG('opal.pica_scenario', :'opal_scenario_id', false) AS configured_scenario,
-           SET_CONFIG('opal.pica_candidate', :'opal_candidate_version', false) AS configured_candidate,
-           SET_CONFIG('opal.pica_predecessor', :'opal_predecessor_version', false) AS configured_predecessor
-    \gset
-    DO $identity$
-    BEGIN
-        IF CURRENT_SETTING('opal.pica_scenario')<>'p_insert_creditor_accounts.create'
-           OR CURRENT_SETTING('opal.pica_candidate')=''
-           OR CURRENT_SETTING('opal.pica_predecessor')='' THEN
-            RAISE EXCEPTION 'Invalid creditor upgrade identity';
-        END IF;
-    END;
-    $identity$;
+    SELECT pg_temp.opal_upgrade_require_identity('p_insert_creditor_accounts.create','1.33','1.32');
 \endif
-DO $target$
-BEGIN
-    IF CURRENT_DATABASE()<>'opal_maintenance_db_unit_test' OR current_user<>'postgres' THEN
-        RAISE EXCEPTION 'Creditor tests require the harness-owned disposable database';
-    END IF;
-END;
-$target$;
-
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap;
 SET LOCAL search_path = public, pg_catalog;
@@ -172,102 +119,51 @@ $state$;
     SELECT ok(EXISTS(SELECT 1 FROM public.countries WHERE cjs_code=1 AND international_code='GBR')
         AND EXISTS(SELECT 1 FROM public.business_units WHERE business_unit_id=1042 AND business_unit_code='63'),
         'real selected predecessor reference migrations ran');
-    DO $owned$
-    BEGIN
-        IF TO_REGNAMESPACE('opal_test_pica_upgrade') IS NOT NULL THEN
-            RAISE EXCEPTION 'Creditor upgrade observation namespace collision';
-        END IF;
-    END;
-    $owned$;
-    CREATE SCHEMA opal_test_pica_upgrade;
-    CREATE TABLE opal_test_pica_upgrade.observation (
-        scenario TEXT PRIMARY KEY,candidate TEXT NOT NULL,predecessor TEXT NOT NULL,state JSONB NOT NULL
-    );
-    INSERT INTO opal_test_pica_upgrade.observation VALUES (
-        CURRENT_SETTING('opal.pica_scenario'),CURRENT_SETTING('opal.pica_candidate'),
-        CURRENT_SETTING('opal.pica_predecessor'),pg_temp.ca_installation_state());
-    SELECT is((SELECT COUNT(*) FROM opal_test_pica_upgrade.observation),1::BIGINT,
-        'one owned durable predecessor observation');
-    SELECT is((SELECT COUNT(*) FROM JSONB_OBJECT_KEYS(
-        (SELECT state->'rows' FROM opal_test_pica_upgrade.observation))),7::BIGINT,
+    SELECT pg_temp.opal_upgrade_save(:'opal_scenario_id', :'opal_candidate_version', :'opal_predecessor_version',
+        pg_temp.ca_installation_state());
+    SELECT pg_temp.opal_upgrade_load(:'opal_scenario_id', :'opal_candidate_version', :'opal_predecessor_version') AS saved_state \gset
+    SELECT ok(:'saved_state'::JSONB IS NOT NULL,'one owned durable predecessor observation');
+    SELECT is((SELECT COUNT(*) FROM JSONB_OBJECT_KEYS(:'saved_state'::JSONB->'rows')),7::BIGINT,
         'exact seven-table row scope observed');
     SELECT * FROM finish();
     COMMIT;
 \elif :is_cleanup
     SELECT plan(2);
     -- -------------------------------------------------------------------------
-    -- Scenario: Remove only the exact registered consumer observation state.
-    -- Setup: Confirm scenario/candidate/predecessor before any removal.
-    -- Expected: Owned observation removed and schema absent in persisted readback.
+    -- Scenario: Remove committed creditor observations and verify persisted absence.
+    -- Setup: Shared exact ownership guard, owned drop, independent backend readback.
+    -- Expected: Only owned observation state removed; committed namespace absent.
     -- -------------------------------------------------------------------------
-    DO $owned$
-    BEGIN
-        IF TO_REGNAMESPACE('opal_test_pica_upgrade') IS NULL THEN
-            RAISE EXCEPTION 'Missing creditor observation state; cleanup is unverified';
-        END IF;
-        IF (SELECT COUNT(*) FROM opal_test_pica_upgrade.observation)<>1
-           OR NOT EXISTS(SELECT 1 FROM opal_test_pica_upgrade.observation
-               WHERE scenario=CURRENT_SETTING('opal.pica_scenario')
-                 AND candidate=CURRENT_SETTING('opal.pica_candidate')
-                 AND predecessor=CURRENT_SETTING('opal.pica_predecessor')) THEN
-            RAISE EXCEPTION 'Creditor observation cleanup identity mismatch';
-        END IF;
-    END;
-    $owned$;
-    SELECT is((SELECT COUNT(*) FROM opal_test_pica_upgrade.observation),1::BIGINT,
-        'cleanup confirmed exact owned observation');
-    DROP TABLE opal_test_pica_upgrade.observation;
-    DROP SCHEMA opal_test_pica_upgrade;
+    SELECT pg_temp.opal_upgrade_load(:'opal_scenario_id', :'opal_candidate_version', :'opal_predecessor_version') AS saved_state \gset
+    SELECT ok(:'saved_state'::JSONB IS NOT NULL,'cleanup confirmed exact owned creditor observation');
+    SELECT pg_temp.opal_upgrade_remove(:'opal_scenario_id', :'opal_candidate_version', :'opal_predecessor_version');
     COMMIT;
-
-    -- Read committed removal from an independent backend; keep test tooling transactional.
     BEGIN;
     SET LOCAL search_path = public, pg_catalog;
     SET LOCAL statement_timeout = '30s';
-    CREATE EXTENSION IF NOT EXISTS dblink WITH SCHEMA public;
-    SELECT ok(observed.backend_pid<>PG_BACKEND_PID()
-        AND observed.namespace_absent AND observed.relation_absent,
-        'separate backend confirms committed consumer observation removal')
-    FROM public.DBLINK(
-        FORMAT('host=127.0.0.1 port=5432 dbname=%L user=postgres connect_timeout=5 options=%L',
-            CURRENT_DATABASE(),'-csearch_path=pg_catalog -cstatement_timeout=20000'),
-        'SELECT PG_BACKEND_PID(), TO_REGNAMESPACE(''opal_test_pica_upgrade'') IS NULL,
-            TO_REGCLASS(''opal_test_pica_upgrade.observation'') IS NULL'
-    ) AS observed(backend_pid INTEGER,namespace_absent BOOLEAN,relation_absent BOOLEAN);
+    SELECT ok(pg_temp.opal_upgrade_absent_from_new_backend(),
+        'separate backend confirms committed creditor observation removal');
     SELECT * FROM finish();
     ROLLBACK;
 \else
     \if :is_verify
-        SELECT plan(185);
+        SELECT plan(184);
         -- ---------------------------------------------------------------------
         -- Scenario: Candidate definition changes no predecessor data or objects.
         -- Setup: Compare committed observation before functional fixtures/calls.
         -- Expected: Exact identity and all scoped rows/definitions/sequences match.
         -- ---------------------------------------------------------------------
-        DO $required$
-        BEGIN
-            IF TO_REGCLASS('opal_test_pica_upgrade.observation') IS NULL THEN
-                RAISE EXCEPTION 'Durable predecessor observation unavailable';
-            END IF;
-        END;
-        $required$;
-        SELECT is((SELECT COUNT(*) FROM opal_test_pica_upgrade.observation),1::BIGINT,
-            'one predecessor observation survived a new connection');
-        SELECT ok(EXISTS(SELECT 1 FROM opal_test_pica_upgrade.observation
-            WHERE scenario=CURRENT_SETTING('opal.pica_scenario')
-              AND candidate=CURRENT_SETTING('opal.pica_candidate')
-              AND predecessor=CURRENT_SETTING('opal.pica_predecessor')),'observation matches actual P/C scenario');
+        SELECT pg_temp.opal_upgrade_load(:'opal_scenario_id', :'opal_candidate_version', :'opal_predecessor_version') AS saved_state \gset
+        SELECT ok(:'saved_state'::JSONB IS NOT NULL,'one predecessor observation survived a new connection');
         SELECT ok(
-            (SELECT state->'rows'
-             FROM opal_test_pica_upgrade.observation)
+            (:'saved_state'::JSONB->'rows')
                 IS NOT DISTINCT FROM
                 (pg_temp.ca_installation_state()->'rows'),
             'all seven predecessor row sets preserved'
         );
 
         SELECT ok(
-            (SELECT state-'rows'
-             FROM opal_test_pica_upgrade.observation)
+            (:'saved_state'::JSONB-'rows')
                 IS NOT DISTINCT FROM
                 (pg_temp.ca_installation_state()-'rows'),
             'table/helper/sequence definitions and sequence state preserved'
