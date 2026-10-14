@@ -287,34 +287,3 @@ row payloads do not appear in TAP diagnostics. Where observations persist across
 connections, verify committed removal independently. Record missing caller,
 service-role or publication evidence separately; passing routine tests do not
 establish those outcomes.
-
-## Publication Notes
-
-PO-10645 adds `public.p_insert_notes(BIGINT,VARCHAR,VARCHAR,JSON)` in
-V1_36 on the PO-10644 foundation 51dc844. It inserts exactly one NT row,
-preserving accepted Note text and author values. The optional absent Note is
-owned by `p_process_draft_casefiles`; the backend owns the publication transaction,
-rollback, statuses and retry. This helper returns no identifier and does not deduplicate.
-
-The owning flat suite is `p_insert_notes_pgtap_tests.sql`, with registration
-`p_insert_notes.create`, scope `both`, data `migration-created-only`. The selected
-predecessor is 1.35, resolved numerically across ddl/allEnvs/dev. No predecessor
-business fixtures are added. Preparation/cleanup commit only durable observations;
-fresh and functional verification roll back. Exact plans are fresh 491, prepare 7,
-verify 496 and cleanup 3. Source-matched normal dbUnitTest/build receipts are
-recorded in the PO-10645 handoff.
-
-Original author widths are 20/100 characters, including trailing spaces. JSON must
-have exactly one decoded string member note_text; duplicate/extra members fail.
-Blank classification uses all 25 Unicode 17.0.0 White_Space code points. UTF-8 is
-verified in the disposable target and remains a deployment assumption.
-
-Sanitized native failures preserve SQLSTATE and only exact public.notes catalogue
-identifiers (eight Notes columns; notes_pk). The safe-name allowlist does not
-authenticate a trigger's provenance. Pre-entry parsing, caller SQL/binding/context,
-parameter/error logging and native-state classification require separate caller evidence.
-
-Caller integration (PO-10655/PO-10629), separately owned API alignment and verified
-Database LLD publication remain outstanding. Routine passing results do not close
-those criteria. Target deletion/key-change races are not applicable to the agreed
-new-account publication transaction; post-publication association integrity is separately owned.
