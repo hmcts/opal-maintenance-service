@@ -11,64 +11,22 @@
  * ----------  ------------  ------------  ----------------------------------------
  * 13/10/2026  Frankie Moran  PO-10644  Initial pgTAP test suite.
  * 13/10/2026  Frankie Moran  PO-10644  Verify strict widths and forward replacement.
+ * 14/10/2026  Frankie Moran  PO-10643  Adopt enabling shared upgrade lifecycle.
  */
 -- OPAL-DB-UPGRADE {"id":"p_insert_debtor_detail.create","candidate":"ddl/V1_34__create_p_insert_debtor_detail_procedure.sql","scope":"both","data":"migration-created-only"}
 -- OPAL-DB-UPGRADE {"id":"p_insert_debtor_detail.strict_widths","candidate":"ddl/V1_35__replace_p_insert_debtor_detail_strict_widths.sql","scope":"both","data":"migration-created-only"}
 -- DB-04/DB-06: catalogue, mapping, errors, row scope, repeat and caller rollback.
 -- Original coverage applies at create; strict-width regressions apply on fresh/replacement.
-\set ON_ERROR_STOP on
-\if :{?opal_phase}
-\else
-    \set opal_phase fresh
-\endif
-SELECT :'opal_phase' IN ('fresh','prepare','verify','cleanup') AS valid_phase,
-       :'opal_phase'='prepare' AS is_prepare,
-       :'opal_phase'='verify' AS is_verify,
-       :'opal_phase'='cleanup' AS is_cleanup,
-       :'opal_phase'<>'fresh' AS needs_identity,
-       :'opal_phase'='fresh' AS strict_widths
-\gset
-\if :valid_phase
-\else
-    DO $guard$ BEGIN RAISE EXCEPTION 'Unknown debtor suite phase'; END; $guard$;
-\endif
+\ir framework/upgrade_lifecycle.sql
+SELECT :'opal_phase' = 'fresh' AS strict_widths \gset
 \if :needs_identity
-    \if :{?opal_scenario_id}
+    SELECT :'opal_scenario_id' = 'p_insert_debtor_detail.strict_widths' AS strict_widths \gset
+    \if :strict_widths
+        SELECT pg_temp.opal_upgrade_require_identity('p_insert_debtor_detail.strict_widths','1.35','1.34');
     \else
-        DO $guard$ BEGIN RAISE EXCEPTION 'Missing debtor scenario'; END; $guard$;
+        SELECT pg_temp.opal_upgrade_require_identity('p_insert_debtor_detail.create','1.34','1.33');
     \endif
-    \if :{?opal_candidate_version}
-    \else
-        DO $guard$ BEGIN RAISE EXCEPTION 'Missing debtor candidate'; END; $guard$;
-    \endif
-    \if :{?opal_predecessor_version}
-    \else
-        DO $guard$ BEGIN RAISE EXCEPTION 'Missing debtor predecessor'; END; $guard$;
-    \endif
-    SELECT SET_CONFIG('opal.dd_scenario',:'opal_scenario_id',false) AS scenario,
-           SET_CONFIG('opal.dd_candidate',:'opal_candidate_version',false) AS candidate,
-           SET_CONFIG('opal.dd_predecessor',:'opal_predecessor_version',false) AS predecessor
-    \gset
-    DO $guard$
-    BEGIN
-        IF CURRENT_SETTING('opal.dd_scenario') NOT IN
-               ('p_insert_debtor_detail.create','p_insert_debtor_detail.strict_widths')
-           OR CURRENT_SETTING('opal.dd_candidate')=''
-           OR CURRENT_SETTING('opal.dd_predecessor')='' THEN
-            RAISE EXCEPTION 'Invalid debtor upgrade identity';
-        END IF;
-    END;
-    $guard$;
-    SELECT CURRENT_SETTING('opal.dd_scenario')='p_insert_debtor_detail.strict_widths' AS strict_widths
-    \gset
 \endif
-DO $target$
-BEGIN
-    IF CURRENT_DATABASE()<>'opal_maintenance_db_unit_test' OR current_user<>'postgres' THEN
-        RAISE EXCEPTION 'Debtor tests require the disposable framework target';
-    END IF;
-END;
-$target$;
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap;
 SET LOCAL search_path = public, pg_catalog;
@@ -160,24 +118,11 @@ $state$;
         'existing employer Country foreign key exists');
     SELECT ok(EXISTS(SELECT 1 FROM public.countries WHERE cjs_code=1 AND international_code='GBR'),
         'real migration-created Country reference is nonempty');
-    DO $guard$
-    BEGIN
-        IF TO_REGNAMESPACE('opal_test_dd_upgrade') IS NOT NULL THEN
-            RAISE EXCEPTION 'Debtor observation namespace collision';
-        END IF;
-    END;
-    $guard$;
-    CREATE SCHEMA opal_test_dd_upgrade;
-    CREATE TABLE opal_test_dd_upgrade.observation (
-        scenario TEXT PRIMARY KEY,candidate TEXT NOT NULL,predecessor TEXT NOT NULL,state JSONB NOT NULL
-    );
-    INSERT INTO opal_test_dd_upgrade.observation VALUES (
-        CURRENT_SETTING('opal.dd_scenario'),CURRENT_SETTING('opal.dd_candidate'),
-        CURRENT_SETTING('opal.dd_predecessor'),pg_temp.dd_installation_state());
-    SELECT is((SELECT COUNT(*) FROM opal_test_dd_upgrade.observation),1::BIGINT,
-        'one durable debtor predecessor observation');
-    SELECT is((SELECT COUNT(*) FROM JSONB_OBJECT_KEYS(
-        (SELECT state->'rows' FROM opal_test_dd_upgrade.observation))),4::BIGINT,
+    SELECT pg_temp.opal_upgrade_save(:'opal_scenario_id', :'opal_candidate_version', :'opal_predecessor_version',
+        pg_temp.dd_installation_state());
+    SELECT pg_temp.opal_upgrade_load(:'opal_scenario_id', :'opal_candidate_version', :'opal_predecessor_version') AS saved_state \gset
+    SELECT ok(:'saved_state'::JSONB IS NOT NULL,'one durable debtor predecessor observation');
+    SELECT is((SELECT COUNT(*) FROM JSONB_OBJECT_KEYS(:'saved_state'::JSONB->'rows')),4::BIGINT,
         'exact four-table observation scope');
     SELECT * FROM finish();
     COMMIT;
@@ -185,73 +130,38 @@ $state$;
     SELECT plan(2);
     -- -------------------------------------------------------------------------
     -- Scenario: Remove committed debtor observations and verify persisted absence.
-    -- Setup: Exact scenario/P/C guard, owned drop, independent backend readback.
-    -- Expected: No unrelated object removed; consumer observation is truly absent.
+    -- Setup: Shared exact ownership guard, owned drop, independent backend readback.
+    -- Expected: Only owned observation state removed; committed namespace absent.
     -- -------------------------------------------------------------------------
-    DO $guard$
-    BEGIN
-        IF TO_REGCLASS('opal_test_dd_upgrade.observation') IS NULL THEN
-            RAISE EXCEPTION 'Debtor cleanup lacks owned observation';
-        END IF;
-        IF (SELECT COUNT(*) FROM opal_test_dd_upgrade.observation)<>1
-           OR NOT EXISTS(SELECT 1 FROM opal_test_dd_upgrade.observation
-              WHERE scenario=CURRENT_SETTING('opal.dd_scenario')
-                AND candidate=CURRENT_SETTING('opal.dd_candidate')
-                AND predecessor=CURRENT_SETTING('opal.dd_predecessor')) THEN
-            RAISE EXCEPTION 'Debtor cleanup ownership mismatch';
-        END IF;
-    END;
-    $guard$;
-    SELECT is((SELECT COUNT(*) FROM opal_test_dd_upgrade.observation),1::BIGINT,
-        'cleanup confirmed exact owned debtor observation');
-    DROP TABLE opal_test_dd_upgrade.observation;
-    DROP SCHEMA opal_test_dd_upgrade;
+    SELECT pg_temp.opal_upgrade_load(:'opal_scenario_id', :'opal_candidate_version', :'opal_predecessor_version') AS saved_state \gset
+    SELECT ok(:'saved_state'::JSONB IS NOT NULL,'cleanup confirmed exact owned debtor observation');
+    SELECT pg_temp.opal_upgrade_remove(:'opal_scenario_id', :'opal_candidate_version', :'opal_predecessor_version');
     COMMIT;
     BEGIN;
     SET LOCAL search_path = public, pg_catalog;
     SET LOCAL statement_timeout = '30s';
-    CREATE EXTENSION IF NOT EXISTS dblink WITH SCHEMA public;
-    SELECT ok(observed.backend_pid<>PG_BACKEND_PID()
-        AND observed.namespace_absent AND observed.relation_absent,
-        'separate backend confirms committed debtor observation removal')
-    FROM public.DBLINK(
-        FORMAT('host=127.0.0.1 port=5432 dbname=%L user=postgres connect_timeout=5 options=%L',
-            CURRENT_DATABASE(),'-csearch_path=pg_catalog -cstatement_timeout=20000'),
-        'SELECT PG_BACKEND_PID(), TO_REGNAMESPACE(''opal_test_dd_upgrade'') IS NULL,
-            TO_REGCLASS(''opal_test_dd_upgrade.observation'') IS NULL'
-    ) AS observed(backend_pid INTEGER,namespace_absent BOOLEAN,relation_absent BOOLEAN);
+    SELECT ok(pg_temp.opal_upgrade_absent_from_new_backend(),
+        'separate backend confirms committed debtor observation removal');
     SELECT * FROM finish();
     ROLLBACK;
 \else
     \if :is_verify
         \if :strict_widths
-            SELECT plan(178);
+            SELECT plan(177);
         \else
-            SELECT plan(145);
+            SELECT plan(144);
         \endif
         -- ---------------------------------------------------------------------
         -- Scenario: Installation preserves predecessor rows, objects and sequences.
         -- Setup: Compare durable P state before any fixture, CALL or NEXTVAL.
         -- Expected: Complete null-safe preservation; TAP receives only booleans.
         -- ---------------------------------------------------------------------
-        DO $guard$
-        BEGIN
-            IF TO_REGCLASS('opal_test_dd_upgrade.observation') IS NULL THEN
-                RAISE EXCEPTION 'Durable debtor observation unavailable';
-            END IF;
-        END;
-        $guard$;
-        SELECT is((SELECT COUNT(*) FROM opal_test_dd_upgrade.observation),1::BIGINT,
-            'debtor observation survives a new connection');
-        SELECT ok(EXISTS(SELECT 1 FROM opal_test_dd_upgrade.observation
-            WHERE scenario=CURRENT_SETTING('opal.dd_scenario')
-              AND candidate=CURRENT_SETTING('opal.dd_candidate')
-              AND predecessor=CURRENT_SETTING('opal.dd_predecessor')),
-            'debtor observation matches actual scenario and P/C');
-        SELECT ok((SELECT state->'rows' FROM opal_test_dd_upgrade.observation)
+        SELECT pg_temp.opal_upgrade_load(:'opal_scenario_id', :'opal_candidate_version', :'opal_predecessor_version') AS saved_state \gset
+        SELECT ok(:'saved_state'::JSONB IS NOT NULL,'debtor observation survives a new connection');
+        SELECT ok((:'saved_state'::JSONB->'rows')
             IS NOT DISTINCT FROM (pg_temp.dd_installation_state()->'rows'),
             'all four debtor predecessor row sets preserved');
-        SELECT ok((SELECT state-'rows' FROM opal_test_dd_upgrade.observation)
+        SELECT ok((:'saved_state'::JSONB-'rows')
             IS NOT DISTINCT FROM (pg_temp.dd_installation_state()-'rows'),
             'debtor table and sequence definitions and state preserved');
         SELECT ok(TO_REGPROCEDURE('public.p_insert_debtor_detail(json,character varying)') IS NOT NULL,
