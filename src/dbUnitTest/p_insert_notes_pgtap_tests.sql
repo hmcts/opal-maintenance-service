@@ -11,59 +11,15 @@
  * Date        Author         Ticket        Nature of Change
  * ----------  -------------  ------------  ----------------------------------------
  * 13/10/2026  Frankie Moran  PO-10645      Initial pgTAP test suite.
+ * 14/10/2026  Frankie Moran  PO-10643  Adopt enabling shared upgrade lifecycle.
  */
 -- OPAL-DB-UPGRADE {"id":"p_insert_notes.create","candidate":"ddl/V1_36__create_p_insert_notes_procedure.sql","scope":"both","data":"migration-created-only"}
 -- DB-04/DB-06: both fresh and upgrade; routine-only installation adds no business rows.
 
-\set ON_ERROR_STOP on
-\if :{?opal_phase}
-\else
-    \set opal_phase fresh
-\endif
-SELECT :'opal_phase' IN ('fresh','prepare','verify','cleanup') AS valid_phase,
-       :'opal_phase'='prepare' AS is_prepare,
-       :'opal_phase'='verify' AS is_verify,
-       :'opal_phase'='cleanup' AS is_cleanup,
-       :'opal_phase'<>'fresh' AS needs_identity
-\gset
-\if :valid_phase
-\else
-    DO $guard$ BEGIN RAISE EXCEPTION 'Unknown Notes phase'; END; $guard$;
-\endif
+\ir framework/upgrade_lifecycle.sql
 \if :needs_identity
-    \if :{?opal_scenario_id}
-    \else
-        DO $guard$ BEGIN RAISE EXCEPTION 'Missing Notes scenario'; END; $guard$;
-    \endif
-    \if :{?opal_candidate_version}
-    \else
-        DO $guard$ BEGIN RAISE EXCEPTION 'Missing Notes candidate'; END; $guard$;
-    \endif
-    \if :{?opal_predecessor_version}
-    \else
-        DO $guard$ BEGIN RAISE EXCEPTION 'Missing Notes predecessor'; END; $guard$;
-    \endif
-    SELECT SET_CONFIG('opal.notes_scenario',:'opal_scenario_id',false) AS scenario,
-           SET_CONFIG('opal.notes_candidate',:'opal_candidate_version',false) AS candidate,
-           SET_CONFIG('opal.notes_predecessor',:'opal_predecessor_version',false) AS predecessor
-    \gset
-    DO $identity$
-    BEGIN
-        IF CURRENT_SETTING('opal.notes_scenario')<>'p_insert_notes.create'
-           OR CURRENT_SETTING('opal.notes_candidate')<>'1.36'
-           OR CURRENT_SETTING('opal.notes_predecessor')<>'1.35' THEN
-            RAISE EXCEPTION 'Notes upgrade identity mismatch';
-        END IF;
-    END;
-    $identity$;
+    SELECT pg_temp.opal_upgrade_require_identity('p_insert_notes.create','1.36','1.35');
 \endif
-DO $target$
-BEGIN
-    IF CURRENT_DATABASE()<>'opal_maintenance_db_unit_test' OR CURRENT_USER<>'postgres' THEN
-        RAISE EXCEPTION 'Notes suite requires disposable framework target';
-    END IF;
-END;
-$target$;
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap;
 SET LOCAL search_path=public,pg_catalog;
@@ -124,7 +80,7 @@ $state$;
 
 
 \if :is_prepare
-    SELECT plan(7);
+    SELECT plan(6);
     -- -------------------------------------------------------------------------
     -- Scenario: Capture scoped real predecessor state before routine-only DDL.
     -- Setup: Native migrations to 1.35; no additional business fixtures.
@@ -139,109 +95,45 @@ $state$;
     SELECT ok(PG_GET_SERIAL_SEQUENCE('public.notes','note_id')='public.note_id_seq'
         AND PG_GET_SERIAL_SEQUENCE('public.respondent_accounts','respondent_account_id')='public.respondent_account_id_seq',
         'both existing sequence ownership paths exist');
-    DO $guard$ BEGIN
-        IF TO_REGNAMESPACE('opal_test_notes_upgrade') IS NOT NULL THEN
-            RAISE EXCEPTION 'Notes observation namespace collision';
-        END IF;
-    END; $guard$;
-    CREATE SCHEMA opal_test_notes_upgrade;
-    CREATE TABLE opal_test_notes_upgrade.observation(
-        scenario TEXT PRIMARY KEY,candidate TEXT NOT NULL,predecessor TEXT NOT NULL,
-        database_oid OID NOT NULL,database_name TEXT NOT NULL,owner_name TEXT NOT NULL,state JSONB NOT NULL
-    );
-    INSERT INTO opal_test_notes_upgrade.observation
-    SELECT CURRENT_SETTING('opal.notes_scenario'),CURRENT_SETTING('opal.notes_candidate'),
-        CURRENT_SETTING('opal.notes_predecessor'),oid,CURRENT_DATABASE(),CURRENT_USER,pg_temp.notes_state()
-    FROM pg_database WHERE datname=CURRENT_DATABASE();
-    SELECT ok((SELECT COUNT(*)=1 FROM opal_test_notes_upgrade.observation),'one durable Notes observation');
-    SELECT ok((SELECT COUNT(*) FROM JSONB_OBJECT_KEYS(
-        (SELECT state->'rows' FROM opal_test_notes_upgrade.observation)))=5,'exact five-table observation scope');
-    SELECT ok((SELECT COUNT(*) FROM pg_class WHERE relnamespace='opal_test_notes_upgrade'::REGNAMESPACE
-        AND relkind IN ('r','v','m','S','f'))=1,'only owned observation data relation created');
+    SELECT pg_temp.opal_upgrade_save(:'opal_scenario_id', :'opal_candidate_version', :'opal_predecessor_version',
+        pg_temp.notes_state());
+    SELECT pg_temp.opal_upgrade_load(:'opal_scenario_id', :'opal_candidate_version', :'opal_predecessor_version') AS saved_state \gset
+    SELECT ok(:'saved_state'::JSONB IS NOT NULL,'one durable Notes observation');
+    SELECT is((SELECT COUNT(*) FROM JSONB_OBJECT_KEYS(:'saved_state'::JSONB->'rows')),5::BIGINT,
+        'exact five-table observation scope');
     SELECT * FROM finish();
     COMMIT;
 \elif :is_cleanup
-    SELECT plan(3);
+    SELECT plan(2);
     -- -------------------------------------------------------------------------
-    -- Scenario: Remove exact owned durable observations and prove committed absence.
-    -- Setup: Identity/database/owner guards; drop without CASCADE; independent readback.
-    -- Expected: No unrelated state removed; namespace and relation absent on another backend.
+    -- Scenario: Remove committed Notes observations and verify persisted absence.
+    -- Setup: Shared exact ownership guard, owned drop, independent backend readback.
+    -- Expected: Only owned observation state removed; committed namespace absent.
     -- -------------------------------------------------------------------------
-    DO $guard$ BEGIN
-        IF TO_REGCLASS('opal_test_notes_upgrade.observation') IS NULL THEN
-            RAISE EXCEPTION 'Notes observation missing during cleanup';
-        END IF;
-    END; $guard$;
-    CREATE FUNCTION pg_temp.notes_observation_owned() RETURNS BOOLEAN LANGUAGE sql AS $owned$
-        SELECT (SELECT COUNT(*)=1 FROM opal_test_notes_upgrade.observation)
-            AND EXISTS(SELECT 1 FROM opal_test_notes_upgrade.observation
-                WHERE scenario=CURRENT_SETTING('opal.notes_scenario')
-                  AND candidate=CURRENT_SETTING('opal.notes_candidate')
-                  AND predecessor=CURRENT_SETTING('opal.notes_predecessor')
-                  AND database_oid=(SELECT oid FROM pg_database WHERE datname=CURRENT_DATABASE())
-                  AND database_name=CURRENT_DATABASE() AND owner_name=CURRENT_USER)
-            AND (SELECT nspowner=(SELECT oid FROM pg_roles WHERE rolname=CURRENT_USER)
-                 FROM pg_namespace WHERE nspname='opal_test_notes_upgrade');
-    $owned$;
-    DO $guard$ BEGIN
-        IF NOT COALESCE(pg_temp.notes_observation_owned(),false) THEN
-            RAISE EXCEPTION 'Notes observation ownership mismatch';
-        END IF;
-    END; $guard$;
-    SELECT ok(pg_temp.notes_observation_owned(),'cleanup verified exact observation identity');
-    SELECT ok((SELECT COUNT(*) FROM pg_class WHERE relnamespace='opal_test_notes_upgrade'::REGNAMESPACE
-        AND relkind IN ('r','v','m','S','f'))=1,'cleanup scope contains only observation data relation');
-    DROP TABLE opal_test_notes_upgrade.observation;
-    DROP SCHEMA opal_test_notes_upgrade;
+    SELECT pg_temp.opal_upgrade_load(:'opal_scenario_id', :'opal_candidate_version', :'opal_predecessor_version') AS saved_state \gset
+    SELECT ok(:'saved_state'::JSONB IS NOT NULL,'cleanup confirmed exact owned Notes observation');
+    SELECT pg_temp.opal_upgrade_remove(:'opal_scenario_id', :'opal_candidate_version', :'opal_predecessor_version');
     COMMIT;
     BEGIN;
-    SET LOCAL search_path=public,pg_catalog;
-    SET LOCAL statement_timeout='30s';
-    CREATE EXTENSION IF NOT EXISTS dblink WITH SCHEMA public;
-    SELECT ok(r.pid<>PG_BACKEND_PID() AND r.namespace_absent AND r.relation_absent,
-        'independent backend confirms committed observation removal')
-    FROM public.DBLINK(FORMAT(
-        'host=127.0.0.1 port=5432 dbname=%L user=postgres connect_timeout=5 options=%L',
-        CURRENT_DATABASE(),'-csearch_path=pg_catalog -cstatement_timeout=20000 -clock_timeout=5000'),
-        'SELECT PG_BACKEND_PID(),TO_REGNAMESPACE(''opal_test_notes_upgrade'') IS NULL,
-         TO_REGCLASS(''opal_test_notes_upgrade.observation'') IS NULL'
-    ) r(pid INTEGER,namespace_absent BOOLEAN,relation_absent BOOLEAN);
+    SET LOCAL search_path = public, pg_catalog;
+    SET LOCAL statement_timeout = '30s';
+    SELECT ok(pg_temp.opal_upgrade_absent_from_new_backend(),
+        'separate backend confirms committed Notes observation removal');
     SELECT * FROM finish();
     ROLLBACK;
 \else
     \if :is_verify
-        SELECT plan(496);
+        SELECT plan(495);
         -- ---------------------------------------------------------------------
         -- Scenario: Installation preserves predecessor rows, objects and sequences.
         -- Setup: Compare before fixtures, triggers, CALL or sequence consumption.
         -- Expected: Exact null-safe state equality; no payload in TAP diagnostics.
         -- ---------------------------------------------------------------------
-        DO $guard$ BEGIN
-            IF TO_REGCLASS('opal_test_notes_upgrade.observation') IS NULL THEN
-                RAISE EXCEPTION 'Notes predecessor observation unavailable';
-            END IF;
-        END; $guard$;
-        CREATE FUNCTION pg_temp.notes_observation_owned() RETURNS BOOLEAN LANGUAGE sql AS $owned$
-            SELECT (SELECT COUNT(*)=1 FROM opal_test_notes_upgrade.observation)
-                AND EXISTS(SELECT 1 FROM opal_test_notes_upgrade.observation
-                    WHERE scenario=CURRENT_SETTING('opal.notes_scenario')
-                      AND candidate=CURRENT_SETTING('opal.notes_candidate')
-                      AND predecessor=CURRENT_SETTING('opal.notes_predecessor')
-                      AND database_oid=(SELECT oid FROM pg_database WHERE datname=CURRENT_DATABASE())
-                      AND database_name=CURRENT_DATABASE() AND owner_name=CURRENT_USER)
-                AND (SELECT nspowner=(SELECT oid FROM pg_roles WHERE rolname=CURRENT_USER)
-                     FROM pg_namespace WHERE nspname='opal_test_notes_upgrade');
-        $owned$;
-        SELECT ok((SELECT COUNT(*)=1 FROM opal_test_notes_upgrade.observation),'durable observation survives connection');
-        SELECT ok(pg_temp.notes_observation_owned(),'durable observation matches scenario P C database and owner');
-        DO $guard$ BEGIN
-            IF NOT COALESCE(pg_temp.notes_observation_owned(),false) THEN
-                RAISE EXCEPTION 'Notes verification observation ownership mismatch';
-            END IF;
-        END; $guard$;
-        SELECT ok((SELECT state->'rows' FROM opal_test_notes_upgrade.observation)
+        SELECT pg_temp.opal_upgrade_load(:'opal_scenario_id', :'opal_candidate_version', :'opal_predecessor_version') AS saved_state \gset
+        SELECT ok(:'saved_state'::JSONB IS NOT NULL,'durable observation survives connection');
+        SELECT ok((:'saved_state'::JSONB->'rows')
             IS NOT DISTINCT FROM (pg_temp.notes_state()->'rows'),'all scoped predecessor rows preserved');
-        SELECT ok((SELECT state->'metadata' FROM opal_test_notes_upgrade.observation)
+        SELECT ok((:'saved_state'::JSONB->'metadata')
             IS NOT DISTINCT FROM (pg_temp.notes_state()->'metadata'),'catalogues enums and sequence definition values ownership preserved');
         SELECT ok(TO_REGPROCEDURE('public.p_insert_notes(bigint,character varying,character varying,json)') IS NOT NULL,
             'candidate procedure installed before functional mutation');
