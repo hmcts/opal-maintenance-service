@@ -66,6 +66,13 @@ Detailed requirements are defined in [Migration locations],
   Prechecks and SQLSTATE translations add a documented requirement beyond
   existing constraints; compatible errors and useful diagnostics are preserved,
   and failures are not swallowed or converted into successful outcomes.
+- [ ] New Maintenance procedures include the
+  [common explicit exception handler](DATABASE_MIGRATIONS.md#exception-messages-and-defaults).
+  Original SQLSTATE and applicable diagnostics are retained; agreed translations
+  have a documented contract and tests. Unchanged rethrow is not presented as
+  sanitisation. A changed diagnostic exposure or moved request-validation rule
+  identifies the actual backend owner and its response/log or validation
+  evidence; any separately owned unmet dependency remains explicit.
 - [ ] Stored procedures perform database work and raise exceptions; backend
   services own transaction boundaries and run-status updates. Procedures do
   not commit or roll back backend-owned transactions.
@@ -91,15 +98,26 @@ and [Testing](TESTING.md#infrastructure-and-evidence).
   [Routine suites and framework gaps](TESTING.md#routine-suites-and-framework-gaps),
   and the authoritative [pgTAP suite layout](TESTING.md#pgtap-suite-layout), with
   one owning `*_pgtap_tests.sql` suite containing its fixtures, temporary SQL
-  helpers, assertions, and cleanup. Every new suite is directly under
-  `src/dbUnitTest`; existing paths remain unless relocation is explicitly in scope.
+  helpers, functional assertions and real-session coordination. Every new suite
+  is directly under `src/dbUnitTest`; existing paths remain unless relocation is
+  explicitly in scope.
   Required database coverage and coordination stay in the owning SQL/pgTAP
   suite and existing framework, including supported in-suite concurrency
-  mechanisms. Only the fixed shared framework lifecycle include and framework
-  regression fixtures use the documented layout exceptions; owner snapshots,
-  fixtures, preservation assertions and concurrency remain in the flat owning
-  suite. Required affected/full replay evidence identifies comparison provenance,
-  fallback, selected/excluded status and each consumer's actual execution.
+  mechanisms. Compact declarations link migrations to relevant preservation
+  scope, changed objects and compatible assertion groups. The fixed support
+  manifest owns helper loading/fingerprints; shared SQL owns capture, comparison,
+  dispatch, committed observations and independently checked cleanup. Optional
+  risk-specific `upgradeCases/` SQL and fixed `framework/` regressions are loaded
+  explicitly, never discovered as fresh suites. New suites do not duplicate
+  lifecycle phases; legacy consumer interfaces retain coverage until separately
+  reviewed adaptation is verified. Required affected/full replay evidence
+  identifies comparison provenance, fallback, selected/excluded status and each
+  consumer's actual execution. Immutable committed HEAD/comparison migration
+  paths and bytes, unique versions and append-only selected history are verified
+  before target creation. Full fallback cannot excuse history-policy errors;
+  outside-location migrations remain Unverified until their applicable
+  configuration is tested. Shared changes execute the native framework matrix
+  and full replay, with actual results recorded.
   Framework gaps are recorded and resolved before
   claiming the affected verification complete.
 - [ ] SQL tests cover applicable success, empty, validation, failure, boundary,

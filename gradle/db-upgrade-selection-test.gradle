@@ -263,6 +263,226 @@ tasks.register('dbUnitTestSelectionTest') {
           rejects { project.ext.parseDbUpgradeMetadata(malformed,'fixture') }
         }
       }
+      ['committed','indexed','worktree'].each { state ->
+        check("historical migration modification rejected ${state}") {
+          def f = fixture()
+          write(f.repo, 'src/main/resources/db/migration/ddl/V1_1__old.sql', 'changed historic migration\n')
+          if (state == 'indexed') { git(f.repo,['add','.']) }
+          if (state == 'committed') { commit(f) }
+          rejects { select(f) }
+        }
+      }
+      ['committed','indexed','worktree'].each { state ->
+        check("historical migration deletion rejected ${state}") {
+          def f = fixture()
+          new File(f.repo,'src/main/resources/db/migration/ddl/V1_1__old.sql').delete()
+          f.scenarios.remove(0)
+          if (state == 'indexed') { git(f.repo,['add','.']) }
+          if (state == 'committed') { commit(f) }
+          rejects { select(f) }
+        }
+      }
+      check('historical migration rename rejected even with updated declaration') {
+        def f = fixture()
+        git(f.repo,['mv','src/main/resources/db/migration/ddl/V1_1__old.sql',
+          'src/main/resources/db/migration/ddl/V1_1__renamed.sql']); commit(f)
+        f.scenarios[0].candidate = 'ddl/V1_1__renamed.sql'
+        rejects { select(f) }
+      }
+      ['full','missing','absent'].each { context ->
+        check("HEAD migration immutability remains mandatory ${context}") {
+          def f = fixture()
+          write(f.repo,'src/main/resources/db/migration/ddl/V1_2__new.sql','new committed candidate\n'); commit(f)
+          f.scenarios.add([id:'fixture.new',candidate:'ddl/V1_2__new.sql',owner:f.scenarios[0].owner,inputs:[]])
+          write(f.repo,'src/main/resources/db/migration/ddl/V1_2__new.sql','changed committed candidate\n')
+          def options = context == 'full' ? [mode:'full'] : [comparisonRef:context == 'missing' ? 'missing-base' : null]
+          rejects { select(f,options) }
+        }
+      }
+      check('HEAD migration deletion remains mandatory without comparison') {
+        def f = fixture()
+        write(f.repo,'src/main/resources/db/migration/ddl/V1_2__new.sql','new committed candidate\n'); commit(f)
+        new File(f.repo,'src/main/resources/db/migration/ddl/V1_2__new.sql').delete()
+        rejects { select(f,[comparisonRef:null]) }
+      }
+      check('new lower selected version is rejected') {
+        def f = fixture()
+        write(f.repo,'src/main/resources/db/migration/ddl/V1_0_5__inserted.sql','new lower candidate\n'); commit(f)
+        f.scenarios.add([id:'fixture.inserted',candidate:'ddl/V1_0_5__inserted.sql',owner:f.scenarios[0].owner,inputs:[]])
+        rejects { select(f) }
+      }
+      check('untracked lower selected version is rejected') {
+        def f = fixture()
+        write(f.repo,'src/main/resources/db/migration/ddl/V1_0_5__inserted.sql','new lower candidate\n')
+        f.scenarios.add([id:'fixture.inserted',candidate:'ddl/V1_0_5__inserted.sql',owner:f.scenarios[0].owner,inputs:[]])
+        rejects { select(f) }
+      }
+      check('multiple new candidates selected with numerical history evidence') {
+        def f = fixture()
+        ['V1_2__new.sql','V1_10__later.sql'].each { name ->
+          write(f.repo,"src/main/resources/db/migration/ddl/${name}",'new candidate\n')
+          f.scenarios.add([id:name == 'V1_2__new.sql' ? 'fixture.new' : 'fixture.later',
+            candidate:"ddl/${name}".toString(),owner:f.scenarios[0].owner,inputs:[]])
+        }
+        commit(f)
+        def result = select(f)
+        assert result.selected*.id == ['fixture.new','fixture.later']
+        assert result.historyValidation.status == 'PASS'
+        assert result.historyValidation.addedSelectedPaths == ['ddl/V1_2__new.sql','ddl/V1_10__later.sql']
+        assert result.historyValidation.comparisonSha == f.base
+        assert result.historyValidation.testedInventory*.version == ['1','1.1','1.2','1.10']
+      }
+      check('complete-tree normalized collision is rejected across environments') {
+        def f = fixture()
+        write(f.repo,'src/main/resources/db/migration/data/stg/V1_1_0__collision.sql','collision\n'); commit(f)
+        rejects { select(f) }
+      }
+      check('outside-location added migration reports explicit unverified evidence') {
+        def f = fixture()
+        write(f.repo,'src/main/resources/db/migration/data/stg/V1_2__stage.sql','stage candidate\n'); commit(f)
+        def result = select(f)
+        assert result.unverifiedMigrations*.path == ['data/stg/V1_2__stage.sql']
+        assert result.unverifiedMigrations[0].version == '1.2'
+        assert result.unverifiedMigrations[0].reason.contains('outside selected locations')
+        assert result.historyValidation.testedInventory*.path.contains('data/stg/V1_2__stage.sql')
+      }
+      check('ignored outside-location migration is still reported') {
+        def f = fixture()
+        new File(f.repo,'.git/info/exclude').text = 'src/main/resources/db/migration/data/stg/\n'
+        write(f.repo,'src/main/resources/db/migration/data/stg/V1_2__ignored.sql','ignored stage candidate\n')
+        assert select(f).unverifiedMigrations*.path == ['data/stg/V1_2__ignored.sql']
+      }
+      check('outside-location historic migration is still immutable') {
+        def f = fixture()
+        write(f.repo,'src/main/resources/db/migration/data/stg/V1_2__historic.sql','historic stage\n'); commit(f)
+        f.base = git(f.repo,['rev-parse','HEAD'])
+        write(f.repo,'src/main/resources/db/migration/data/stg/V1_2__historic.sql','modified stage\n'); commit(f)
+        rejects { select(f) }
+      }
+      check('missing context records unavailable comparison and validates HEAD bytes') {
+        def f = fixture()
+        def result = select(f,[comparisonRef:null])
+        assert result.mode == 'full'
+        assert result.historyValidation.headSha == git(f.repo,['rev-parse','HEAD'])
+        assert result.historyValidation.status == 'Comparison unavailable — HEAD immutability verified'
+        assert result.historyValidation.comparisonSha == null
+      }
+      ['src/dbUnitTest/support/manifest.json','src/dbUnitTest/support/preservation.sql'].each { path ->
+        check("declared shared support requires full and framework tests ${path}") {
+          def f = fixture()
+          write(f.repo,path,'shared support\n')
+          f.scenarios[0].inputs = [path]
+          def result = select(f)
+          assert result.mode == 'full'
+          assert result.frameworkTestsRequired
+          assert result.fallbackReason.contains(path)
+        }
+      }
+      check('shared runner changes require framework tests') {
+        def f = fixture(); write(f.repo,'gradle/db-unit-test.gradle','changed runner\n')
+        assert select(f).frameworkTestsRequired
+      }
+      check('owner-only changes do not require framework tests') {
+        def f = fixture(); write(f.repo,'src/dbUnitTest/old_pgtap_tests.sql','changed assertions\n')
+        assert select(f).frameworkTestsRequired == false
+      }
+      check('indexed migration changes cannot be hidden by restored working bytes') {
+        def f = fixture()
+        write(f.repo,'src/main/resources/db/migration/ddl/V1_1__old.sql','indexed changed migration\n')
+        git(f.repo,['add','.'])
+        write(f.repo,'src/main/resources/db/migration/ddl/V1_1__old.sql','initial\n')
+        rejects { select(f,[comparisonRef:null]) }
+      }
+      check('indexed normalized collision cannot be hidden by working deletion') {
+        def f = fixture()
+        def path = 'src/main/resources/db/migration/data/stg/V1_1_0__collision.sql'
+        write(f.repo,path,'indexed collision\n'); git(f.repo,['add','.'])
+        new File(f.repo,path).delete()
+        rejects { select(f,[comparisonRef:null]) }
+      }
+      check('explicit full without context still requires framework tests') {
+        def f = fixture()
+        write(f.repo,'src/dbUnitTest/support/preservation.sql','changed shared support\n')
+        assert select(f,[mode:'full',comparisonRef:null]).frameworkTestsRequired
+      }
+      ['affected','full'].each { mode ->
+        check("HEAD lower working addition rejected without comparison ${mode}") {
+          def f = fixture()
+          write(f.repo,'src/main/resources/db/migration/ddl/V1_0_5__inserted.sql','lower working candidate\n')
+          f.scenarios.add([id:'fixture.inserted',candidate:'ddl/V1_0_5__inserted.sql',owner:f.scenarios[0].owner,inputs:[]])
+          rejects { select(f,[mode:mode,comparisonRef:null]) }
+        }
+      }
+      check('HEAD lower working addition rejected with missing comparison object') {
+        def f = fixture()
+        write(f.repo,'src/main/resources/db/migration/ddl/V1_0_5__inserted.sql','lower working candidate\n')
+        f.scenarios.add([id:'fixture.inserted',candidate:'ddl/V1_0_5__inserted.sql',owner:f.scenarios[0].owner,inputs:[]])
+        rejects { select(f,[comparisonRef:'missing-base']) }
+      }
+      check('HEAD lower index addition rejected despite working deletion and no comparison') {
+        def f = fixture()
+        def path = 'src/main/resources/db/migration/ddl/V1_0_5__inserted.sql'
+        write(f.repo,path,'lower indexed candidate\n'); git(f.repo,['add','.'])
+        new File(f.repo,path).delete()
+        rejects { select(f,[comparisonRef:null]) }
+      }
+      check('new appended working candidate remains allowed without comparison') {
+        def f = fixture()
+        write(f.repo,'src/main/resources/db/migration/ddl/V1_2__appended.sql','appended working candidate\n')
+        f.scenarios.add([id:'fixture.appended',candidate:'ddl/V1_2__appended.sql',owner:f.scenarios[0].owner,inputs:[]])
+        def result = select(f,[comparisonRef:null])
+        assert result.mode == 'full'
+        assert result.selected*.id == ['fixture.unchanged','fixture.other','fixture.appended']
+        assert result.historyValidation.status == 'Comparison unavailable — HEAD immutability verified'
+      }
+      def archiveFixture = { boolean invalidGit ->
+        def repository = Files.createTempDirectory('opal-selection-archive-').toFile()
+        roots.add(repository)
+        write(repository,'src/main/resources/db/migration/ddl/V1_1__archive.sql','archive candidate\n')
+        write(repository,'src/dbUnitTest/archive_pgtap_tests.sql','archive assertions\n')
+        if (invalidGit) { new File(repository,'.git').text='gitdir: missing.git\n' }
+        [repo:repository, base:null, scenarios:[[id:'fixture.archive',candidate:'ddl/V1_1__archive.sql',
+          owner:new File(repository,'src/dbUnitTest/archive_pgtap_tests.sql'),inputs:[]]]]
+      }
+      ['archive','invalid-git'].each { context ->
+        check("unavailable Git ${context} conservatively replays all scenarios") {
+          def f = archiveFixture(context == 'invalid-git')
+          def result = select(f,[comparisonRef:null])
+          assert result.mode == 'full'
+          assert result.selected*.id == ['fixture.archive']
+          assert result.fallbackReason
+          assert result.frameworkTestsRequired
+          assert result.historyValidation.headInventoryStatus == 'Unavailable'
+          assert result.historyValidation.indexInventoryStatus == 'Unavailable'
+          assert result.historyValidation.testedInventory*.path == ['ddl/V1_1__archive.sql']
+        }
+      }
+      check('unavailable index retains verified HEAD and conservatively replays all') {
+        def f = fixture()
+        new File(f.repo,'.git/index').text='fixed corrupt index\n'
+        def result = select(f,[comparisonRef:null])
+        assert result.mode == 'full'
+        assert result.selected*.id == ['fixture.unchanged','fixture.other']
+        assert result.frameworkTestsRequired
+        assert result.historyValidation.headInventoryStatus == 'Verified'
+        assert result.historyValidation.indexInventoryStatus == 'Unavailable'
+        assert result.historyValidation.headSha == f.base
+      }
+      check('unavailable Git cannot hide a working version collision') {
+        def f = archiveFixture(false)
+        write(f.repo,'src/main/resources/db/migration/data/stg/V1_1_0__collision.sql','archive collision\n')
+        def observed = null
+        try { select(f,[comparisonRef:null]) }
+        catch (org.gradle.api.GradleException expected) { observed=expected }
+        assert observed?.message?.contains('Duplicate normalized migration version')
+      }
+      check('dirty migration symbolic link rejected without reading its target') {
+        def f = fixture()
+        def candidate = new File(f.repo,'src/main/resources/db/migration/ddl/V1_1__old.sql').toPath()
+        Files.delete(candidate)
+        Files.createSymbolicLink(candidate,new File(f.repo,'README.md').toPath())
+        rejects { select(f,[comparisonRef:null]) }
+      }
     } finally { roots.each { it.deleteDir() } }
     if (!failures.isEmpty()) { throw new org.gradle.api.GradleException("Selection regressions failed (${failures.size()}):\n" + failures.join('\n')) }
     logger.lifecycle("Selection regressions: ${checks} passed")
