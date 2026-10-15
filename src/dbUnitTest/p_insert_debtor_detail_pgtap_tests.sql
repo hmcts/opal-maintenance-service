@@ -12,20 +12,25 @@
  * 13/10/2026  Frankie Moran  PO-10644  Initial pgTAP test suite.
  * 13/10/2026  Frankie Moran  PO-10644  Verify strict widths and forward replacement.
  * 14/10/2026  Frankie Moran  PO-10643  Adopt enabling shared upgrade lifecycle.
+ * 15/10/2026  Frankie Moran  PO-10644  Adopt shared contracts and verify preserved error diagnostics.
  */
--- OPAL-DB-UPGRADE {"id":"p_insert_debtor_detail.create","candidate":"ddl/V1_34__create_p_insert_debtor_detail_procedure.sql","scope":"both","data":"migration-created-only"}
--- OPAL-DB-UPGRADE {"id":"p_insert_debtor_detail.strict_widths","candidate":"ddl/V1_35__replace_p_insert_debtor_detail_strict_widths.sql","scope":"both","data":"migration-created-only"}
+-- OPAL-DB-UPGRADE {"id":"p_insert_debtor_detail.create","candidate":"ddl/V1_34__create_p_insert_debtor_detail_procedure.sql","scope":"both","data":"migration-created-only","contract":{"type":"additive","objects":{"created":[{"kind":"routine","identity":"public.p_insert_debtor_detail(json,character varying)"}],"replaced":[]},"preserve":{"rows":["public.debtor_detail","public.countries","public.draft_casefiles","public.respondent_accounts"],"tables":["public.debtor_detail","public.countries"],"routines":[],"enums":[],"sequences":["public.debtor_detail_id_seq","public.country_id_seq"]},"assertion":"debtor.create"}}
+-- OPAL-DB-UPGRADE {"id":"p_insert_debtor_detail.strict_widths","candidate":"ddl/V1_35__replace_p_insert_debtor_detail_strict_widths.sql","scope":"both","data":"migration-created-only","contract":{"type":"replacement","objects":{"created":[],"replaced":[{"kind":"routine","identity":"public.p_insert_debtor_detail(json,character varying)"}]},"preserve":{"rows":["public.debtor_detail","public.countries","public.draft_casefiles","public.respondent_accounts"],"tables":["public.debtor_detail","public.countries"],"routines":[],"enums":[],"sequences":["public.debtor_detail_id_seq","public.country_id_seq"]},"assertion":"debtor.strict_widths"}}
+-- OPAL-DB-UPGRADE {"id":"p_insert_debtor_detail.error_handler","candidate":"ddl/V1_38__replace_p_insert_debtor_detail_error_handler.sql","scope":"both","data":"migration-created-only","contract":{"type":"replacement","objects":{"created":[],"replaced":[{"kind":"routine","identity":"public.p_insert_debtor_detail(json,character varying)"}]},"preserve":{"rows":["public.debtor_detail","public.countries","public.draft_casefiles","public.respondent_accounts"],"tables":["public.debtor_detail","public.countries"],"routines":[],"enums":[],"sequences":["public.debtor_detail_id_seq","public.country_id_seq"]},"assertion":"debtor.current"}}
 -- DB-04/DB-06: catalogue, mapping, errors, row scope, repeat and caller rollback.
--- Original coverage applies at create; strict-width regressions apply on fresh/replacement.
-\ir framework/upgrade_lifecycle.sql
-SELECT :'opal_phase' = 'fresh' AS strict_widths \gset
-\if :needs_identity
-    SELECT :'opal_scenario_id' = 'p_insert_debtor_detail.strict_widths' AS strict_widths \gset
-    \if :strict_widths
-        SELECT pg_temp.opal_upgrade_require_identity('p_insert_debtor_detail.strict_widths','1.35','1.34');
-    \else
-        SELECT pg_temp.opal_upgrade_require_identity('p_insert_debtor_detail.create','1.34','1.33');
-    \endif
+-- Historical groups retain their original contracts without requiring later handlers.
+-- Shared support owns predecessor preservation, lifecycle and independent cleanup.
+\set ON_ERROR_STOP 1
+\if :{?opal_assertion_group}
+\else
+    \set opal_assertion_group debtor.current
+\endif
+SELECT :'opal_assertion_group' IN ('debtor.create','debtor.strict_widths','debtor.current') AS valid_debtor_group,
+       :'opal_assertion_group' <> 'debtor.create' AS strict_widths,
+       :'opal_assertion_group' = 'debtor.current' AS current_contract \gset
+\if :valid_debtor_group
+\else
+    DO $group$ BEGIN RAISE EXCEPTION 'Unknown debtor assertion group'; END; $group$;
 \endif
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap;
@@ -34,16 +39,11 @@ SET LOCAL TIME ZONE 'UTC';
 SET LOCAL statement_timeout = '30s';
 SET LOCAL lock_timeout = '5s';
 
-CREATE FUNCTION pg_temp.dd_installation_state() RETURNS JSONB LANGUAGE plpgsql AS $state$
+CREATE FUNCTION pg_temp.dd_scope_rows() RETURNS JSONB LANGUAGE plpgsql AS $state$
 DECLARE
     v_table TEXT;
     v_rows JSONB := '{}'::JSONB;
     v_values JSONB;
-    v_columns JSONB;
-    v_constraints JSONB;
-    v_indexes JSONB;
-    v_sequences JSONB;
-    v_ownership JSONB;
 
 BEGIN
     FOREACH v_table IN ARRAY ARRAY[
@@ -57,118 +57,17 @@ BEGIN
         INTO v_values;
         v_rows := v_rows || JSONB_BUILD_OBJECT(v_table,v_values);
     END LOOP;
-    SELECT JSONB_AGG(TO_JSONB(c) ORDER BY c.table_name,c.position) INTO v_columns
-    FROM (
-        SELECT a.attrelid::REGCLASS::TEXT AS table_name,a.attnum AS position,a.attname,
-               FORMAT_TYPE(a.atttypid,a.atttypmod) AS type,a.attnotnull,a.attidentity,a.attgenerated,
-               PG_GET_EXPR(d.adbin,d.adrelid) AS default_expression,
-               COL_DESCRIPTION(a.attrelid,a.attnum) AS comment
-        FROM pg_attribute a LEFT JOIN pg_attrdef d
-          ON d.adrelid=a.attrelid AND d.adnum=a.attnum
-        WHERE a.attrelid IN ('public.debtor_detail'::REGCLASS,'public.countries'::REGCLASS)
-          AND a.attnum>0 AND NOT a.attisdropped
-    ) c;
-    SELECT JSONB_AGG(TO_JSONB(c) ORDER BY c.table_name,c.conname) INTO v_constraints
-    FROM (
-        SELECT conrelid::REGCLASS::TEXT AS table_name,conname,contype,convalidated,
-               condeferrable,condeferred,PG_GET_CONSTRAINTDEF(oid,false) AS definition
-        FROM pg_constraint WHERE conrelid IN
-            ('public.debtor_detail'::REGCLASS,'public.countries'::REGCLASS)
-    ) c;
-    SELECT JSONB_AGG(TO_JSONB(i) ORDER BY i.table_name,i.index_name) INTO v_indexes
-    FROM (
-        SELECT indrelid::REGCLASS::TEXT AS table_name,indexrelid::REGCLASS::TEXT AS index_name,
-               indisvalid,indisready,PG_GET_INDEXDEF(indexrelid) AS definition
-        FROM pg_index WHERE indrelid IN
-            ('public.debtor_detail'::REGCLASS,'public.countries'::REGCLASS)
-    ) i;
-    SELECT JSONB_AGG(TO_JSONB(s) ORDER BY s.seqrelid) INTO v_sequences FROM pg_sequence s
-    WHERE seqrelid IN ('public.debtor_detail_id_seq'::REGCLASS,'public.country_id_seq'::REGCLASS);
-    SELECT JSONB_AGG(TO_JSONB(d) ORDER BY d.objid,d.refobjid,d.refobjsubid,d.deptype)
-    INTO v_ownership FROM pg_depend d
-    WHERE d.classid='pg_class'::REGCLASS AND d.refclassid='pg_class'::REGCLASS
-      AND d.objid IN ('public.debtor_detail_id_seq'::REGCLASS,'public.country_id_seq'::REGCLASS);
-    RETURN JSONB_BUILD_OBJECT('rows',v_rows,'columns',v_columns,'constraints',v_constraints,
-        'indexes',v_indexes,'sequences',v_sequences,'ownership',v_ownership,
-        'debtor_sequence',(SELECT JSONB_BUILD_ARRAY(last_value,is_called) FROM public.debtor_detail_id_seq),
-        'country_sequence',(SELECT JSONB_BUILD_ARRAY(last_value,is_called) FROM public.country_id_seq));
+    RETURN v_rows;
 END;
 $state$;
 
-\if :is_prepare
-    SELECT plan(7);
-    -- -------------------------------------------------------------------------
-    -- Scenario: Observe the real predecessor before routine-only installation.
-    -- Setup: Native selected P migrations only; no extra business fixtures.
-    -- Expected: Create predecessor lacks procedure; replacement predecessor has it.
-    -- -------------------------------------------------------------------------
-    \if :strict_widths
-        SELECT ok(TO_REGPROCEDURE('public.p_insert_debtor_detail(json,character varying)') IS NOT NULL,
-            'debtor procedure exists before strict-width replacement');
-    \else
-        SELECT ok(TO_REGPROCEDURE('public.p_insert_debtor_detail(json,character varying)') IS NULL,
-            'debtor procedure absent at create predecessor');
-    \endif
-    SELECT ok(TO_REGCLASS('public.debtor_detail') IS NOT NULL
-        AND TO_REGCLASS('public.countries') IS NOT NULL,'debtor tables exist');
-    SELECT ok(TO_REGCLASS('public.debtor_detail_id_seq') IS NOT NULL
-        AND TO_REGCLASS('public.country_id_seq') IS NOT NULL,'existing owned sequences exist');
-    SELECT ok(EXISTS(SELECT 1 FROM pg_constraint
-        WHERE conrelid='public.debtor_detail'::REGCLASS AND conname='dd_employer_country_id_fk'),
-        'existing employer Country foreign key exists');
-    SELECT ok(EXISTS(SELECT 1 FROM public.countries WHERE cjs_code=1 AND international_code='GBR'),
-        'real migration-created Country reference is nonempty');
-    SELECT pg_temp.opal_upgrade_save(:'opal_scenario_id', :'opal_candidate_version', :'opal_predecessor_version',
-        pg_temp.dd_installation_state());
-    SELECT pg_temp.opal_upgrade_load(:'opal_scenario_id', :'opal_candidate_version', :'opal_predecessor_version') AS saved_state \gset
-    SELECT ok(:'saved_state'::JSONB IS NOT NULL,'one durable debtor predecessor observation');
-    SELECT is((SELECT COUNT(*) FROM JSONB_OBJECT_KEYS(:'saved_state'::JSONB->'rows')),4::BIGINT,
-        'exact four-table observation scope');
-    SELECT * FROM finish();
-    COMMIT;
-\elif :is_cleanup
-    SELECT plan(2);
-    -- -------------------------------------------------------------------------
-    -- Scenario: Remove committed debtor observations and verify persisted absence.
-    -- Setup: Shared exact ownership guard, owned drop, independent backend readback.
-    -- Expected: Only owned observation state removed; committed namespace absent.
-    -- -------------------------------------------------------------------------
-    SELECT pg_temp.opal_upgrade_load(:'opal_scenario_id', :'opal_candidate_version', :'opal_predecessor_version') AS saved_state \gset
-    SELECT ok(:'saved_state'::JSONB IS NOT NULL,'cleanup confirmed exact owned debtor observation');
-    SELECT pg_temp.opal_upgrade_remove(:'opal_scenario_id', :'opal_candidate_version', :'opal_predecessor_version');
-    COMMIT;
-    BEGIN;
-    SET LOCAL search_path = public, pg_catalog;
-    SET LOCAL statement_timeout = '30s';
-    SELECT ok(pg_temp.opal_upgrade_absent_from_new_backend(),
-        'separate backend confirms committed debtor observation removal');
-    SELECT * FROM finish();
-    ROLLBACK;
+\if :current_contract
+    SELECT plan(240);
+\elif :strict_widths
+    SELECT plan(173);
 \else
-    \if :is_verify
-        \if :strict_widths
-            SELECT plan(177);
-        \else
-            SELECT plan(144);
-        \endif
-        -- ---------------------------------------------------------------------
-        -- Scenario: Installation preserves predecessor rows, objects and sequences.
-        -- Setup: Compare durable P state before any fixture, CALL or NEXTVAL.
-        -- Expected: Complete null-safe preservation; TAP receives only booleans.
-        -- ---------------------------------------------------------------------
-        SELECT pg_temp.opal_upgrade_load(:'opal_scenario_id', :'opal_candidate_version', :'opal_predecessor_version') AS saved_state \gset
-        SELECT ok(:'saved_state'::JSONB IS NOT NULL,'debtor observation survives a new connection');
-        SELECT ok((:'saved_state'::JSONB->'rows')
-            IS NOT DISTINCT FROM (pg_temp.dd_installation_state()->'rows'),
-            'all four debtor predecessor row sets preserved');
-        SELECT ok((:'saved_state'::JSONB-'rows')
-            IS NOT DISTINCT FROM (pg_temp.dd_installation_state()-'rows'),
-            'debtor table and sequence definitions and state preserved');
-        SELECT ok(TO_REGPROCEDURE('public.p_insert_debtor_detail(json,character varying)') IS NOT NULL,
-            'debtor procedure installed before functional mutation');
-    \else
-        SELECT plan(173);
-    \endif
+    SELECT plan(140);
+\endif
 
 -- -----------------------------------------------------------------------------
 -- Scenario: Synthetic fixtures isolate mapping, duplicate resolution and row scope.
@@ -215,19 +114,32 @@ BEGIN
 END;
 $call$;
 CREATE FUNCTION pg_temp.dd_probe(p_payload JSON,p_info VARCHAR) RETURNS JSONB LANGUAGE plpgsql AS $probe$
-DECLARE v_id BIGINT; v_constraint TEXT;
+DECLARE
+    v_id BIGINT;
+    v_detail TEXT;
+    v_hint TEXT;
+    v_schema TEXT;
+    v_table TEXT;
+    v_column TEXT;
+    v_constraint TEXT;
+    v_context TEXT;
 
 BEGIN
     v_id := pg_temp.dd_call(p_payload,p_info);
-    RETURN JSONB_BUILD_OBJECT('id',v_id,'state',NULL,'constraint',NULL);
+    RETURN JSONB_BUILD_OBJECT('id',v_id,'state',NULL,'constraint',NULL,'succeeded',true);
 
-EXCEPTION WHEN OTHERS THEN
-    GET STACKED DIAGNOSTICS v_constraint = CONSTRAINT_NAME;
+EXCEPTION
+    WHEN query_canceled OR assert_failure OR OTHERS THEN
+        GET STACKED DIAGNOSTICS v_detail=PG_EXCEPTION_DETAIL,v_hint=PG_EXCEPTION_HINT,
+            v_schema=SCHEMA_NAME,v_table=TABLE_NAME,v_column=COLUMN_NAME,
+            v_constraint=CONSTRAINT_NAME,v_context=PG_EXCEPTION_CONTEXT;
 
-    RETURN JSONB_BUILD_OBJECT('id',NULL,'state',SQLSTATE,'constraint',v_constraint);
+        RETURN JSONB_BUILD_OBJECT('id',v_id,'state',SQLSTATE,'message',SQLERRM,
+            'detail',v_detail,'hint',v_hint,'schema',v_schema,'table',v_table,
+            'column',v_column,'constraint',v_constraint,'context',v_context,'succeeded',false);
 END;
 $probe$;
-CREATE TEMP TABLE dd_scope_before AS SELECT pg_temp.dd_installation_state()->'rows' AS rows;
+CREATE TEMP TABLE dd_scope_before AS SELECT pg_temp.dd_scope_rows() AS rows;
 
 -- -----------------------------------------------------------------------------
 -- Scenario: Catalogue identity includes the actual OUT mode and effective types.
@@ -384,6 +296,41 @@ $test$;
 SELECT test.* FROM dd_error_cases c CROSS JOIN LATERAL
     pg_temp.dd_failure(c.payload,c.info,c.state,c.label) test;
 
+\if :current_contract
+-- -----------------------------------------------------------------------------
+-- Scenario: Native lookup/conversion errors and the deliberate width error retain diagnostics.
+-- Setup: Reuse the collision-checked unknown/duplicate Country and over-width inputs.
+-- Expected: Original SQLSTATE, message, detail, hint and object fields are unchanged;
+--           context retains the procedure frame; TAP emits booleans rather than values.
+-- -----------------------------------------------------------------------------
+CREATE TEMP TABLE dd_native_diagnostics(label TEXT PRIMARY KEY,payload JSON,expected JSONB);
+INSERT INTO dd_native_diagnostics VALUES
+('missing Country diagnostics','{"employer_address":{"cjs_code":31976}}',
+    '["P0002","query returned no rows","","","","","",""]'),
+('ambiguous Country diagnostics','{"employer_address":{"cjs_code":31973}}',
+    '["P0003","query returned more than one row","","Make sure the query returns a single row, or use LIMIT 1.","","","",""]'),
+('conversion diagnostics','{"employer_address":{"cjs_code":"synthetic-invalid"}}',
+    '["22P02","invalid input syntax for type smallint: \"synthetic-invalid\"","","","","","",""]'),
+('deliberate width diagnostics',JSONB_BUILD_OBJECT('employer_name',REPEAT('N',51))::JSON,
+    '["22001","p_insert_debtor_detail: mapped value exceeds its storage width","","","","","",""]');
+CREATE FUNCTION pg_temp.dd_native_diagnostic_tests(p_payload JSON,p_expected JSONB,p_label TEXT)
+RETURNS SETOF TEXT LANGUAGE plpgsql AS $diagnostics$
+DECLARE v_result JSONB;
+
+BEGIN
+    v_result := pg_temp.dd_probe(p_payload,NULL);
+    RETURN NEXT ok(JSONB_BUILD_ARRAY(v_result->>'state',v_result->>'message',
+        v_result->>'detail',v_result->>'hint',v_result->>'schema',v_result->>'table',
+        v_result->>'column',v_result->>'constraint') IS NOT DISTINCT FROM p_expected,
+        p_label||': original SQLSTATE and all applicable diagnostic fields retained');
+    RETURN NEXT ok(v_result->>'context' LIKE '%p_insert_debtor_detail%',
+        p_label||': original procedure context remains observable');
+END;
+$diagnostics$;
+SELECT test.* FROM dd_native_diagnostics c CROSS JOIN LATERAL
+    pg_temp.dd_native_diagnostic_tests(c.payload,c.expected,c.label) test;
+\endif
+
 -- -----------------------------------------------------------------------------
 -- Scenario: A valid canonical code encounters a real persisted-ID FK failure.
 -- Setup: Scoped BEFORE INSERT trigger changes only the owned valid Country ID.
@@ -421,6 +368,17 @@ SELECT is((SELECT outcome->>'state' FROM dd_fault_observation),'23503',
     'real FK SQLSTATE propagates through debtor helper');
 SELECT is((SELECT outcome->>'constraint' FROM dd_fault_observation),'dd_employer_country_id_fk',
     'real employer Country FK diagnostic is retained');
+\if :current_contract
+SELECT ok((SELECT JSONB_BUILD_ARRAY(outcome->>'message',outcome->>'detail',outcome->>'hint',
+    outcome->>'schema',outcome->>'table',outcome->>'column',outcome->>'constraint')
+    FROM dd_fault_observation) IS NOT DISTINCT FROM JSONB_BUILD_ARRAY(
+        'insert or update on table "debtor_detail" violates foreign key constraint "dd_employer_country_id_fk"',
+        'Key (employer_country_id)=(-31979) is not present in table "countries".',
+        '','public','debtor_detail','','dd_employer_country_id_fk'),
+    'real FK failure retains original message detail hint and object diagnostics');
+SELECT ok((SELECT outcome->>'context' LIKE '%p_insert_debtor_detail%' FROM dd_fault_observation),
+    'real FK failure retains the original procedure context');
+\endif
 SELECT ok((SELECT outcome->>'id' FROM dd_fault_observation) IS NULL,
     'FK failure supplies no successful ID');
 SELECT ok((SELECT before_rows FROM dd_fault_observation) IS NOT DISTINCT FROM pg_temp.dd_rows(),
@@ -491,13 +449,97 @@ SELECT ok(NOT EXISTS(
     WHERE NOT EXISTS(SELECT 1 FROM public.debtor_detail d WHERE ROW_TO_JSON(d)::TEXT=old.value)),
     'all pre-call detail rows remain unchanged');
 SELECT ok((SELECT rows->'countries' FROM dd_scope_before) IS NOT DISTINCT FROM
-    (pg_temp.dd_installation_state()->'rows'->'countries'),'all Country rows remain unchanged');
+    (pg_temp.dd_scope_rows()->'countries'),'all Country rows remain unchanged');
 SELECT ok((SELECT rows->'draft_casefiles' FROM dd_scope_before) IS NOT DISTINCT FROM
-    (pg_temp.dd_installation_state()->'rows'->'draft_casefiles'),
+    (pg_temp.dd_scope_rows()->'draft_casefiles'),
     'all Draft Casefile status snapshot and timeline rows remain unchanged');
 SELECT ok((SELECT rows->'respondent_accounts' FROM dd_scope_before) IS NOT DISTINCT FROM
-    (pg_temp.dd_installation_state()->'rows'->'respondent_accounts'),
+    (pg_temp.dd_scope_rows()->'respondent_accounts'),
     'all Respondent Account rows remain unchanged');
+
+\if :current_contract
+-- -----------------------------------------------------------------------------
+-- Scenario: Late native-style and deliberate failures retain every supplied diagnostic.
+-- Setup: A request-filtered BEFORE INSERT trigger consumes a test attempt and updates
+--        the owned sentinel before raising; the probe also catches cancellation/assertion.
+-- Expected: Original diagnostics/context, no successful ID, rollback of all statement
+--           writes, one attempt without retry and one consumed debtor sequence value.
+-- -----------------------------------------------------------------------------
+DO $guard$
+BEGIN
+    IF EXISTS(SELECT 1 FROM pg_trigger WHERE tgrelid='public.debtor_detail'::REGCLASS
+              AND tgname='dd_test_diagnostics') THEN
+        RAISE EXCEPTION 'Debtor diagnostic trigger collision';
+    END IF;
+END;
+$guard$;
+CREATE SEQUENCE pg_temp.dd_diagnostic_attempts START 1;
+CREATE FUNCTION pg_temp.dd_inject_diagnostics() RETURNS TRIGGER LANGUAGE plpgsql AS $inject$
+BEGIN
+    IF NEW.other_personal_information='Synthetic diagnostic request' THEN
+        PERFORM NEXTVAL('pg_temp.dd_diagnostic_attempts');
+        UPDATE public.debtor_detail SET other_personal_information='Synthetic uncommitted write'
+        WHERE debtor_detail_id=-31978;
+        RAISE EXCEPTION USING ERRCODE=CURRENT_SETTING('po10644.diagnostic_state'),
+            MESSAGE='synthetic debtor diagnostic message',
+            DETAIL='synthetic debtor diagnostic detail',
+            HINT='synthetic debtor diagnostic hint',
+            SCHEMA='public',TABLE='debtor_detail',COLUMN='debtor_detail_id',
+            CONSTRAINT='dd_synthetic_diagnostic';
+    END IF;
+
+    RETURN NEW;
+END;
+$inject$;
+CREATE TRIGGER dd_test_diagnostics BEFORE INSERT ON public.debtor_detail
+FOR EACH ROW EXECUTE FUNCTION pg_temp.dd_inject_diagnostics();
+CREATE FUNCTION pg_temp.dd_diagnostic_tests() RETURNS SETOF TEXT LANGUAGE plpgsql AS $diagnostics$
+DECLARE
+    v_state TEXT;
+    v_result JSONB;
+    v_rows_before JSONB;
+    v_sequence_before BIGINT;
+
+BEGIN
+    v_rows_before := pg_temp.dd_scope_rows();
+
+    FOREACH v_state IN ARRAY ARRAY['23503','23505','22001','40001','40P01','P0001','57014','P0004'] LOOP
+        PERFORM SETVAL('pg_temp.dd_diagnostic_attempts',1,false);
+        PERFORM SET_CONFIG('po10644.diagnostic_state',v_state,true);
+        SELECT last_value INTO v_sequence_before FROM public.debtor_detail_id_seq;
+        v_result := pg_temp.dd_probe(NULL,'Synthetic diagnostic request');
+        RETURN NEXT is(v_result->>'state',v_state,v_state||': late failure retains original SQLSTATE');
+        RETURN NEXT ok(JSONB_BUILD_ARRAY(v_result->>'message',v_result->>'detail',
+            v_result->>'hint',v_result->>'schema',v_result->>'table',v_result->>'column',
+            v_result->>'constraint') IS NOT DISTINCT FROM JSONB_BUILD_ARRAY(
+                'synthetic debtor diagnostic message','synthetic debtor diagnostic detail',
+                'synthetic debtor diagnostic hint','public','debtor_detail','debtor_detail_id',
+                'dd_synthetic_diagnostic'),
+            v_state||': late failure retains every supplied diagnostic without displaying values');
+        RETURN NEXT ok(v_result->>'context' LIKE '%dd_inject_diagnostics()%'
+            AND v_result->>'context' LIKE '%p_insert_debtor_detail%',
+            v_state||': original trigger and procedure context remains observable');
+        RETURN NEXT ok(v_result->>'succeeded'='false' AND v_result->>'id' IS NULL,
+            v_state||': late failure returns no successful output ID');
+        RETURN NEXT ok((SELECT JSONB_BUILD_ARRAY(last_value,is_called) FROM pg_temp.dd_diagnostic_attempts)
+            IS NOT DISTINCT FROM '[1,true]'::JSONB,
+            v_state||': late failure has one attempt without a procedure retry');
+        RETURN NEXT ok(pg_temp.dd_scope_rows() IS NOT DISTINCT FROM v_rows_before,
+            v_state||': statement rollback restores sentinel and all four row sets');
+        RETURN NEXT is((SELECT last_value FROM public.debtor_detail_id_seq),v_sequence_before+1,
+            v_state||': failed insertion consumes one sequence value without rewinding');
+    END LOOP;
+END;
+$diagnostics$;
+SELECT * FROM pg_temp.dd_diagnostic_tests();
+DROP TRIGGER dd_test_diagnostics ON public.debtor_detail;
+DROP FUNCTION pg_temp.dd_inject_diagnostics();
+DROP SEQUENCE pg_temp.dd_diagnostic_attempts;
+SELECT ok(NOT EXISTS(SELECT 1 FROM pg_trigger
+    WHERE tgrelid='public.debtor_detail'::REGCLASS AND tgname='dd_test_diagnostics')
+    AND TO_REGPROCEDURE('pg_temp.dd_inject_diagnostics()') IS NULL
+    AND TO_REGCLASS('pg_temp.dd_diagnostic_attempts') IS NULL,
+    'exact diagnostic trigger function and attempt sequence removed');
+\endif
 SELECT * FROM finish();
 ROLLBACK;
-\endif
