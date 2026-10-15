@@ -14,8 +14,10 @@
  * 13/10/2026  Frankie Moran  PO-10643  Verify maintained predecessor installation and cleanup
  * 14/10/2026  Frankie Moran  PO-10643  Adopt enabling shared upgrade lifecycle.
  * 15/10/2026  Frankie Moran  PO-10643  Adopt shared contract and prove full failure diagnostics.
+ * 15/10/2026  Frankie Moran  PO-10643  Verify the forward unchanged-rethrow replacement boundary.
  */
 -- OPAL-DB-UPGRADE {"id":"p_insert_creditor_accounts.create","candidate":"ddl/V1_33__create_p_insert_creditor_accounts_procedure.sql","scope":"both","data":"migration-created-only","contract":{"type":"additive","objects":{"created":[{"kind":"routine","identity":"public.p_insert_creditor_accounts(smallint,json,bigint,bigint,bigint)"}],"replaced":[]},"preserve":{"rows":["public.creditor_accounts","public.account_number_index","public.business_units","public.major_creditors","public.parties","public.third_party_contact","public.draft_casefiles"],"tables":["public.creditor_accounts","public.account_number_index"],"routines":["public.f_get_check_letter(character varying)","public.f_get_account_number(smallint,public.t_associated_record_type_enum)"],"enums":[],"sequences":["public.creditor_account_id_seq","public.account_number_index_id_seq"]},"assertion":"creditor.create"}}
+-- OPAL-DB-UPGRADE {"id":"p_insert_creditor_accounts.rethrow","candidate":"ddl/V1_37__replace_p_insert_creditor_accounts_procedure.sql","scope":"both","data":"migration-created-only","contract":{"type":"replacement","objects":{"created":[],"replaced":[{"kind":"routine","identity":"public.p_insert_creditor_accounts(smallint,json,bigint,bigint,bigint)"}]},"preserve":{"rows":["public.creditor_accounts","public.account_number_index","public.business_units","public.major_creditors","public.parties","public.third_party_contact","public.draft_casefiles"],"tables":["public.creditor_accounts","public.account_number_index"],"routines":["public.f_get_check_letter(character varying)","public.f_get_account_number(smallint,public.t_associated_record_type_enum)"],"enums":[],"sequences":["public.creditor_account_id_seq","public.account_number_index_id_seq"]},"assertion":"creditor.rethrow"}}
 -- DB-04/DB-06: routine catalogue, direct outcomes, errors, row scope and rollback.
 -- DB-01 fresh and DB-03 predecessor paths are both applicable.
 -- Shared support owns real predecessor preservation, lifecycle and cleanup.
@@ -25,7 +27,7 @@
 \else
     \set opal_assertion_group creditor.current
 \endif
-SELECT :'opal_assertion_group' IN ('creditor.current','creditor.create') AS valid_creditor_group
+SELECT :'opal_assertion_group' IN ('creditor.current','creditor.create','creditor.rethrow') AS valid_creditor_group
 \gset
 \if :valid_creditor_group
 \else
@@ -36,7 +38,7 @@ CREATE EXTENSION IF NOT EXISTS pgtap;
 SET LOCAL search_path = public, pg_catalog;
 SET LOCAL TIME ZONE 'UTC';
 SET LOCAL statement_timeout = '30s';
--- Creation and current groups share all behaviour; V1_33 requires no later routine.
+-- Creation, replacement and current groups share behaviour; V1_33 needs no later routine.
 SELECT plan(229);
 
 -- -----------------------------------------------------------------------------
