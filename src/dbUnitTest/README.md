@@ -4,8 +4,8 @@ The two self-contained SQL suites live directly under `src/dbUnitTest` and are
 found by `./gradlew dbUnitTest`. Fixtures, temporary observation helpers,
 range tests and multi-session coordination stay inside the owning suite.
 This historical allocator delivery added no test subdirectory, support SQL,
-SQL include or shell test runner. The maintained shared lifecycle exception
-below applies to subsequent upgrade integration.
+SQL include or shell test runner. The maintained shared declaration and dispatch
+contract below applies to subsequent upgrade integration.
 Existing suites retain their established paths.
 
 ## Contracts and dependencies
@@ -177,39 +177,82 @@ and [SQL suite ownership](../../docs/TESTING.md#pgtap-suite-layout):
 - `./gradlew dbUnitTest --no-daemon -PdbUnitTestComparisonRef=origin/codex/parent` runs every fresh suite and affected upgrades against a locally available immediate base.
 - `./gradlew dbUnitTest --no-daemon -PdbUnitTestUpgradeMode=full` replays all discovered historical registrations; use it after shared infrastructure changes.
 - `./gradlew dbUnitTestSelectionTest --no-daemon` checks selection regressions.
+- `./gradlew dbUnitTestContractTest --no-daemon` checks compact declarations and shared support manifests.
 - `./gradlew dbUnitTestFrameworkTest --no-daemon` checks disposable orchestration regressions.
 - `./gradlew build --no-daemon` runs the repository baseline with the same affected/full selection contract.
 
-Missing, shallow or ambiguous comparison context falls back to full replay.
-Reports distinguish Not selected from verified scenarios. The historical allocator
-evidence above remains as recorded; framework availability does not retrospectively
-verify a standalone recipe.
+Every normal build retains the complete fresh suite set. A trustworthy comparison
+selects every new applicable migration and affected registered boundaries against
+the actual immediate PR base. Missing, shallow or ambiguous comparison context
+falls back to full replay. Shared runner/support/configuration changes also require
+full replay and automatically execute the native framework regression matrix;
+uncertain comparison evidence requires that matrix too. Reports distinguish Not
+selected from verified scenarios. The historical allocator evidence above remains
+as recorded; framework availability does not retrospectively verify a standalone
+recipe.
 
-Register each new selected migration in its one owning flat SQL suite using
-`OPAL-DB-UPGRADE` JSON. The required `id`, `candidate`, `scope` and `data` fields
-remain supported; optional `inputs` lists additional canonical repository-relative
-dependencies. The owner and candidate are implicit inputs. Implement `fresh`,
-`prepare`, `verify` and `cleanup`, retaining owner snapshots and all functional,
-fixture, preservation and real-session assertions in that same file. Only the
-fixed `framework/upgrade_lifecycle.sql` include shares lifecycle mechanics.
-Preparation commits observations; verification compares predecessor state before
-functional mutations and rolls back; cleanup validates ownership, commits removal
-and confirms absence from a distinct backend. Embedded row/text snapshot strings
-must remain exact. Each phase has a positive exact TAP plan, native boundary
-validation, complete repeat-history equality and confirmed target destruction.
-Predecessor business fixtures require an approved data-scenario contract.
+Before creating targets, the runner validates the complete-tree numerical
+inventory, adoption and registrations. Committed HEAD migration bytes cannot be
+modified locally; comparison history also preserves existing paths and bytes.
+New selected migrations extend that history. Modification, removal, rename,
+lower-version insertion and duplicate versions fail rather than becoming a full
+fallback success. Added migrations outside the exercised locations are reported
+as Unverified; selected-location success does not prove their deployment coverage.
+
+For an ordinary new procedure, add its migration, functional assertions in one
+flat owning SQL suite, and a small `OPAL-DB-UPGRADE` declaration. Keep required
+`id`, `candidate`, `scope` and `data` fields; add `contract` to identify created or
+replaced objects, relevant preservation scope and the compatible assertion group.
+Optional `inputs` declares additional canonical repository-relative dependencies;
+the owner and candidate are implicit inputs. Follow the supported field shapes
+in [Compact contract and shared dispatch](../../docs/TESTING.md#compact-contract-and-shared-dispatch)
+rather than maintaining a second migration registry.
+
+Shared support owns declared-scope capture/comparison, phase guards, positive
+exact TAP plans, committed observation storage and independent cleanup readback.
+The fixed `support/manifest.json` controls helper loading and fingerprints;
+support files are never discovered as standalone fresh suites. The owner retains
+functional assertions, independent expected results, fixtures and real-session
+coordination. It receives the declared `opal_assertion_group` for compatible
+rolled-back candidate assertions, while all current functional assertions run
+on the complete fresh schema. Preserve focused historical expectations when
+later behaviour or dependencies differ; never execute future-dependent assertions
+at an earlier boundary. New owners do not implement prepare/verify/cleanup
+boilerplate or duplicate shared observation machinery.
+
+Optional declared SQL under `upgradeCases/` is reserved for risk-specific
+transitions or approved synthetic preparation and is invoked explicitly through
+`pg_prove`. It is not discovered as a fresh suite. Business predecessor fixtures
+still require an approved data-scenario contract; custom preparation does not
+grant approval. Native Flyway boundary validation, zero-applied repeat and exact
+history equality, preservation before functional mutation, test-state cleanup
+and UUID-owned target/volume destruction remain mandatory.
+
+Existing four-field registrations retain their legacy phase API during
+independently reviewed consumer adaptation. Keep their existing functional,
+preservation and real-session coverage until an adapter replaces lifecycle
+boilerplate with the compact declaration and passes its own checks. This
+compatibility is not a template for new suites or evidence of adoption.
 
 The adopted legacy inventory is fixed at the 32 selected migrations on
 `847739c9ee40ca1c09687756212f7f0dcbb56e7d`. Every later selected migration requires
 registration; do not extend the inventory to exempt it. The generic SQL suite owns
 complete native history boundaries and repeat equality. Fixed SQL-only fixtures
-under `framework/upgrade` exercise orchestration failures. Source fingerprints and
+under `framework/` exercise orchestration failures. Source fingerprints and
 per-target evidence remain under `build/reports/dbUnitTest/runs/<run-id>`.
 
-Each consumer must execute its full owning suite on fresh and candidate schemas
-and retain its actual revision, predecessor/candidate identities, comparison
-provenance, selected/attempted/passed results and cleanup evidence. Framework
+Each consumer must execute all current assertions on the fresh schema and its
+applicable compatible assertion groups at every required candidate boundary.
+Retain its actual interface and source revision, predecessor/candidate identities,
+comparison provenance, selected/attempted/passed results and cleanup evidence. Framework
 acceptance does not establish consumer verification or satisfy separately owned
 application, service-role or documentation requirements. The one-owner
 `dbUnitTestUpgradeSuite` diagnostic selector cannot be used under `check`/`build`
 or replace required affected/full evidence.
+
+The [procedure-side testing contract](../../docs/TESTING.md#planned-db-06-procedure-side-testing)
+keeps target integrity, mapping, error propagation and atomicity in pgTAP.
+Moved request-input validation and propagated-error response/log handling require
+identified backend tests before the helper call; UI checks alone are insufficient.
+Keep that dependency visible when its actual caller path or coverage is absent,
+and do not claim the common unchanged rethrow sanitises native diagnostics.
