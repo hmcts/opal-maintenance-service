@@ -3,8 +3,8 @@
  *
  * MODULE      : p_insert_notes_pgtap_tests.sql
  *
- * DESCRIPTION : Verify Notes mapping, strict inputs, safe errors, transactions
- *               and fresh/upgrade installation preservation.
+ * DESCRIPTION : Verify Notes mapping, database integrity, original diagnostics,
+ *               transactions and compatible fresh/upgrade contracts.
  *
  * CHANGE HISTORY:
  *
@@ -12,13 +12,24 @@
  * ----------  -------------  ------------  ----------------------------------------
  * 13/10/2026  Frankie Moran  PO-10645      Initial pgTAP test suite.
  * 14/10/2026  Frankie Moran  PO-10643  Adopt enabling shared upgrade lifecycle.
+ * 15/10/2026  Frankie Moran  PO-10645  Adopt shared contracts and revised validation/error ownership.
  */
--- OPAL-DB-UPGRADE {"id":"p_insert_notes.create","candidate":"ddl/V1_36__create_p_insert_notes_procedure.sql","scope":"both","data":"migration-created-only"}
--- DB-04/DB-06: both fresh and upgrade; routine-only installation adds no business rows.
-
-\ir framework/upgrade_lifecycle.sql
-\if :needs_identity
-    SELECT pg_temp.opal_upgrade_require_identity('p_insert_notes.create','1.36','1.35');
+-- OPAL-DB-UPGRADE {"id":"p_insert_notes.create","candidate":"ddl/V1_36__create_p_insert_notes_procedure.sql","scope":"both","data":"migration-created-only","contract":{"type":"additive","objects":{"created":[{"kind":"routine","identity":"public.p_insert_notes(bigint,character varying,character varying,json)"}],"replaced":[]},"preserve":{"rows":["public.notes","public.respondent_accounts","public.business_units","public.maintenance_applications","public.draft_casefiles"],"tables":["public.notes","public.respondent_accounts"],"routines":[],"enums":["public.t_note_type_enum","public.t_associated_record_type_enum"],"sequences":["public.note_id_seq","public.respondent_account_id_seq"]},"assertion":"notes.create"}}
+-- OPAL-DB-UPGRADE {"id":"p_insert_notes.validation_and_errors","candidate":"ddl/V1_39__replace_p_insert_notes_validation_and_errors.sql","scope":"both","data":"migration-created-only","contract":{"type":"replacement","objects":{"created":[],"replaced":[{"kind":"routine","identity":"public.p_insert_notes(bigint,character varying,character varying,json)"}]},"preserve":{"rows":["public.notes","public.respondent_accounts","public.business_units","public.maintenance_applications","public.draft_casefiles"],"tables":["public.notes","public.respondent_accounts"],"routines":[],"enums":["public.t_note_type_enum","public.t_associated_record_type_enum"],"sequences":["public.note_id_seq","public.respondent_account_id_seq"]},"assertion":"notes.current"}}
+-- DB-04/DB-06: historical creation retains strict validation and sanitisation.
+-- Current assertions prove database integrity and unchanged diagnostic propagation.
+-- Request validation and caller response/log safety require separate backend evidence.
+-- Shared support owns predecessor preservation, lifecycle and independent cleanup.
+\set ON_ERROR_STOP 1
+\if :{?opal_assertion_group}
+\else
+    \set opal_assertion_group notes.current
+\endif
+SELECT :'opal_assertion_group' IN ('notes.create','notes.current') AS valid_notes_group,
+       :'opal_assertion_group' = 'notes.current' AS current_contract \gset
+\if :valid_notes_group
+\else
+    DO $group$ BEGIN RAISE EXCEPTION 'Unknown Notes assertion group'; END; $group$;
 \endif
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap;
@@ -26,9 +37,10 @@ SET LOCAL search_path=public,pg_catalog;
 SET LOCAL TIME ZONE 'UTC';
 SET LOCAL statement_timeout='30s';
 SET LOCAL lock_timeout='5s';
+SELECT SET_CONFIG('opal.notes_current',:'current_contract',true) AS notes_current_setting \gset
 
 CREATE FUNCTION pg_temp.notes_state() RETURNS JSONB LANGUAGE plpgsql AS $state$
-DECLARE v_table TEXT; v_rows JSONB:='{}'; v_values JSONB; v_metadata JSONB;
+DECLARE v_table TEXT; v_rows JSONB:='{}'; v_values JSONB;
 BEGIN
     FOREACH v_table IN ARRAY ARRAY[
         'notes','respondent_accounts','business_units','maintenance_applications','draft_casefiles'
@@ -38,108 +50,16 @@ BEGIN
         INTO v_values;
         v_rows:=v_rows||JSONB_BUILD_OBJECT(v_table,v_values);
     END LOOP;
-    SELECT JSONB_BUILD_OBJECT(
-        'relations',(SELECT JSONB_AGG(TO_JSONB(r) ORDER BY oid) FROM (
-            SELECT oid,relname,relkind,relowner,relacl,reloptions FROM pg_class
-            WHERE oid IN ('public.notes'::REGCLASS,'public.respondent_accounts'::REGCLASS)
-        ) r),
-        'columns',(SELECT JSONB_AGG(TO_JSONB(c) ORDER BY attrelid,attnum) FROM (
-            SELECT a.attrelid,a.attnum,a.attname,FORMAT_TYPE(a.atttypid,a.atttypmod) AS type,
-                a.attnotnull,a.attidentity,a.attgenerated,PG_GET_EXPR(d.adbin,d.adrelid) AS default_expression,
-                COL_DESCRIPTION(a.attrelid,a.attnum) AS comment
-            FROM pg_attribute a LEFT JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum
-            WHERE a.attrelid IN ('public.notes'::REGCLASS,'public.respondent_accounts'::REGCLASS)
-              AND a.attnum>0 AND NOT a.attisdropped
-        ) c),
-        'constraints',(SELECT JSONB_AGG(TO_JSONB(c) ORDER BY conrelid,conname) FROM (
-            SELECT conrelid,conname,contype,convalidated,condeferrable,condeferred,
-                PG_GET_CONSTRAINTDEF(oid,false) AS definition FROM pg_constraint
-            WHERE conrelid IN ('public.notes'::REGCLASS,'public.respondent_accounts'::REGCLASS)
-        ) c),
-        'indexes',(SELECT JSONB_AGG(TO_JSONB(i) ORDER BY indrelid,indexrelid) FROM (
-            SELECT indrelid,indexrelid,indisvalid,indisready,PG_GET_INDEXDEF(indexrelid) AS definition
-            FROM pg_index WHERE indrelid IN ('public.notes'::REGCLASS,'public.respondent_accounts'::REGCLASS)
-        ) i),
-        'enums',(SELECT JSONB_AGG(TO_JSONB(e) ORDER BY enumtypid,enumsortorder) FROM pg_enum e
-            WHERE enumtypid IN ('public.t_note_type_enum'::REGTYPE,'public.t_associated_record_type_enum'::REGTYPE)),
-        'sequences',(SELECT JSONB_AGG(TO_JSONB(s) ORDER BY seqrelid) FROM pg_sequence s
-            WHERE seqrelid IN ('public.note_id_seq'::REGCLASS,'public.respondent_account_id_seq'::REGCLASS)),
-        'sequence_relations',(SELECT JSONB_AGG(TO_JSONB(s) ORDER BY oid) FROM (
-            SELECT oid,relname,relkind,relowner,relacl,reloptions FROM pg_class
-            WHERE oid IN ('public.note_id_seq'::REGCLASS,'public.respondent_account_id_seq'::REGCLASS)
-        ) s),
-        'ownership',(SELECT JSONB_AGG(TO_JSONB(d) ORDER BY objid,refobjid,refobjsubid,deptype)
-            FROM pg_depend d WHERE classid='pg_class'::REGCLASS AND refclassid='pg_class'::REGCLASS
-            AND objid IN ('public.note_id_seq'::REGCLASS,'public.respondent_account_id_seq'::REGCLASS)),
-        'note_sequence',(SELECT JSONB_BUILD_ARRAY(last_value,is_called) FROM public.note_id_seq),
-        'account_sequence',(SELECT JSONB_BUILD_ARRAY(last_value,is_called) FROM public.respondent_account_id_seq)
-    ) INTO v_metadata;
-    RETURN JSONB_BUILD_OBJECT('rows',v_rows,'metadata',v_metadata);
+    RETURN JSONB_BUILD_OBJECT('rows',v_rows);
 END;
 $state$;
 
 
-\if :is_prepare
-    SELECT plan(6);
-    -- -------------------------------------------------------------------------
-    -- Scenario: Capture scoped real predecessor state before routine-only DDL.
-    -- Setup: Native migrations to 1.35; no additional business fixtures.
-    -- Expected: No Notes procedure, intact dependencies and one durable owned observation.
-    -- -------------------------------------------------------------------------
-    SELECT ok(TO_REGPROCEDURE('public.p_insert_notes(bigint,character varying,character varying,json)') IS NULL,
-        'Notes procedure absent at predecessor');
-    SELECT ok(TO_REGCLASS('public.notes') IS NOT NULL AND TO_REGCLASS('public.respondent_accounts') IS NOT NULL,
-        'Notes and Respondent Account dependencies exist');
-    SELECT ok(TO_REGTYPE('public.t_note_type_enum') IS NOT NULL
-        AND TO_REGTYPE('public.t_associated_record_type_enum') IS NOT NULL,'Notes enum dependencies exist');
-    SELECT ok(PG_GET_SERIAL_SEQUENCE('public.notes','note_id')='public.note_id_seq'
-        AND PG_GET_SERIAL_SEQUENCE('public.respondent_accounts','respondent_account_id')='public.respondent_account_id_seq',
-        'both existing sequence ownership paths exist');
-    SELECT pg_temp.opal_upgrade_save(:'opal_scenario_id', :'opal_candidate_version', :'opal_predecessor_version',
-        pg_temp.notes_state());
-    SELECT pg_temp.opal_upgrade_load(:'opal_scenario_id', :'opal_candidate_version', :'opal_predecessor_version') AS saved_state \gset
-    SELECT ok(:'saved_state'::JSONB IS NOT NULL,'one durable Notes observation');
-    SELECT is((SELECT COUNT(*) FROM JSONB_OBJECT_KEYS(:'saved_state'::JSONB->'rows')),5::BIGINT,
-        'exact five-table observation scope');
-    SELECT * FROM finish();
-    COMMIT;
-\elif :is_cleanup
-    SELECT plan(2);
-    -- -------------------------------------------------------------------------
-    -- Scenario: Remove committed Notes observations and verify persisted absence.
-    -- Setup: Shared exact ownership guard, owned drop, independent backend readback.
-    -- Expected: Only owned observation state removed; committed namespace absent.
-    -- -------------------------------------------------------------------------
-    SELECT pg_temp.opal_upgrade_load(:'opal_scenario_id', :'opal_candidate_version', :'opal_predecessor_version') AS saved_state \gset
-    SELECT ok(:'saved_state'::JSONB IS NOT NULL,'cleanup confirmed exact owned Notes observation');
-    SELECT pg_temp.opal_upgrade_remove(:'opal_scenario_id', :'opal_candidate_version', :'opal_predecessor_version');
-    COMMIT;
-    BEGIN;
-    SET LOCAL search_path = public, pg_catalog;
-    SET LOCAL statement_timeout = '30s';
-    SELECT ok(pg_temp.opal_upgrade_absent_from_new_backend(),
-        'separate backend confirms committed Notes observation removal');
-    SELECT * FROM finish();
-    ROLLBACK;
+\if :current_contract
+    SELECT plan(212);
 \else
-    \if :is_verify
-        SELECT plan(495);
-        -- ---------------------------------------------------------------------
-        -- Scenario: Installation preserves predecessor rows, objects and sequences.
-        -- Setup: Compare before fixtures, triggers, CALL or sequence consumption.
-        -- Expected: Exact null-safe state equality; no payload in TAP diagnostics.
-        -- ---------------------------------------------------------------------
-        SELECT pg_temp.opal_upgrade_load(:'opal_scenario_id', :'opal_candidate_version', :'opal_predecessor_version') AS saved_state \gset
-        SELECT ok(:'saved_state'::JSONB IS NOT NULL,'durable observation survives connection');
-        SELECT ok((:'saved_state'::JSONB->'rows')
-            IS NOT DISTINCT FROM (pg_temp.notes_state()->'rows'),'all scoped predecessor rows preserved');
-        SELECT ok((:'saved_state'::JSONB->'metadata')
-            IS NOT DISTINCT FROM (pg_temp.notes_state()->'metadata'),'catalogues enums and sequence definition values ownership preserved');
-        SELECT ok(TO_REGPROCEDURE('public.p_insert_notes(bigint,character varying,character varying,json)') IS NOT NULL,
-            'candidate procedure installed before functional mutation');
-    \else
-        SELECT plan(491);
-    \endif
+    SELECT plan(491);
+\endif
 
 -- -----------------------------------------------------------------------------
 -- Scenario: Create independent synthetic publication targets and lifecycle sentinel.
@@ -198,12 +118,22 @@ VALUES (-1064501,'MN','respondent_accounts','-1064501','Synthetic unchanged Note
 CREATE TEMP TABLE notes_scope_before AS SELECT pg_temp.notes_state()->'rows' AS rows;
 CREATE TEMP TABLE notes_success_results(label TEXT PRIMARY KEY,note_id BIGINT,posted_date TIMESTAMP);
 
-CREATE FUNCTION pg_temp.notes_probe(p_id BIGINT,p_by VARCHAR,p_name VARCHAR,p_json JSON)
+CREATE FUNCTION pg_temp.notes_probe(p_id BIGINT,p_by VARCHAR,p_name VARCHAR,p_json JSON,p_direct BOOLEAN DEFAULT false)
 RETURNS JSONB LANGUAGE plpgsql AS $probe$
 DECLARE v_state TEXT; v_message TEXT; v_detail TEXT; v_hint TEXT; v_context TEXT;
         v_schema TEXT; v_table TEXT; v_column TEXT; v_constraint TEXT; v_datatype TEXT;
 BEGIN
-    CALL public.p_insert_notes(p_id,p_by,p_name,p_json);
+    IF p_direct THEN
+        INSERT INTO public.notes(
+            note_type,associated_record_type,associated_record_id,note_text,
+            posted_date,posted_by,posted_by_name
+        ) VALUES (
+            'NT','respondent_accounts',p_id::TEXT,p_json->>'note_text',
+            TRANSACTION_TIMESTAMP() AT TIME ZONE 'UTC',p_by,p_name
+        );
+    ELSE
+        CALL public.p_insert_notes(p_id,p_by,p_name,p_json);
+    END IF;
     RETURN JSONB_BUILD_OBJECT('succeeded',true,'id',CURRVAL('public.note_id_seq'),'state',NULL);
 EXCEPTION WHEN query_canceled OR assert_failure OR OTHERS THEN
     GET STACKED DIAGNOSTICS v_state=RETURNED_SQLSTATE,v_message=MESSAGE_TEXT,
@@ -331,6 +261,97 @@ SELECT ok((SELECT COUNT(DISTINCT posted_date)=1 AND MIN(posted_date)=TRANSACTION
     FROM notes_success_results WHERE label IN ('same transaction','non UTC repeat')),
     'separated UTC and non UTC calls share transaction-start UTC timestamp');
 
+\if :current_contract
+-- -----------------------------------------------------------------------------
+-- Scenario: Backend-owned request validation is absent from the database helper.
+-- Setup: Direct SQL deliberately bypasses the backend; only table rules apply.
+-- Expected: Nullable authors, blank text and JSON extraction follow PostgreSQL.
+-- These accepted DB inputs do not establish backend validation coverage or policy.
+-- -----------------------------------------------------------------------------
+SELECT * FROM pg_temp.notes_success('nullable authors',-1064501,NULL,NULL,'{"note_text":"A"}');
+SELECT * FROM pg_temp.notes_success('empty request strings',-1064501,'','','{"note_text":""}');
+SELECT * FROM pg_temp.notes_success('Unicode whitespace request',-1064501,CHR(160)::VARCHAR,CHR(12288)::VARCHAR,
+    JSON_BUILD_OBJECT('note_text',CHR(9)||CHR(160)||CHR(12288)));
+SELECT * FROM pg_temp.notes_success('numeric JSON extraction',-1064501,'synthetic','Synthetic fixture','{"note_text":1}');
+SELECT * FROM pg_temp.notes_success('boolean JSON extraction',-1064501,'synthetic','Synthetic fixture','{"note_text":true}');
+SELECT * FROM pg_temp.notes_success('object JSON extraction',-1064501,'synthetic','Synthetic fixture','{"note_text":{}}');
+SELECT * FROM pg_temp.notes_success('array JSON extraction',-1064501,'synthetic','Synthetic fixture','{"note_text":[]}');
+SELECT * FROM pg_temp.notes_success('duplicate JSON extraction',-1064501,'synthetic','Synthetic fixture','{"note_text":"A","note_text":"B"}');
+SELECT * FROM pg_temp.notes_success('additional JSON member',-1064501,'synthetic','Synthetic fixture','{"note_text":"A","other":"ignored"}');
+
+CREATE FUNCTION pg_temp.notes_native_input(
+    p_label TEXT,p_by VARCHAR,p_name VARCHAR,p_json JSON,p_state TEXT
+) RETURNS SETOF TEXT LANGUAGE plpgsql AS $input$
+DECLARE v_before JSONB:=pg_temp.notes_state()->'rows'; v_expected JSONB; v_result JSONB;
+BEGIN
+    v_expected:=pg_temp.notes_probe(-1064501,p_by,p_name,p_json,true);
+    v_result:=pg_temp.notes_probe(-1064501,p_by,p_name,p_json);
+    RETURN NEXT ok(v_result->>'state' IS NOT DISTINCT FROM p_state,
+        p_label||': underlying table SQLSTATE propagates');
+    RETURN NEXT ok((v_result-'context'-'detail') IS NOT DISTINCT FROM (v_expected-'context'-'detail')
+        AND CASE WHEN p_state='23502' THEN
+            v_result->>'detail' LIKE 'Failing row contains (%'
+            AND POSITION('NT, respondent_accounts, -1064501, null,' IN v_result->>'detail')>0
+        ELSE v_result->>'detail' IS NOT DISTINCT FROM v_expected->>'detail' END
+        AND POSITION('p_insert_notes(' IN v_result->>'context')>0,
+        p_label||': original native diagnostic fields retained internally');
+    RETURN NEXT ok((v_result->>'succeeded')::BOOLEAN=false
+        AND v_before IS NOT DISTINCT FROM (pg_temp.notes_state()->'rows'),
+        p_label||': failed call leaves every scoped row unchanged');
+END;
+$input$;
+
+-- -----------------------------------------------------------------------------
+-- Scenario: Missing Note text and genuine overwidth authors retain native failures.
+-- Setup: PostgreSQL extraction supplies NULL or assignment exceeds the table width.
+-- Expected: Native 23502/22001 and original diagnostics; no replacement request error.
+-- Generated IDs differ across independent probes, so failing-row IDs are not compared.
+-- -----------------------------------------------------------------------------
+CREATE TEMP TABLE notes_native_nulls(label TEXT,payload JSON);
+INSERT INTO notes_native_nulls VALUES
+    ('SQL null Note',NULL),('JSON null Note','null'),('missing Note','{}'),
+    ('null Note text','{"note_text":null}'),('array request','[]'),
+    ('scalar string request','"synthetic"'),('scalar numeric request','1'),('scalar boolean request','true');
+SELECT e.* FROM notes_native_nulls c CROSS JOIN LATERAL pg_temp.notes_native_input(
+    c.label,'synthetic','Synthetic fixture',c.payload,'23502') e;
+SELECT * FROM pg_temp.notes_native_input('author identifier width',REPEAT('x',21)::VARCHAR,
+    'Synthetic fixture','{"note_text":"A"}','22001');
+SELECT * FROM pg_temp.notes_native_input('author identifier multibyte width',REPEAT('界',21)::VARCHAR,
+    'Synthetic fixture','{"note_text":"A"}','22001');
+SELECT * FROM pg_temp.notes_native_input('author name width','synthetic',REPEAT('x',101)::VARCHAR,
+    '{"note_text":"A"}','22001');
+SELECT * FROM pg_temp.notes_native_input('author name multibyte width','synthetic',REPEAT('界',101)::VARCHAR,
+    '{"note_text":"A"}','22001');
+
+-- -----------------------------------------------------------------------------
+-- Scenario: Excess trailing spaces follow native VARCHAR assignment semantics.
+-- Setup: Original author strings exceed limits only by one trailing space.
+-- Expected: PostgreSQL stores the width-limited prefixes; backend must validate originals.
+-- -----------------------------------------------------------------------------
+CREATE TEMP TABLE notes_trailing_before AS SELECT COUNT(*) AS count FROM public.notes;
+CREATE TEMP TABLE notes_trailing_result AS
+SELECT pg_temp.notes_probe(-1064501,(REPEAT('x',20)||' ')::VARCHAR,(REPEAT('y',100)||' ')::VARCHAR,
+    '{"note_text":"Native trailing spaces"}') AS result;
+SELECT ok((SELECT (result->>'succeeded')::BOOLEAN FROM notes_trailing_result),
+    'trailing-space width follows native assignment without a request guard');
+SELECT ok((SELECT COUNT(*) FROM public.notes)=(SELECT count+1 FROM notes_trailing_before),
+    'native trailing-space assignment inserts one Note');
+SELECT ok(EXISTS(SELECT 1 FROM public.notes n,notes_trailing_result r
+    WHERE n.note_id=(r.result->>'id')::BIGINT AND n.posted_by=REPEAT('x',20)
+        AND n.posted_by_name=REPEAT('y',100) AND n.note_text='Native trailing spaces'),
+    'native VARCHAR semantics retain prefixes within table widths');
+
+-- -----------------------------------------------------------------------------
+-- Scenario: The polymorphic respondent-account target remains database-owned.
+-- Setup: Null/absent targets, valid and multiply invalid request values.
+-- Expected: Fixed P0001 target failure precedes extraction; no business row changes.
+-- -----------------------------------------------------------------------------
+SELECT * FROM pg_temp.notes_error('null integrity target',NULL,NULL,NULL,'{}',
+    'P0001','respondent_account target does not exist');
+SELECT * FROM pg_temp.notes_error('missing integrity target',-1064598,'synthetic','Synthetic fixture','{"note_text":"A"}',
+    'P0001','respondent_account target does not exist');
+
+\else
 -- -----------------------------------------------------------------------------
 -- Scenario: Invalid original JSON shapes, keys, types and blank strings fail.
 -- Setup: Store original JSON values with duplicates; no conversion to JSONB.
@@ -421,6 +442,8 @@ SELECT * FROM pg_temp.notes_error('order name width before blank',-1064598,'synt
 SELECT * FROM pg_temp.notes_error('order name blank before target',-1064598,'synthetic',' ','{"note_text":"A"}',
     '22023','posted_by_name must be nonblank');
 
+\endif
+
 CREATE TEMP SEQUENCE notes_attempt_seq START WITH 1;
 CREATE FUNCTION pg_temp.notes_attempts() RETURNS BIGINT LANGUAGE sql AS $attempts$
     SELECT CASE WHEN is_called THEN last_value ELSE 0 END FROM notes_attempt_seq;
@@ -437,6 +460,7 @@ BEGIN
         NEW.note_id:=-1064501;
         RETURN NEW;
     ELSIF v_mode='native_notnull' THEN
+        NEW.note_id:=-1064502;
         NEW.note_text:=NULL;
         RETURN NEW;
     ELSIF v_mode='cancel' THEN
@@ -471,12 +495,24 @@ CREATE FUNCTION pg_temp.notes_native(
     p_label TEXT,p_json JSON,p_mode TEXT,p_state TEXT,p_operation TEXT,
     p_schema TEXT,p_table TEXT,p_column TEXT,p_constraint TEXT,p_attempts INTEGER
 ) RETURNS SETOF TEXT LANGUAGE plpgsql AS $native$
-DECLARE v_before JSONB:=pg_temp.notes_state()->'rows'; v_attempts BIGINT:=pg_temp.notes_attempts(); v_result JSONB;
+DECLARE v_before JSONB:=pg_temp.notes_state()->'rows'; v_attempts BIGINT; v_result JSONB; v_expected JSONB;
 BEGIN
     PERFORM SET_CONFIG('opal.notes_fault',p_mode,true);
+    IF CURRENT_SETTING('opal.notes_current')::BOOLEAN THEN
+        v_expected:=pg_temp.notes_probe(-1064501,'synthetic','Synthetic fixture',p_json,true);
+    END IF;
+    v_attempts:=pg_temp.notes_attempts();
     v_result:=pg_temp.notes_probe(-1064501,'synthetic','Synthetic fixture',p_json);
     PERFORM SET_CONFIG('opal.notes_fault','',true);
     RETURN NEXT ok(v_result->>'state' IS NOT DISTINCT FROM p_state,p_label||': native SQLSTATE unchanged');
+    IF CURRENT_SETTING('opal.notes_current')::BOOLEAN THEN
+        RETURN NEXT ok((v_result-'context') IS NOT DISTINCT FROM (v_expected-'context')
+            AND POSITION('p_insert_notes(' IN v_result->>'context')>0
+            AND CASE WHEN p_mode LIKE 'spoof_%' OR p_mode IN ('40001','40P01','P0004') THEN
+                SPLIT_PART(v_result->>'context',E'\n',1)=SPLIT_PART(v_expected->>'context',E'\n',1)
+            ELSE true END,
+            p_label||': original native diagnostic tuple and source context retained internally');
+    ELSE
     RETURN NEXT ok(v_result->>'message' IS NOT DISTINCT FROM 'p_insert_notes: '||p_operation||' failed'
         AND v_result->>'schema' IS NOT DISTINCT FROM p_schema
         AND v_result->>'table' IS NOT DISTINCT FROM p_table
@@ -484,6 +520,7 @@ BEGIN
         AND v_result->>'constraint' IS NOT DISTINCT FROM p_constraint
         AND v_result->>'detail'='' AND v_result->>'hint'='' AND v_result->>'datatype'=''
         AND POSITION('__payload__' IN v_result::TEXT)=0,p_label||': exact safe diagnostic tuple');
+    END IF;
     RETURN NEXT ok((v_result->>'succeeded')::BOOLEAN=false
         AND v_before IS NOT DISTINCT FROM (pg_temp.notes_state()->'rows'),p_label||': no partial or unrelated mutation');
     RETURN NEXT ok(pg_temp.notes_attempts()-v_attempts=p_attempts,p_label||': exact attempt count and no retry');
@@ -493,7 +530,7 @@ $native$;
 -- -----------------------------------------------------------------------------
 -- Scenario: Valid JSON fails during decoded-key enumeration or text extraction.
 -- Setup: Original JSON accepts Unicode zero escape; conversion occurs after procedure entry.
--- Expected: Native UTF-8 22P05 with sanitized input-processing message and zero insert attempts.
+-- Expected: Native UTF-8 22P05, no insert attempts; current diagnostics match direct SQL.
 -- -----------------------------------------------------------------------------
 SELECT * FROM pg_temp.notes_native('decoded key conversion','{"\u0000":"__payload__"}',
     '','22P05','input processing','','','','',0);
@@ -501,9 +538,9 @@ SELECT * FROM pg_temp.notes_native('Note text conversion','{"note_text":"\u0000"
     '','22P05','input processing','','','','',0);
 
 -- -----------------------------------------------------------------------------
--- Scenario: Actual Notes primary-key and not-null failures retain safe native identities.
+-- Scenario: Actual Notes primary-key and not-null failures preserve database integrity.
 -- Setup: Gated trigger duplicates sentinel ID or nulls required Note text; real constraints fail.
--- Expected: 23505/notes_pk and 23502/note_text, one attempt, unchanged SQLSTATE and safe messages.
+-- Expected: 23505/notes_pk and 23502/note_text, one attempt, original current diagnostics.
 -- -----------------------------------------------------------------------------
 SELECT * FROM pg_temp.notes_native('genuine primary key','{"note_text":"__fault__"}',
     'native_pk','23505','insert','public','notes','','notes_pk',1);
@@ -511,9 +548,9 @@ SELECT * FROM pg_temp.notes_native('genuine not null','{"note_text":"__fault__"}
     'native_notnull','23502','insert','public','notes','note_text','',1);
 
 -- -----------------------------------------------------------------------------
--- Scenario: Value-bearing and mismatched trigger diagnostic strings are discarded.
+-- Scenario: Trigger diagnostics distinguish historical sanitisation from current rethrow.
 -- Setup: Five gated triggers spoof all fields, schema, table, column or constraint.
--- Expected: Tuple allowlist only; no payload marker, original state, exactly one attempt.
+-- Expected: Historical allowlist; current complete tuple/source context; no marker printed.
 -- -----------------------------------------------------------------------------
 SELECT * FROM pg_temp.notes_native('spoof all','{"note_text":"__fault__"}',
     'spoof_all','P0001','insert','','','','',1);
@@ -527,8 +564,8 @@ SELECT * FROM pg_temp.notes_native('spoof constraint','{"note_text":"__fault__"}
     'spoof_constraint','23505','insert','public','notes','note_id','',1);
 
 -- -----------------------------------------------------------------------------
--- Scenario: Transient and explicitly intercepted assertion states remain failures.
--- Setup: Inject 40001, 40P01 and P0004 with private diagnostic marker in one insertion.
+-- Scenario: Transient and assertion states remain failures without internal retry.
+-- Setup: Inject 40001, 40P01 and P0004; capture diagnostic markers without printing them.
 -- Expected: Original state propagates; no retry or successful partial Note.
 -- -----------------------------------------------------------------------------
 SELECT * FROM pg_temp.notes_native('serialization state','{"note_text":"__fault__"}',
@@ -541,7 +578,7 @@ SELECT * FROM pg_temp.notes_native('assertion state','{"note_text":"__fault__"}'
 -- -----------------------------------------------------------------------------
 -- Scenario: A real statement timeout cancels inside the child without retry.
 -- Setup: Gated trigger increments temporary sequence then sleeps; separate 100ms SET.
--- Expected: 57014, private diagnostics, one attempt, no Note, restoration and trigger removal.
+-- Expected: 57014, current native timeout diagnostics, one attempt, rollback and fixture removal.
 -- -----------------------------------------------------------------------------
 SELECT CURRENT_SETTING('statement_timeout') AS notes_original_timeout \gset
 CREATE TEMP TABLE notes_cancel_before AS
@@ -563,10 +600,20 @@ EXCEPTION WHEN query_canceled OR assert_failure OR OTHERS THEN
 END;
 $cleanup$;
 SELECT ok((SELECT result->>'state'='57014' FROM notes_cancel_result),'actual cancellation preserves 57014');
+\if :current_contract
+SELECT ok((SELECT result->>'message'='canceling statement due to statement timeout'
+    AND result->>'detail'='' AND result->>'hint'='' AND result->>'schema'='' AND result->>'table'=''
+    AND result->>'column'='' AND result->>'constraint'='' AND result->>'datatype'=''
+    AND POSITION('pg_sleep' IN LOWER(result->>'context'))>0
+    AND POSITION('notes_fault(' IN result->>'context')>0
+    AND POSITION('p_insert_notes(' IN result->>'context')>0 FROM notes_cancel_result),
+    'cancellation preserves original timeout message and originating context internally');
+\else
 SELECT ok((SELECT result->>'message'='p_insert_notes: insert failed'
     AND result->>'detail'='' AND result->>'hint'='' AND result->>'schema'='' AND result->>'table'=''
     AND result->>'column'='' AND result->>'constraint'='' AND result->>'datatype'=''
     AND POSITION('__payload__' IN result::TEXT)=0 FROM notes_cancel_result),'cancellation diagnostics are private');
+\endif
 SELECT ok((SELECT (result->>'succeeded')::BOOLEAN=false FROM notes_cancel_result)
     AND (SELECT rows FROM notes_cancel_before) IS NOT DISTINCT FROM (pg_temp.notes_state()->'rows'),
     'cancellation leaves no successful or partial Note');
@@ -804,4 +851,3 @@ SELECT ok((SELECT rows-'notes'-'respondent_accounts'-'draft_casefiles' FROM note
     'Business Unit and application fixtures unchanged');
 SELECT * FROM finish();
 ROLLBACK;
-\endif

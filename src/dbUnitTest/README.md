@@ -256,34 +256,3 @@ Moved request-input validation and propagated-error response/log handling requir
 identified backend tests before the helper call; UI checks alone are insufficient.
 Keep that dependency visible when its actual caller path or coverage is absent,
 and do not claim the common unchanged rethrow sanitises native diagnostics.
-
-## Routine coverage across migration boundaries
-
-Follow the [routine testing requirements](../../docs/TESTING.md#planned-db-06-procedure-side-testing)
-and [owning-suite layout](../../docs/TESTING.md#pgtap-suite-layout). Combine
-catalogue checks with observable behavior: parameter and result contracts,
-affected rows, error propagation, repeat calls and caller rollback. Cover
-applicable null, empty, partial, reference and boundary inputs, using expected
-values established independently of the routine under test. For bounded text,
-include exact limits and over-limit non-space and trailing-space inputs against
-the required contract. Keep required real-session concurrency checks in that
-same suite.
-
-One owning suite can register successive migrations that change its routine.
-Dispatch by the supplied scenario identity and validate the expected predecessor
-state: creation and replacement may require different object-presence checks.
-Verify the contract installed at each candidate; do not require behavior from a
-later migration. Keep each phase's positive exact TAP plan aligned with the
-assertions actually executed. Earlier candidate results establish their
-historical contracts; the latest fresh and applicable candidate runs must prove
-the current behavior.
-
-Preserve the evidence required by the
-[maintained predecessor contract](../../docs/TESTING.md#maintained-predecessor-upgrade-contract),
-including actual revision, source fingerprints, predecessor/candidate identities,
-executed plans, native validation, repeat history, scoped preservation and cleanup.
-Compare preserved application state through null-safe boolean assertions so
-row payloads do not appear in TAP diagnostics. Where observations persist across
-connections, verify committed removal independently. Record missing caller,
-service-role or publication evidence separately; passing routine tests do not
-establish those outcomes.
