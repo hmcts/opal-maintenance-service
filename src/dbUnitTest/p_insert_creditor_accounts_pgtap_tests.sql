@@ -13,166 +13,31 @@
  * 13/10/2026  Frankie Moran  PO-10643  Add SQL-session creditor creation and cleanup checks
  * 13/10/2026  Frankie Moran  PO-10643  Verify maintained predecessor installation and cleanup
  * 14/10/2026  Frankie Moran  PO-10643  Adopt enabling shared upgrade lifecycle.
+ * 15/10/2026  Frankie Moran  PO-10643  Adopt shared contract and prove full failure diagnostics.
  */
--- OPAL-DB-UPGRADE {"id":"p_insert_creditor_accounts.create","candidate":"ddl/V1_33__create_p_insert_creditor_accounts_procedure.sql","scope":"both","data":"migration-created-only"}
+-- OPAL-DB-UPGRADE {"id":"p_insert_creditor_accounts.create","candidate":"ddl/V1_33__create_p_insert_creditor_accounts_procedure.sql","scope":"both","data":"migration-created-only","contract":{"type":"additive","objects":{"created":[{"kind":"routine","identity":"public.p_insert_creditor_accounts(smallint,json,bigint,bigint,bigint)"}],"replaced":[]},"preserve":{"rows":["public.creditor_accounts","public.account_number_index","public.business_units","public.major_creditors","public.parties","public.third_party_contact","public.draft_casefiles"],"tables":["public.creditor_accounts","public.account_number_index"],"routines":["public.f_get_check_letter(character varying)","public.f_get_account_number(smallint,public.t_associated_record_type_enum)"],"enums":[],"sequences":["public.creditor_account_id_seq","public.account_number_index_id_seq"]},"assertion":"creditor.create"}}
 -- DB-04/DB-06: routine catalogue, direct outcomes, errors, row scope and rollback.
 -- DB-01 fresh and DB-03 predecessor paths are both applicable.
--- DB-03 uses the registered real predecessor/candidate through the maintained runner.
+-- Shared support owns real predecessor preservation, lifecycle and cleanup.
 -- Bank request validation is owned upstream; this suite proves accepted-value mapping.
-\ir framework/upgrade_lifecycle.sql
-\if :needs_identity
-    SELECT pg_temp.opal_upgrade_require_identity('p_insert_creditor_accounts.create','1.33','1.32');
+\set ON_ERROR_STOP 1
+\if :{?opal_assertion_group}
+\else
+    \set opal_assertion_group creditor.current
+\endif
+SELECT :'opal_assertion_group' IN ('creditor.current','creditor.create') AS valid_creditor_group
+\gset
+\if :valid_creditor_group
+\else
+    DO $group$ BEGIN RAISE EXCEPTION 'Unknown creditor assertion group'; END; $group$;
 \endif
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap;
 SET LOCAL search_path = public, pg_catalog;
 SET LOCAL TIME ZONE 'UTC';
 SET LOCAL statement_timeout = '30s';
-
-CREATE FUNCTION pg_temp.ca_installation_state() RETURNS JSONB LANGUAGE plpgsql AS $state$
-DECLARE
-    v_table TEXT;
-    v_rows JSONB := '{}'::JSONB;
-    v_columns JSONB;
-    v_constraints JSONB;
-    v_indexes JSONB;
-    v_functions JSONB;
-    v_sequences JSONB;
-    v_ownership JSONB;
-
-BEGIN
-    FOREACH v_table IN ARRAY ARRAY[
-        'creditor_accounts','account_number_index','business_units','major_creditors',
-        'parties','third_party_contact','draft_casefiles'] LOOP
-        IF TO_REGCLASS(FORMAT('public.%I',v_table)) IS NULL THEN
-            RAISE EXCEPTION 'Missing predecessor object: %',v_table;
-        END IF;
-        EXECUTE FORMAT(
-            'SELECT COALESCE(JSONB_AGG(value ORDER BY value),''[]''::JSONB)
-             FROM (SELECT ROW_TO_JSON(t)::TEXT AS value FROM public.%I t) observed',v_table)
-        INTO v_columns;
-        v_rows := v_rows || JSONB_BUILD_OBJECT(v_table,v_columns);
-    END LOOP;
-
-    SELECT COALESCE(JSONB_AGG(TO_JSONB(c) ORDER BY c.table_name,c.position),'[]'::JSONB)
-    INTO v_columns FROM (
-        SELECT a.attrelid::REGCLASS::TEXT AS table_name,a.attnum AS position,a.attname,
-               FORMAT_TYPE(a.atttypid,a.atttypmod) AS type,a.attnotnull,a.attidentity,a.attgenerated,
-               PG_GET_EXPR(d.adbin,d.adrelid) AS default_expression
-        FROM pg_attribute a LEFT JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum
-        WHERE a.attrelid IN ('public.creditor_accounts'::REGCLASS,'public.account_number_index'::REGCLASS)
-          AND a.attnum>0 AND NOT a.attisdropped
-    ) c;
-    SELECT COALESCE(JSONB_AGG(TO_JSONB(c) ORDER BY c.table_name,c.conname),'[]'::JSONB)
-    INTO v_constraints FROM (
-        SELECT conrelid::REGCLASS::TEXT AS table_name,conname,contype,convalidated,
-               condeferrable,condeferred,PG_GET_CONSTRAINTDEF(oid,false) AS definition
-        FROM pg_constraint WHERE conrelid IN
-            ('public.creditor_accounts'::REGCLASS,'public.account_number_index'::REGCLASS)
-    ) c;
-    SELECT COALESCE(JSONB_AGG(TO_JSONB(i) ORDER BY i.table_name,i.index_name),'[]'::JSONB)
-    INTO v_indexes FROM (
-        SELECT indrelid::REGCLASS::TEXT AS table_name,indexrelid::REGCLASS::TEXT AS index_name,
-               indisvalid,indisready,PG_GET_INDEXDEF(indexrelid) AS definition
-        FROM pg_index WHERE indrelid IN
-            ('public.creditor_accounts'::REGCLASS,'public.account_number_index'::REGCLASS)
-    ) i;
-    SELECT JSONB_AGG(JSONB_BUILD_OBJECT('identity',oid::REGPROCEDURE::TEXT,
-                                      'definition',PG_GET_FUNCTIONDEF(oid)) ORDER BY oid::REGPROCEDURE::TEXT)
-    INTO v_functions FROM pg_proc WHERE oid IN (
-        'public.f_get_check_letter(character varying)'::REGPROCEDURE,
-        'public.f_get_account_number(smallint,public.t_associated_record_type_enum)'::REGPROCEDURE);
-    SELECT JSONB_AGG(TO_JSONB(s) ORDER BY s.seqrelid) INTO v_sequences
-    FROM pg_sequence s WHERE seqrelid IN
-        ('public.creditor_account_id_seq'::REGCLASS,'public.account_number_index_id_seq'::REGCLASS);
-    SELECT JSONB_AGG(TO_JSONB(d) ORDER BY d.objid,d.refobjid,d.refobjsubid,d.deptype)
-    INTO v_ownership FROM pg_depend d
-    WHERE d.classid='pg_class'::REGCLASS AND d.objid IN
-        ('public.creditor_account_id_seq'::REGCLASS,'public.account_number_index_id_seq'::REGCLASS)
-      AND d.refclassid='pg_class'::REGCLASS;
-    RETURN JSONB_BUILD_OBJECT('rows',v_rows,'columns',v_columns,'constraints',v_constraints,
-        'indexes',v_indexes,'functions',v_functions,'sequences',v_sequences,'ownership',v_ownership,
-        'creditor_sequence',(SELECT JSONB_BUILD_ARRAY(last_value,is_called) FROM public.creditor_account_id_seq),
-        'allocation_sequence',(SELECT JSONB_BUILD_ARRAY(last_value,is_called) FROM public.account_number_index_id_seq));
-END;
-$state$;
-
-\if :is_prepare
-    SELECT plan(8);
-    -- -------------------------------------------------------------------------
-    -- Scenario: Routine-only installation preserves the real predecessor scope.
-    -- Setup: Real P migrations only; durable state outside application objects.
-    -- Expected: Procedure absent, dependencies and seed rows present, one snapshot.
-    -- -------------------------------------------------------------------------
-    SELECT ok(TO_REGPROCEDURE('public.p_insert_creditor_accounts(smallint,json,bigint,bigint,bigint)') IS NULL,
-        'candidate procedure absent at predecessor');
-    SELECT ok(TO_REGCLASS('public.creditor_accounts') IS NOT NULL
-        AND TO_REGCLASS('public.account_number_index') IS NOT NULL,'target tables exist');
-    SELECT is((SELECT COUNT(*) FROM UNNEST(ARRAY['business_units','major_creditors','parties',
-        'third_party_contact','draft_casefiles']) n WHERE TO_REGCLASS('public.'||n) IS NOT NULL),
-        5::BIGINT,'all named reference tables exist');
-    SELECT ok(TO_REGPROCEDURE('public.f_get_check_letter(character varying)') IS NOT NULL
-        AND TO_REGPROCEDURE('public.f_get_account_number(smallint,public.t_associated_record_type_enum)') IS NOT NULL,
-        'actual checksum and allocator exist at predecessor');
-    SELECT ok(TO_REGCLASS('public.creditor_account_id_seq') IS NOT NULL
-        AND TO_REGCLASS('public.account_number_index_id_seq') IS NOT NULL,'owned sequences exist');
-    SELECT ok(EXISTS(SELECT 1 FROM public.countries WHERE cjs_code=1 AND international_code='GBR')
-        AND EXISTS(SELECT 1 FROM public.business_units WHERE business_unit_id=1042 AND business_unit_code='63'),
-        'real selected predecessor reference migrations ran');
-    SELECT pg_temp.opal_upgrade_save(:'opal_scenario_id', :'opal_candidate_version', :'opal_predecessor_version',
-        pg_temp.ca_installation_state());
-    SELECT pg_temp.opal_upgrade_load(:'opal_scenario_id', :'opal_candidate_version', :'opal_predecessor_version') AS saved_state \gset
-    SELECT ok(:'saved_state'::JSONB IS NOT NULL,'one owned durable predecessor observation');
-    SELECT is((SELECT COUNT(*) FROM JSONB_OBJECT_KEYS(:'saved_state'::JSONB->'rows')),7::BIGINT,
-        'exact seven-table row scope observed');
-    SELECT * FROM finish();
-    COMMIT;
-\elif :is_cleanup
-    SELECT plan(2);
-    -- -------------------------------------------------------------------------
-    -- Scenario: Remove committed creditor observations and verify persisted absence.
-    -- Setup: Shared exact ownership guard, owned drop, independent backend readback.
-    -- Expected: Only owned observation state removed; committed namespace absent.
-    -- -------------------------------------------------------------------------
-    SELECT pg_temp.opal_upgrade_load(:'opal_scenario_id', :'opal_candidate_version', :'opal_predecessor_version') AS saved_state \gset
-    SELECT ok(:'saved_state'::JSONB IS NOT NULL,'cleanup confirmed exact owned creditor observation');
-    SELECT pg_temp.opal_upgrade_remove(:'opal_scenario_id', :'opal_candidate_version', :'opal_predecessor_version');
-    COMMIT;
-    BEGIN;
-    SET LOCAL search_path = public, pg_catalog;
-    SET LOCAL statement_timeout = '30s';
-    SELECT ok(pg_temp.opal_upgrade_absent_from_new_backend(),
-        'separate backend confirms committed creditor observation removal');
-    SELECT * FROM finish();
-    ROLLBACK;
-\else
-    \if :is_verify
-        SELECT plan(184);
-        -- ---------------------------------------------------------------------
-        -- Scenario: Candidate definition changes no predecessor data or objects.
-        -- Setup: Compare committed observation before functional fixtures/calls.
-        -- Expected: Exact identity and all scoped rows/definitions/sequences match.
-        -- ---------------------------------------------------------------------
-        SELECT pg_temp.opal_upgrade_load(:'opal_scenario_id', :'opal_candidate_version', :'opal_predecessor_version') AS saved_state \gset
-        SELECT ok(:'saved_state'::JSONB IS NOT NULL,'one predecessor observation survived a new connection');
-        SELECT ok(
-            (:'saved_state'::JSONB->'rows')
-                IS NOT DISTINCT FROM
-                (pg_temp.ca_installation_state()->'rows'),
-            'all seven predecessor row sets preserved'
-        );
-
-        SELECT ok(
-            (:'saved_state'::JSONB-'rows')
-                IS NOT DISTINCT FROM
-                (pg_temp.ca_installation_state()-'rows'),
-            'table/helper/sequence definitions and sequence state preserved'
-        );
-        SELECT ok(TO_REGPROCEDURE('public.p_insert_creditor_accounts(smallint,json,bigint,bigint,bigint)') IS NOT NULL,
-            'candidate procedure installed before functional mutation');
-    \else
-        SELECT plan(180);
-    \endif
+-- Creation and current groups share all behaviour; V1_33 requires no later routine.
+SELECT plan(229);
 
 -- -----------------------------------------------------------------------------
 -- Scenario: Synthetic reference fixtures establish supported identity paths.
@@ -979,7 +844,119 @@ SELECT results_eq($q$SELECT * FROM public.account_number_index WHERE business_un
     ORDER BY account_number_index_id$q$,'SELECT * FROM ca_before_allocations ORDER BY account_number_index_id',
     'unrelated allocations unchanged');
 
+
+-- -----------------------------------------------------------------------------
+-- Scenario: Late insertion failures preserve every supplied error diagnostic.
+-- Setup: A BU-filtered synthetic trigger fails after the real allocator reserved;
+--        a test-only handler also observes cancellation and assertion SQLSTATEs.
+-- Expected: Original fields/context, no successful OUT pair or business residue,
+--           one attempt and nontransactional sequence consumption remain visible.
+-- -----------------------------------------------------------------------------
+CREATE SEQUENCE pg_temp.ca_diagnostic_attempts START 1;
+CREATE FUNCTION pg_temp.ca_inject_creditor_diagnostics() RETURNS TRIGGER LANGUAGE plpgsql AS $inject$
+BEGIN
+    IF NEW.business_unit_id=31982 THEN
+        PERFORM NEXTVAL('pg_temp.ca_diagnostic_attempts');
+        RAISE EXCEPTION USING ERRCODE=CURRENT_SETTING('po10643.diagnostic_state'),
+            MESSAGE='synthetic creditor diagnostic message',
+            DETAIL='synthetic creditor diagnostic detail',
+            HINT='synthetic creditor diagnostic hint',
+            SCHEMA='public',TABLE='creditor_accounts',COLUMN='creditor_account_id',
+            CONSTRAINT='ca_synthetic_diagnostic';
+    END IF;
+
+    RETURN NEW;
+END;
+$inject$;
+CREATE TRIGGER po10643_creditor_diagnostics BEFORE INSERT ON public.creditor_accounts
+    FOR EACH ROW EXECUTE FUNCTION pg_temp.ca_inject_creditor_diagnostics();
+CREATE FUNCTION pg_temp.ca_diagnostic_probe(pi_party BIGINT) RETURNS JSONB LANGUAGE plpgsql AS $probe$
+DECLARE
+    v_id BIGINT;
+    v_number VARCHAR;
+    v_detail TEXT;
+    v_hint TEXT;
+    v_schema TEXT;
+    v_table TEXT;
+    v_column TEXT;
+    v_constraint TEXT;
+    v_context TEXT;
+
+BEGIN
+    CALL public.p_insert_creditor_accounts(31982::SMALLINT,
+        '{"bank_account_details":{"bank_account_type":"None or not applicable"}}'::JSON,
+        NULL::BIGINT,pi_party,NULL::BIGINT,v_id,v_number);
+    RETURN JSONB_BUILD_OBJECT('state','00000','succeeded',true,'id',v_id,'number',v_number);
+
+EXCEPTION
+    WHEN query_canceled OR assert_failure OR OTHERS THEN
+        GET STACKED DIAGNOSTICS v_detail=PG_EXCEPTION_DETAIL,v_hint=PG_EXCEPTION_HINT,
+            v_schema=SCHEMA_NAME,v_table=TABLE_NAME,v_column=COLUMN_NAME,
+            v_constraint=CONSTRAINT_NAME,v_context=PG_EXCEPTION_CONTEXT;
+
+        RETURN JSONB_BUILD_OBJECT('state',SQLSTATE,'message',SQLERRM,
+            'detail',v_detail,'hint',v_hint,'schema',v_schema,'table',v_table,
+            'column',v_column,'constraint',v_constraint,'context',v_context,
+            'succeeded',false,'id',v_id,'number',v_number);
+END;
+$probe$;
+CREATE FUNCTION pg_temp.ca_diagnostic_tests() RETURNS SETOF TEXT LANGUAGE plpgsql AS $diagnostics$
+DECLARE
+    v_state TEXT;
+    v_result JSONB;
+    v_party BIGINT;
+    v_accounts BIGINT;
+    v_allocations BIGINT;
+    v_creditor_sequence BIGINT;
+    v_allocation_sequence BIGINT;
+
+BEGIN
+    SELECT id INTO STRICT v_party FROM ca_party WHERE role='Minor';
+    SELECT COUNT(*) INTO v_accounts FROM public.creditor_accounts;
+    SELECT COUNT(*) INTO v_allocations FROM public.account_number_index;
+
+    FOREACH v_state IN ARRAY ARRAY['23503','23505','22001','40001','40P01','57014','P0004'] LOOP
+        PERFORM SETVAL('pg_temp.ca_diagnostic_attempts',1,false);
+        PERFORM SET_CONFIG('po10643.diagnostic_state',v_state,true);
+        SELECT last_value INTO v_creditor_sequence FROM public.creditor_account_id_seq;
+        SELECT last_value INTO v_allocation_sequence FROM public.account_number_index_id_seq;
+        v_result := pg_temp.ca_diagnostic_probe(v_party);
+        RETURN NEXT is(JSONB_BUILD_ARRAY(v_result->>'state',v_result->>'message',
+            v_result->>'detail',v_result->>'hint',v_result->>'schema',v_result->>'table',
+            v_result->>'column',v_result->>'constraint'),
+            JSONB_BUILD_ARRAY(v_state,'synthetic creditor diagnostic message',
+                'synthetic creditor diagnostic detail','synthetic creditor diagnostic hint',
+                'public','creditor_accounts','creditor_account_id','ca_synthetic_diagnostic'),
+            v_state||': late failure retains original SQLSTATE and supplied diagnostics');
+        RETURN NEXT ok(v_result->>'context' LIKE '%ca_inject_creditor_diagnostics()%'
+            AND v_result->>'context' LIKE '%p_insert_creditor_accounts%',
+            v_state||': original trigger and procedure context remains observable');
+        RETURN NEXT is(JSONB_BUILD_ARRAY(v_result->'succeeded',v_result->'id',v_result->'number'),
+            '[false,null,null]'::JSONB,v_state||': late failure returns no successful output pair');
+        RETURN NEXT is((SELECT JSONB_BUILD_ARRAY(last_value,is_called) FROM pg_temp.ca_diagnostic_attempts),
+            '[1,true]'::JSONB,v_state||': late failure has one attempt without a procedure retry');
+        RETURN NEXT is((SELECT COUNT(*) FROM public.creditor_accounts),v_accounts,
+            v_state||': late failure leaves no creditor account residue');
+        RETURN NEXT is((SELECT COUNT(*) FROM public.account_number_index),v_allocations,
+            v_state||': late failure unwinds the real allocation reservation');
+        RETURN NEXT is(JSONB_BUILD_ARRAY(
+            (SELECT last_value FROM public.creditor_account_id_seq),
+            (SELECT last_value FROM public.account_number_index_id_seq)),
+            JSONB_BUILD_ARRAY(v_creditor_sequence+1,v_allocation_sequence+1),
+            v_state||': failed insertion consumes sequence values without rewinding');
+    END LOOP;
+END;
+$diagnostics$;
+SELECT * FROM pg_temp.ca_diagnostic_tests();
+DROP TRIGGER po10643_creditor_diagnostics ON public.creditor_accounts;
+DROP FUNCTION pg_temp.ca_inject_creditor_diagnostics();
+DO $cleanup$
+BEGIN
+    IF EXISTS(SELECT 1 FROM pg_trigger WHERE tgname='po10643_creditor_diagnostics') THEN
+        RAISE EXCEPTION 'Creditor diagnostic trigger cleanup incomplete';
+    END IF;
+END;
+$cleanup$;
+
 SELECT * FROM finish();
 ROLLBACK;
-
-\endif
