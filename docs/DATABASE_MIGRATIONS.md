@@ -32,7 +32,10 @@ The existing first migration is `V1_1__db_description.sql`; a future version mus
 
 ## Immutability and forward fixes
 
-Applied migrations are never edited, renamed, deleted, or renumbered. Correct a mistake in an applied migration with a later forward migration. Do not normalise existing version gaps or historical naming anomalies as incidental cleanup.
+Committed or deployed migrations are never edited, renamed, deleted, or
+renumbered. Correct a mistake with a later forward migration. An open pull
+request does not make a committed migration editable. Do not normalise existing
+version gaps or historical naming anomalies as incidental cleanup.
 
 ## Migration headers
 
@@ -122,6 +125,27 @@ Retain the blank comment lines shown in the template between `OPAL Program`,
 change-history column headings. Keep continuation lines within each section
 together.
 
+New Maintenance stored procedures use the common explicit outer exception
+block. Preserve the embedded header above; the following separate body example
+uses `NULL` only as a placeholder for the routine's declared database work:
+
+```sql
+BEGIN
+    -- Perform the routine's declared database work.
+    NULL;
+
+EXCEPTION
+    WHEN OTHERS THEN
+        RAISE;
+END;
+```
+
+Use this shape when amending an existing procedure under an agreed contract,
+through a forward migration where its current definition is immutable. This
+does not require retrofitting every historical procedure or function. See
+[Exception messages and defaults](#exception-messages-and-defaults) for the
+error and diagnostic contract.
+
 ## Safe schema changes
 
 When an application and schema cannot change atomically, prefer expand, backfill, and contract sequencing. Preserve compatibility with the currently deployed application until the rollout no longer needs it.
@@ -153,6 +177,24 @@ Preserve authoritative comment wording exactly. Readability edits must not
 change definitions or quoted text. Apply these conventions to new or safely
 editable SQL; never rewrite an already-applied Flyway migration solely for
 formatting. The [immutability rules](#immutability-and-forward-fixes) still apply.
+
+Put each `INSERT` column and its corresponding `VALUES` expression on its own
+line, in matching order:
+
+```sql
+INSERT INTO public.example_table (
+    example_id,
+    example_text
+) VALUES (
+    pi_example_id,
+    pi_example_text
+)
+RETURNING example_id INTO po_example_id;
+```
+
+Preserve column/value order, literals, casts, mappings and `RETURNING` behaviour.
+This convention applies to new or otherwise authorised SQL changes; formatting
+alone never justifies rewriting committed migration history.
 
 ### Functions and stored procedures
 
@@ -198,31 +240,51 @@ them to both functions and procedures; do not reformat applied migrations.
 
 ### Exception messages and defaults
 
-- Build contextual exception messages with `FORMAT()`. Start with the routine
-  name and failed operation, then include the relevant safe identifiers or
-  candidate values needed to identify the failure. For an allocation failure,
-  include the candidate account number and Business Unit. Do not include
-  secrets, PII or entire input records.
-- When handling a PostgreSQL exception, retain the original `SQLSTATE` and
-  `SQLERRM` in any contextual replacement message. Use `GET STACKED DIAGNOSTICS`
-  to capture relevant available metadata, such as `CONSTRAINT_NAME`, and retain
-  it in the corresponding `RAISE ... USING` fields. Capture only useful fields;
-  do not invent constraint details for a directly raised business exception.
-- Use a bare `RAISE;` when the contract calls for propagating the original
-  exception unchanged. Do not add a handler solely to reformat every error or
-  convert failures into success. Backend services retain transaction and
-  run-status ownership.
-- For a new contextual or business exception using the default `P0001`, omit
-  `ERRCODE`. Specify a condition or error code only when the approved contract
-  requires a different SQLSTATE. Keep tests explicit about the expected code.
+- New Maintenance stored procedures include the explicit outer
+  `EXCEPTION WHEN OTHERS THEN RAISE;` block shown in the
+  [body example](#stored-procedure-and-function-template). Preserve and rethrow
+  existing failures unless a documented routine contract requires a deliberate
+  translation. The standard block emits no additional routine-level log and
+  does not reconstruct errors or maintain diagnostic-field allowlists.
+- A bare `RAISE;` preserves the original SQLSTATE, message and diagnostic fields.
+  Including a caught SQLSTATE only in replacement message text does not preserve
+  its code: a new `RAISE EXCEPTION` defaults to `P0001`. For an agreed translation
+  that retains the original code, set `ERRCODE` explicitly and preserve the
+  diagnostic fields required by that contract. Use `GET STACKED DIAGNOSTICS`
+  only for a justified additional operation.
+- Unchanged rethrow does not sanitise PostgreSQL messages, details, hints or
+  context. Replacing a sanitising wrapper with the common block changes the
+  diagnostic exposure contract even when the SQLSTATE is unchanged. Record that
+  change and verify caller response/log handling separately; do not claim that
+  raw diagnostics have been stripped. Native database/server logging and errors
+  during pre-entry parameter binding remain separate concerns.
+- Backend services own safe contextual logging, transaction boundaries and
+  run-status outcomes. Where context is needed, use only an agreed fixed routine
+  name, operation label and SQLSTATE; never interpolate payloads, author values,
+  free text, `SQLERRM`, details or hints into new contextual logs. Required caller
+  response and logging coverage must be evidenced rather than assumed.
+- `WHEN OTHERS` excludes cancellation and assertion failures, which propagate
+  naturally. Do not replace them with a generic business error. A caught failure
+  rolls back database writes within the exception block; this does not transfer
+  ownership of the caller's transaction to the procedure. Sequence consumption
+  can still leave gaps.
+- Build deliberately new business-error messages with `FORMAT()`, using the
+  routine name and failed operation plus only contractually required safe
+  identifiers. Never turn a failure into a successful return. For a new business
+  exception using the default `P0001`, omit `ERRCODE`; specify a condition or code
+  when its documented contract requires another SQLSTATE. Keep tests explicit
+  about the expected code and distinguish these errors from unchanged rethrows.
 - Omit routine declaration clauses that only restate PostgreSQL defaults,
   including `VOLATILE`, `CALLED ON NULL INPUT` and `SECURITY INVOKER`, when
   omission preserves the approved effective behaviour. Preserve required
   non-default settings and verify the effective properties when replacing an
   existing routine.
 
-For example, the terminal allocation-collision handler composes its message
-and preserves the caught constraint without restating the default error code:
+The following terminal allocation-collision example is a deliberate,
+contract-specific `P0001` exhaustion error after retrying a native collision.
+It preserves the caught constraint and puts the underlying failure in its
+message; it does not preserve the collision SQLSTATE as the returned error code
+and is not a template for the common insertion-procedure handler:
 
 ```sql
 GET STACKED DIAGNOSTICS v_constraint = CONSTRAINT_NAME;
@@ -335,15 +397,28 @@ outcomes without redefining that contract here.
 
 DB-03 extends the DB-01 database-owned `dbUnitTest` framework. It
 does not create a second framework and must not use Spring or backend
-integration-test fixtures. The maintained registration, phase, adoption and report contract is documented
-in [Testing](TESTING.md#maintained-predecessor-upgrade-contract). Normal
+integration-test fixtures. The maintained declaration, dispatch, adoption and
+report contract is documented in
+[Testing](TESTING.md#maintained-predecessor-upgrade-contract). Normal
 `./gradlew dbUnitTest` runs every fresh suite and affected registered upgrades;
 `check` and `build` inherit that coverage. Explicit full replay and conservative
 full fallback follow the linked selection contract. Excluded scenarios are Not
 selected, not verified. Shared database-test infrastructure changes require full
-historical replay. Framework delivery alone does not prove a
-consumer: record its actual registration, predecessor, candidate, owning-suite
+historical replay and automatically run the native framework regression matrix;
+uncertain comparison evidence also requires that matrix. Framework delivery
+alone does not prove a consumer: record its actual registration, predecessor,
+candidate, owning-suite
 assertions and retained passing execution evidence.
+
+Before creating targets, validate the complete-tree numerical inventory,
+registrations, adoption checksums and immutable history. Working migration bytes
+must match their committed HEAD versions; a trustworthy comparison also checks
+existing migration paths and bytes across both revisions. Reject modification,
+removal, rename, duplicate versions and a new selected version inserted below
+existing history. Missing or uncertain comparison context falls back to full
+registered replay, but cannot excuse a history-policy error. Added migrations
+outside the exercised locations are reported as Unverified; validate their
+applicable disposable configuration separately before claiming coverage.
 
 Resolve the actual candidate and its immediate predecessor from the selected
 Flyway migration locations at the implementation baseline. The predecessor is
@@ -366,9 +441,11 @@ Flyway-native sequence:
    process and owner for producing and approving that contract remain to be
    decided. Translate only its approved cases into the smallest deterministic
    synthetic dataset.
-4. Capture the relevant scoped predecessor rows and objects through the owning
-   SQL/pgTAP suite. Keep test observation state outside application objects and
-   preserve it across the migration and verification phases.
+4. Capture the relevant scoped predecessor rows and objects through shared
+   SQL support using the owning suite's compact declaration. Keep test observation
+   state outside application objects and preserve it across connections. Approved
+   synthetic preparation or risk-specific transitions may use explicitly declared
+   custom SQL cases; ordinary routine creation does not need bespoke phases.
 5. Apply only the candidate as the next migration and validate at that same
    candidate boundary. No later migration may run before candidate assertions.
 6. Compare the scoped predecessor rows and objects before functional fixtures
@@ -386,12 +463,27 @@ Flyway-native sequence:
 The maintained DB-03 phases use separate SQL connections, so predecessor
 observations have an ordinary, committed lifetime inside the disposable target.
 TEMP objects and rolled-back observations cannot carry evidence between those
-connections. Use only the fixed shared framework lifecycle include under the
-[SQL ownership contract](TESTING.md#pgtap-suite-layout); owner-produced snapshots,
-preservation assertions, fixtures and concurrency stay in the one flat owning
-suite. Store owner-provided observations without parsing or normalising embedded
-row/text strings. Exact ownership checks precede loading/removal; removal must
-be committed and absence checked from a distinct backend. Only narrowly owned
+connections. Follow the [compact contract and shared dispatch](TESTING.md#compact-contract-and-shared-dispatch)
+and [SQL ownership contract](TESTING.md#pgtap-suite-layout). The fixed
+`support/manifest.json` controls explicitly loaded helpers and fingerprints;
+helpers are never discovered as standalone suites. Shared SQL owns declared-scope
+capture and comparison, phase plans and transactions, guarded observation
+identity, committed storage, and independently checked cleanup. Row/text snapshot
+strings remain exact. The flat owning suite retains functional assertions,
+independent expectations, fixtures and real-session concurrency. Do not copy
+phase validation, observation tables, commits or cleanup into each new suite.
+
+Optional `upgradeCases/` scripts are invoked only by an explicit contract for
+approved preparation or a risk-specific transition; they do not become another
+routine suite or reimplement shared observation machinery. Functional assertion
+groups must be compatible with the candidate schema, including focused historical
+expectations when a later migration changes behaviour or dependencies. Existing
+four-field registrations retain the documented legacy phase API during separately
+reviewed consumer adaptation; keep their coverage until that adaptation has been
+verified. Framework support alone does not establish consumer adoption.
+
+Exact ownership checks precede loading/removal; removal is committed and absence
+is checked from a distinct backend. Only narrowly owned
 test observation preparation, history snapshots
 and their cleanup commit under the [pgTAP transaction contract](TESTING.md#db-10-pgtap-execution).
 Fresh and functional verification retain rollback, and production routines retain
@@ -458,12 +550,17 @@ Use the current
 assertion mechanics and patterns, command-failing output, and the common
 evidence format. DB-04 defines the required migration-specific contract and
 outcomes without duplicating those mechanics.
-Follow the [pgTAP suite layout](TESTING.md#pgtap-suite-layout): one
-self-contained SQL suite per function or procedure, with new suites directly
-under `src/dbUnitTest` and no object-specific subdirectories, support SQL or
-shell test scripts. Only the fixed shared lifecycle include and framework
-regression fixtures use the narrow layout exceptions; routine SQL ownership
-remains in the flat suite.
+Follow the [pgTAP suite layout](TESTING.md#pgtap-suite-layout): one flat owning
+SQL suite per function or procedure, with new suites directly under
+`src/dbUnitTest`. A migration normally adds its production SQL, ordinary
+assertions and a compact declaration linking its changed objects, preservation
+scope and compatible assertion group. Shared `support/` SQL owns lifecycle and
+preservation through the fixed manifest; optional `upgradeCases/` SQL covers
+explicit risk-specific transitions. Fixed regressions remain under `framework/`.
+These paths are explicitly loaded rather than discovered as fresh suites.
+Do not create a directory or duplicate phase plumbing for every migration, or
+introduce a separate shell/Python database test runner. Preserve existing
+functional, fixture and concurrency ownership when adapting a consumer.
 
 ### Planned DB-06 stored-procedure responsibility contract
 
@@ -476,6 +573,13 @@ create or update run-status records. The calling backend service owns the
 transaction boundary and the run-status lifecycle; this guide does not
 prescribe the backend implementation mechanics. Record any required backend or
 status-persistence change as separate work outside this database workstream.
+
+New Maintenance procedures include the
+[common explicit exception block](#exception-messages-and-defaults). Existing
+procedures adopt it when their contract is amended through the appropriate
+forward migration; do not retrofit immutable history. The handler propagates
+failure and retains original error codes without taking ownership of backend
+transaction or publication outcomes.
 
 Keep a lightweight record-at-a-time insertion helper focused on its declared
 mapping, allocation, integrity, insertion, and output contract. Collection
@@ -528,6 +632,22 @@ Fines precedent: another service's routine and business rules do not establish
 this service's enforcement. Record unresolved ownership or coverage as a gap
 and do not claim that the affected contract is complete.
 
+For Notes, the agreed split assigns required/non-null input values, JSON shape
+and types, blank/whitespace rules, and applicable input lengths to the backend,
+with UI checks where appropriate. Retain the respondent-account existence check
+in the procedure because the polymorphic Notes association has no foreign key
+enforcing it. Keep standard-note assignment, author mapping, timestamp semantics
+and one-row insertion in the helper; account comments and optional-note selection
+remain caller concerns.
+
+This split is a delivery requirement, not evidence that backend validation has
+already been implemented. Identify the actual endpoint/service, the path from
+request through the persisted casefile to the helper, and its tests for every
+supported caller. Record missing coverage as a separately owned dependency and
+the changed validation/error classification contract. UI validation alone cannot
+close that dependency. Do not claim end-to-end completion while required
+validation or propagated-error response/log coverage remains unverified.
+
 Use existing PostgreSQL type, nullability, primary-key, unique, foreign-key, and
 check constraints for integrity they already enforce. Justify any duplicate
 existence precheck against the required semantics and error contract. Retain
@@ -555,8 +675,9 @@ applicable.
 #### Native errors and deliberate exceptions
 
 Native PostgreSQL constraint, type, or conversion failures may satisfy the
-expected error contract without an additional precheck or `RAISE`. For every
-deliberate precheck, explicit exception, or SQLSTATE translation, explain what
+expected error contract without an additional precheck or replacement error;
+the common outer procedure handler rethrows those failures unchanged. For every
+deliberate precheck, newly raised exception, or SQLSTATE translation, explain what
 required semantic protection, diagnostic, or compatible caller behaviour it
 adds beyond existing constraints and native propagation. Consider concurrent
 changes when assessing a precheck; it does not replace the constraint.
@@ -564,10 +685,11 @@ changes when assessing a precheck; it does not replace the constraint.
 Record the failure condition, evidenced SQLSTATE and relevant diagnostic
 context, including constraint identity where callers rely on it. Preserve
 compatible errors and useful diagnostics; do not swallow failures or turn them
-into successful results. A justified handler or `RAISE` remains valid. Do not
-invent a universal error-code scheme or require translation of every native
-failure. An intentional incompatible error change needs an explicit contract
-and delivery sequence, together with direct PostgreSQL evidence for the
+into successful results. The mandatory common handler does not require
+duplicating table constraints or translating each native failure. Do not
+invent a universal error-code scheme. An intentional incompatible error change
+needs an explicit contract and delivery sequence, together with direct
+PostgreSQL evidence for the
 affected outcomes.
 
 ## Routine LLD documentation
@@ -601,6 +723,13 @@ Document backend ownership of transaction boundaries and run-status updates
 where relevant. Explain implemented exception-block rollback or retry behaviour
 without presenting it as ownership of the caller's transaction. Surface
 conflicting design and implementation evidence in the handoff.
+
+Check that the documented common handler, SQLSTATE, diagnostic exposure and
+validation owner match the delivered implementation. Distinguish original
+error codes from codes appearing only in message text and evidenced backend
+validation from a planned dependency. Record the applicable affected/full
+predecessor evidence in the handoff rather than treating fresh installation as
+proof of every boundary.
 
 Use a workflow diagram when branches, loops/retries, multi-step database work,
 or orchestration benefit from it. Keep labels and paths readable and show
@@ -646,7 +775,13 @@ Distinguish rolling back application code from recovering database state. After 
 - Confirm the version is unique across the complete tree and has been rechecked against the target branch.
 - Confirm no applied migration was modified.
 - Confirm compatibility, locking, duration, data volume, and sensitive-data concerns were assessed.
+- Confirm the common procedure handler, preserved SQLSTATE, diagnostic exposure
+  and validation ownership agree with the implementation and caller evidence.
+  A code appearing only in replacement message text is not preserved SQLSTATE.
 - Confirm fresh-database and upgrade-path validation were considered.
+- Confirm required affected/full predecessor evidence records the actual
+  selected boundaries; disclose pending backend validation and response/log
+  dependencies without claiming those checks have moved successfully.
 - Confirm each changed database contract maps to a created or updated
   `*_pgtap_tests.sql` suite, an identified unchanged suite with sufficient
   coverage, or a justified DB-04 no-assertion exception.
