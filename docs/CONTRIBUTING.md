@@ -6,6 +6,80 @@ work over for human review, together with each applicable
 [Backend](BACKEND_DEFINITION_OF_DONE.md) and
 [Database](DATABASE_DEFINITION_OF_DONE.md) supplement.
 
+## Design and planning evidence
+
+Repository standards apply before a design or implementation plan is approved,
+and again before execution. Read the applicable implementation, testing,
+database, OpenAPI, review, and Definition of Done guidance for the affected
+scope. Generic skill templates do not replace these requirements.
+
+Reconcile the selected ticket and Acceptance Criteria, confirmed decisions,
+context source revisions, and intended implementation baseline. Record the
+inspected revisions and relevant dirty state, distinguish the current checkout
+from any separately inspected foundation, and identify material changes since
+the preceding context, design, or plan. Read-only context collection retains
+its own evidence boundaries; current application-code drift is assessed during
+design and planning.
+
+Carry requirements and unresolved conflicts into each subsequent artifact.
+Record the old and current requirement, its source, and the agreed resolution
+or outstanding decision. An earlier readiness result, approved design, legacy
+test suffix, or maintained example does not establish current compliance or
+authorize an exception to repository standards. Reconcile conflicting ticket
+requirements explicitly before implementing the affected work.
+
+For each Acceptance Criterion and material repository requirement, identify
+the design decision, implementation task, planned verification, and delivery
+evidence. Confirm that the maintained framework can execute the proposed
+checks. Follow [routine testing and framework-gap handling](TESTING.md#routine-suites-and-framework-gaps)
+for database coverage; unsupported required checks remain explicit unmet
+requirements.
+
+Identify the agreed scope and delivery owner for API or backend work discovered
+during database planning. Track separately owned dependencies and consumer
+alignment without silently expanding the database ticket or assuming upstream
+validation exists. A comparable service provides precedent, not authority for
+different domain behaviour.
+
+Design and plan self-review must check current source evidence and applicable
+repository standards as well as internal consistency and spec coverage. Carry
+the same evidence and constraints into delegated review and implementation
+briefs, including when work moves to another worktree.
+
+### Required prerequisite delivery
+
+When a mandatory capability or separately owned change is unavailable, include
+a concrete enabling task within the authorised scope or link a delivery work
+package. Keep shared framework, routine and consumer work independently
+reviewable; a dependency does not automatically expand the selected ticket.
+
+For each prerequisite, record:
+
+- The affected Acceptance Criterion or repository requirement, required
+  scenario, current capability and evidenced gap.
+- The responsible delivery role, actual assignment status, and work-package
+  reference/revision. Do not invent a person, ticket key or completed agreement.
+- The deliverables, scope and interface contract. Distinguish existing supported
+  interfaces from proposed ones that must be implemented and verified first.
+- The consuming work's integration tasks, owner and delivery order, including
+  what may progress independently and what depends on the prerequisite.
+- The prerequisite's acceptance checks and the consumer's required execution
+  evidence. Capability delivery alone does not verify the consuming criterion.
+
+If the enabling package or a necessary scope decision is absent, identify the
+outstanding planning work and state that the full delivery plan is blocked.
+Independent authorised work may still progress. A design or bounded routine
+plan can be reviewed with these gaps visible, but must not be presented as an
+executable route to complete all Acceptance Criteria. An owner label and a
+statement to await future support are insufficient to close that planning gap.
+
+Reuse a shared enabling package across its consumers rather than designing a
+new framework per ticket. After delivery, reconcile the actual revision and
+supported interfaces, execute each consumer's required checks, and replace
+only the resolved dependency with its evidence. Proposed commands and a
+successful plan review do not establish implementation or verification
+completion; the applicable Definitions of Done still govern handoff.
+
 ## Branches
 
 Use the Jira key as the branch identifier for ticketed work, for example

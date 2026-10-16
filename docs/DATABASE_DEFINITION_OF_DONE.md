@@ -44,16 +44,28 @@ Detailed requirements are defined in [Migration locations],
 ## Functions and stored procedures
 
 - [ ] Each changed function or procedure has one clear, modular responsibility
-  and reuses established common routines where appropriate.
-- [ ] Routine parameters, return values, SQLSTATE values, and affected
-  application callers remain compatible or have an explicit delivery sequence.
+  and reuses established common routines where appropriate; helper and
+  collection/publication orchestration boundaries follow the
+  [DB-06 responsibility contract](DATABASE_MIGRATIONS.md#planned-db-06-stored-procedure-responsibility-contract).
+- [ ] Validation rules have a requirement source, enforcement owner, and
+  verified coverage under
+  [Validation ownership and integrity](DATABASE_MIGRATIONS.md#validation-ownership-and-integrity).
+  Simplification preserves native integrity, semantic reference checks,
+  supplied-code resolution, and polymorphic target protection where applicable.
+- [ ] Routine signatures, effective parameter types and modes, return values,
+  SQLSTATE values, and affected application callers remain compatible or have
+  an explicit delivery sequence.
 - [ ] Reads, writes, locks, and dynamic SQL are restricted to the intended rows
-  and safely handle identifiers and untrusted values.
+  and safely handle identifiers and untrusted values. Explicit locks have a
+  justified caller transaction and concurrent scenario under the DB-06 guidance.
 - [ ] Repeat invocation is idempotent or otherwise safe where the business
   contract, retry behaviour, or recovery process requires it.
-- [ ] Expected failures raise explicit exceptions and preserve useful
-  diagnostic context; failures are not swallowed or converted into successful
-  outcomes.
+- [ ] Expected failures propagate native PostgreSQL or justified deliberate
+  exceptions under
+  [Native errors and deliberate exceptions](DATABASE_MIGRATIONS.md#native-errors-and-deliberate-exceptions).
+  Prechecks and SQLSTATE translations add a documented requirement beyond
+  existing constraints; compatible errors and useful diagnostics are preserved,
+  and failures are not swallowed or converted into successful outcomes.
 - [ ] Stored procedures perform database work and raise exceptions; backend
   services own transaction boundaries and run-status updates. Procedures do
   not commit or roll back backend-owned transactions.
@@ -75,6 +87,16 @@ and [Testing](TESTING.md#infrastructure-and-evidence).
   DB-04 no-assertion exception with its reason recorded.
 - [ ] Database-owned pgTAP suites explain their scenarios, are stored under
   `src/dbUnitTest`, and are discoverable by the `dbUnitTest` task.
+- [ ] Each changed routine follows
+  [Routine suites and framework gaps](TESTING.md#routine-suites-and-framework-gaps),
+  and the authoritative [pgTAP suite layout](TESTING.md#pgtap-suite-layout), with
+  one owning `*_pgtap_tests.sql` suite containing its fixtures, temporary SQL
+  helpers, assertions, and cleanup. Every new suite is directly under
+  `src/dbUnitTest`; existing paths remain unless relocation is explicitly in scope.
+  Required database coverage and coordination stay in the owning SQL/pgTAP
+  suite and existing framework, including supported in-suite concurrency
+  mechanisms. Framework gaps are recorded and resolved before
+  claiming the affected verification complete.
 - [ ] SQL tests cover applicable success, empty, validation, failure, boundary,
   repeat, concurrency, and row-scope outcomes.
 - [ ] For changes requiring database-owned assertions, `./gradlew dbUnitTest`
@@ -95,6 +117,17 @@ and [Testing](TESTING.md#infrastructure-and-evidence).
   interaction documentation, object comments, reference output, and ownership,
   dependency, compatibility, and recovery information reflect the final
   change.
+- [ ] Required function/procedure LLDs meet
+  [Routine LLD documentation](DATABASE_MIGRATIONS.md#routine-lld-documentation),
+  including effective types, modes, record effects, intended versus verified
+  callers, errors, performance evidence, ownership, and per-routine diagram
+  applicability. Used diagrams have both render/visual and implementation-logic
+  checks recorded.
+- [ ] Where the exact LLD Acceptance Criterion requires publication, authorized
+  scoped updates preserve fresh page content, and saved URLs/versions where
+  exposed, persisted-content readback, affected-object coverage, and applicable
+  diagram/media checks demonstrate that criterion. A local draft or unverified
+  save is not reported as completed publication.
 
 ## Review readiness
 
