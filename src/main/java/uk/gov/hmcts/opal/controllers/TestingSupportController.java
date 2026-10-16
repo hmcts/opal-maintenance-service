@@ -1,5 +1,6 @@
 package uk.gov.hmcts.opal.controllers;
 
+import io.swagger.v3.oas.annotations.Hidden;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.ResponseEntity;
@@ -26,16 +27,19 @@ public class TestingSupportController {
     }
 
     @GetMapping("/draft-casefiles/{id}")
+    @Hidden
     public ResponseEntity<TestingSupportDraftCasefileMetadata> inspect(@PathVariable Long id) {
         return ResponseEntity.ok(draftCasefiles.inspect(id));
     }
 
     @GetMapping("/draft-casefiles/markers/{marker}")
+    @Hidden
     public ResponseEntity<TestingSupportDraftCasefileMatches> findByMarker(@PathVariable String marker) {
         return ResponseEntity.ok(draftCasefiles.findByMarker(marker));
     }
 
     @DeleteMapping("/draft-casefiles/{id}")
+    @Hidden
     public ResponseEntity<Void> delete(@PathVariable Long id) {
         draftCasefiles.delete(id);
         return ResponseEntity.noContent().build();

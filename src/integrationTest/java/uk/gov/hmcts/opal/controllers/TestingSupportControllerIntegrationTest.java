@@ -60,6 +60,17 @@ class TestingSupportControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    void excludesDraftDiagnosticsFromPublicApiDocs() throws Exception {
+        mockMvc.perform(get("/v3/api-docs"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.paths['/testing-support/ping'].get").exists())
+            .andExpect(jsonPath("$.paths['/testing-support/draft-casefiles/{id}'].get").doesNotExist())
+            .andExpect(jsonPath("$.paths['/testing-support/draft-casefiles/{id}'].delete").doesNotExist())
+            .andExpect(jsonPath("$.paths['/testing-support/draft-casefiles/markers/{marker}'].get")
+                .doesNotExist());
+    }
+
+    @Test
     void rejectsUnauthenticatedAuthCheckWhenTestingSupportEndpointsAreEnabled() throws Exception {
         mockMvc.perform(get("/testing-support/auth/check"))
             .andExpect(status().isUnauthorized());
