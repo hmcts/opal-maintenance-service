@@ -2,6 +2,10 @@ INSERT INTO business_units
     (business_unit_id, business_unit_code, business_unit_name, business_unit_type, welsh_language)
 VALUES (1, 'ZD01', 'Synthetic Draft Unit', 'Area', false);
 
+INSERT INTO business_units
+    (business_unit_id, business_unit_code, business_unit_name, business_unit_type, welsh_language)
+VALUES (44, 'ZD44', 'Synthetic Testing Support Unit', 'Area', false);
+
 INSERT INTO maintenance_applications
     (application_id, application_code, application_title, application_group, active, date_used_from)
 VALUES (31020, 'TEST', 'Synthetic Draft Application', 'Create Casefile', true, DATE '2000-01-01');
