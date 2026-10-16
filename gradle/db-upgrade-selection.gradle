@@ -1,0 +1,394 @@
+import groovy.json.JsonSlurper
+import java.nio.file.Files
+import java.security.MessageDigest
+import org.gradle.api.GradleException
+
+// Frankie Moran — PO-10643 — 14/10/2026
+// Selection uses only local Git evidence; target creation remains in db-unit-test.gradle.
+def canonicalPath = { Object value ->
+  value instanceof String && value ==~ /[A-Za-z0-9_.\/-]+/ && !value.startsWith('/') &&
+    !value.split('/', -1).any { it in ['', '.', '..'] }
+}
+def localGit = { File repository, List arguments ->
+  def builder = new ProcessBuilder(['git', '-C', repository.absolutePath] + arguments)
+  builder.environment().put('GIT_NO_LAZY_FETCH', '1')
+  builder.environment().put('GIT_TERMINAL_PROMPT', '0')
+  def process = builder.start()
+  String out = '', err = ''
+  // Preserve NUL-delimited bytes: Groovy's line consumer inserts spurious newlines.
+  def stdoutReader = Thread.start { out = process.inputStream.getText('UTF-8') }
+  def stderrReader = Thread.start { err = process.errorStream.getText('UTF-8') }
+  process.waitFor(); stdoutReader.join(); stderrReader.join()
+  [exitCode:process.exitValue(), stdout:out, stderr:err]
+}
+def validRef = { Object value ->
+  value instanceof String && value ==~ /[A-Za-z0-9][A-Za-z0-9_.\/-]*/ &&
+    !value.contains('..') && !value.contains('//') && !value.endsWith('/') && !value.endsWith('.')
+}
+ext.parseDbUpgradeMetadata = { String input, String source ->
+  // Reject escapes, nested objects, non-string fields and duplicate keys before parsing.
+  def value = /(?:"[A-Za-z0-9_.\/-]+"|\[\s*(?:"[A-Za-z0-9_.\/-]+"(?:\s*,\s*"[A-Za-z0-9_.\/-]+")*)?\s*\])/
+  if (!(input ==~ /\s*\{\s*"[a-z]+"\s*:\s*${value}(?:\s*,\s*"[a-z]+"\s*:\s*${value})*\s*\}\s*/)) {
+    throw new GradleException("Malformed upgrade metadata at ${source}; expected constrained JSON")
+  }
+  def keys = (input =~ /"([a-z]+)"\s*:/).collect { it[1] }
+  if (keys.toSet().size() != keys.size()) { throw new GradleException("Duplicate metadata field at ${source}") }
+  def required = ['id','candidate','scope','data'].toSet()
+  if (!keys.containsAll(required) || !(['id','candidate','scope','data','inputs'].containsAll(keys))) {
+    throw new GradleException("Unknown or missing metadata field at ${source}")
+  }
+  def item = new JsonSlurper().parseText(input)
+  if (!required.every { item[it] instanceof String } || !(item.id ==~ /[a-z][a-z0-9._-]*/) ||
+      !(item.scope in ['both','upgrade']) || !(item.data in ['migration-created-only','approved-synthetic'])) {
+    throw new GradleException("Invalid metadata value at ${source}")
+  }
+  if (!canonicalPath(item.candidate)) { throw new GradleException("Noncanonical candidate path at ${source}") }
+  if (!item.containsKey('inputs')) { item.inputs = [] }
+  if (!(item.inputs instanceof List) || !item.inputs.every { canonicalPath(it) } ||
+      item.inputs.toSet().size() != item.inputs.size()) {
+    throw new GradleException("Invalid or duplicate dependency inputs at ${source}")
+  }
+  item
+}
+ext.validateDbUpgradeInputs = { Map scenario, File repository ->
+  def ownerPath = repository.toPath().relativize(scenario.owner.toPath()).toString().replace(File.separator,'/')
+  def implicit = [ownerPath, "src/main/resources/db/migration/${scenario.candidate}".toString()]
+  def inputs = scenario.inputs ?: []
+  if (!(inputs instanceof List) || !inputs.every { canonicalPath(it) } ||
+      inputs.toSet().size() != inputs.size() || inputs.any { it in implicit }) {
+    throw new GradleException("Invalid or duplicate dependency inputs at ${scenario.source ?: scenario.id}")
+  }
+  inputs.each { path ->
+    // File.canonicalFile can equal the lexical path for a dangling link. Inspect
+    // every declared component without following links, including missing parents.
+    def component = repository.canonicalFile.toPath()
+    path.split('/').each { part ->
+      component = component.resolve(part)
+      if (Files.isSymbolicLink(component)) {
+        throw new GradleException("Symbolic dependency input at ${scenario.id}: ${path}")
+      }
+    }
+    def target = new File(repository, path)
+    if (target.canonicalFile != new File(repository.canonicalFile, path).absoluteFile) {
+      throw new GradleException("Noncanonical dependency input at ${scenario.id}: ${path}")
+    }
+    if (target.exists() && !target.isFile()) {
+      throw new GradleException("Unknown dependency file at ${scenario.id}: ${path}")
+    }
+    // A deleted tracked dependency is still meaningful evidence and must remain selectable.
+    if (!target.isFile() && localGit(repository, ['ls-files','--error-unmatch','--',path]).exitCode != 0) {
+      def prior = localGit(repository, ['log','--all','--diff-filter=AM','-1','--format=%H','--',path])
+      def revision = prior.stdout.trim()
+      def kind = revision ? localGit(repository, ['cat-file','-t',"${revision}:${path}".toString()]) : null
+      if (prior.exitCode != 0 || kind == null || kind.exitCode != 0 || kind.stdout.trim() != 'blob') {
+        throw new GradleException("Unknown dependency input at ${scenario.id}: ${path}")
+      }
+    }
+  }
+  implicit + inputs
+}
+// Policy failures are distinct from unavailable Git evidence: a full replay
+// cannot make rewritten migration history or an out-of-order addition safe.
+class DbUpgradeHistoryPolicyException extends GradleException {
+  DbUpgradeHistoryPolicyException(String message) { super(message) }
+}
+def migrationPrefix = 'src/main/resources/db/migration/'
+def migrationVersion = { String path ->
+  def name = path.tokenize('/').last()
+  def matcher = name =~ /^V([0-9]+(?:[._][0-9]+)*)__([A-Za-z0-9_]+)\.sql$/
+  if (!matcher.matches()) {
+    if (name.startsWith('V') && name.endsWith('.sql')) {
+      throw new DbUpgradeHistoryPolicyException("Unsupported versioned migration path: ${path}")
+    }
+    return null
+  }
+  def parts = matcher[0][1].split(/[._]/).collect { new BigInteger(it) }
+  while (parts.size() > 1 && parts.last() == BigInteger.ZERO) { parts.removeLast() }
+  parts.join('.')
+}
+def migrationOrder = { String left, String right ->
+  def a = left.split(/\./).collect { new BigInteger(it) }
+  def b = right.split(/\./).collect { new BigInteger(it) }
+  int order = 0
+  for (int i = 0; i < Math.max(a.size(), b.size()) && order == 0; i++) {
+    order = (i < a.size() ? a[i] : BigInteger.ZERO) <=> (i < b.size() ? b[i] : BigInteger.ZERO)
+  }
+  order
+}
+def checkMigrationInventory = { List entries ->
+  entries.groupBy { it.version }.each { version, duplicates ->
+    if (duplicates.size() > 1) {
+      throw new DbUpgradeHistoryPolicyException(
+        "Duplicate normalized migration version ${version} across complete tree: ${duplicates*.path.join(', ')}")
+    }
+  }
+  entries.sort { a, b -> migrationOrder(a.version, b.version) ?: a.path <=> b.path }
+}
+def workingMigrationInventory = { File repository ->
+  def root = new File(repository, migrationPrefix)
+  if (!root.exists()) { return [] }
+  def entries = []
+  Files.walk(root.toPath()).withCloseable { stream ->
+    stream.forEach { path ->
+      if (Files.isSymbolicLink(path)) {
+        throw new DbUpgradeHistoryPolicyException('Symbolic link in migration tree: ' +
+          repository.toPath().relativize(path).toString().replace(File.separator, '/'))
+      }
+      if (Files.isRegularFile(path)) {
+        def relativePath = root.toPath().relativize(path).toString().replace(File.separator, '/')
+        def version = migrationVersion(relativePath)
+        if (version != null) {
+          byte[] bytes = Files.readAllBytes(path)
+          def identity = MessageDigest.getInstance('SHA-1')
+          identity.update("blob ${bytes.length}\u0000".getBytes('UTF-8'))
+          identity.update(bytes)
+          entries.add([path:relativePath, version:version, contentId:identity.digest().encodeHex().toString()])
+        }
+      }
+    }
+  }
+  checkMigrationInventory(entries)
+}
+def committedMigrationInventory = { File repository, String revision ->
+  def tree = localGit(repository, ['ls-tree','-r','-z',revision,'--',migrationPrefix])
+  if (tree.exitCode != 0) { throw new GradleException('Cannot inventory committed migration history') }
+  def entries = []
+  tree.stdout.split('\u0000').findAll { it }.each { row ->
+    def record = row =~ /^([0-9]+) blob ([0-9a-f]{40})\t(.+)$/
+    if (!record.matches()) { throw new GradleException('Cannot identify committed migration tree entry') }
+    def path = record[0][3].substring(migrationPrefix.length())
+    def version = migrationVersion(path)
+    if (version != null) {
+      if (!(record[0][1] in ['100644','100755'])) {
+        throw new DbUpgradeHistoryPolicyException("Nonregular committed migration: ${path}")
+      }
+      entries.add([path:path, version:version, contentId:record[0][2]])
+    }
+  }
+  checkMigrationInventory(entries)
+}
+def indexedMigrationInventory = { File repository ->
+  def index = localGit(repository, ['ls-files','--stage','-z','--',migrationPrefix])
+  if (index.exitCode != 0) { throw new GradleException('Cannot inventory indexed migration history') }
+  def entries = []
+  index.stdout.split('\u0000').findAll { it }.each { row ->
+    def record = row =~ /^([0-9]+) ([0-9a-f]{40}) ([0-3])\t(.+)$/
+    if (!record.matches()) { throw new GradleException('Cannot identify indexed migration entry') }
+    def path = record[0][4].substring(migrationPrefix.length())
+    def version = migrationVersion(path)
+    if (version != null) {
+      if (record[0][3] != '0' || !(record[0][1] in ['100644','100755'])) {
+        throw new DbUpgradeHistoryPolicyException("Conflicted or nonregular indexed migration: ${path}")
+      }
+      entries.add([path:path, version:version, contentId:record[0][2]])
+    }
+  }
+  checkMigrationInventory(entries)
+}
+def requireUnchangedMigrations = { List original, List tested, String boundary ->
+  def actual = tested.collectEntries { [(it.path):it] }
+  original.each { entry ->
+    if (!actual.containsKey(entry.path)) {
+      throw new DbUpgradeHistoryPolicyException("Committed migration removed or renamed (${boundary}): ${entry.path}")
+    }
+    if (actual[entry.path].contentId != entry.contentId) {
+      throw new DbUpgradeHistoryPolicyException("Committed migration modified (${boundary}): ${entry.path}")
+    }
+  }
+}
+def requireAppendedMigrations = { List original, List tested, Closure selected, String boundary ->
+  def existingPaths = original*.path.toSet()
+  def selectedPrior = original.findAll { selected(it) }
+  def additions = tested.findAll { selected(it) && !existingPaths.contains(it.path) }
+  if (!selectedPrior.isEmpty()) {
+    def maximum = selectedPrior.last().version
+    additions.each { entry ->
+      if (migrationOrder(entry.version, maximum) <= 0) {
+        throw new DbUpgradeHistoryPolicyException(
+          "New selected migration must extend history beyond ${maximum} (${boundary}): ${entry.path}")
+      }
+    }
+  }
+  additions*.path
+}
+ext.selectDbUpgradeScenarios = { List scenarios, File repository, Map options ->
+  def mode = options.mode == null ? 'affected' : options.mode
+  if (!(mode in ['affected','full'])) { throw new GradleException('dbUnitTestUpgradeMode must be affected or full') }
+  def explicit = options.comparisonRef
+  if (explicit != null && !validRef(explicit)) { throw new GradleException('Invalid dbUnitTestComparisonRef') }
+  def declared = scenarios.collectEntries { scenario ->
+    [(scenario.id): project.ext.validateDbUpgradeInputs(scenario, repository)]
+  }
+  def result = [selected:[], mode:mode, comparisonRef:explicit, context:'none', baseSha:null,
+    mergeBaseSha:null, testedSourceSha:null, changedPaths:[], reasons:[:], fallbackReason:null,
+    boundary:'merge-base to actual tested HEAD, plus index/worktree/untracked paths',
+    frameworkTestsRequired:false, unverifiedMigrations:[], historyValidation:[:]]
+  def full = { String reason ->
+    result.mode = 'full'; result.fallbackReason = reason; result.selected = scenarios
+    // Unknown impact conservatively exercises shared lifecycle failure handling.
+    if (reason != 'Explicit full replay' || result.baseSha == null) { result.frameworkTestsRequired = true }
+    scenarios.each { result.reasons[it.id] = "Selected — ${reason}".toString() }
+    result
+  }
+  def resolve = { String ref ->
+    def git = localGit(repository, ['-c','core.warnAmbiguousRefs=true','rev-parse','--verify','--end-of-options',"${ref}^{commit}".toString()])
+    git.exitCode == 0 && git.stderr.isBlank() ? git.stdout.trim() : null
+  }
+  def locations = options.selectedLocations ?: ['ddl','data/allEnvs','data/dev']
+  if (!(locations instanceof List) || !locations.every { canonicalPath(it) }) {
+    throw new GradleException('Invalid selected migration locations')
+  }
+  def selectedMigration = { Map entry -> locations.any { entry.path.startsWith(it + '/') } }
+  // Complete working-tree policy checks require no Git context and cannot be
+  // converted into fallback. Missing Git/index evidence is a separate condition.
+  def workingInventory = workingMigrationInventory(repository)
+  List indexInventory = null
+  try { indexInventory = indexedMigrationInventory(repository) }
+  catch (DbUpgradeHistoryPolicyException problem) { throw problem }
+  catch (Exception unavailable) { /* Full replay below records unavailable index evidence. */ }
+  try { result.testedSourceSha = resolve('HEAD') }
+  catch (Exception unavailable) { /* A source archive still receives complete SQL verification. */ }
+  result.historyValidation = [status:'HEAD/index unavailable — full replay required', headSha:result.testedSourceSha,
+    comparisonSha:null, headInventory:[], comparisonInventory:[], testedInventory:workingInventory,
+    headInventoryStatus:'Unavailable', indexInventoryStatus:indexInventory == null ? 'Unavailable' : 'Verified',
+    indexInventory:indexInventory ?: [], addedSelectedPaths:[], headAddedSelectedPaths:[], indexAddedSelectedPaths:[]]
+  result.unverifiedMigrations = workingInventory.findAll { !selectedMigration(it) }.collect {
+    [path:it.path, version:it.version, reason:'Unverified — outside selected locations']
+  }
+  // A trustworthy PR comparison is not needed to prove that a newly uncommitted
+  // candidate would insert below the selected history already present in HEAD.
+  // Preserve all committed HEAD bytes and enforce append-only working/index
+  // additions before any uncertain-context or explicit-full fallback.
+  List headInventory = null
+  if (result.testedSourceSha != null) {
+    try { headInventory = committedMigrationInventory(repository, result.testedSourceSha) }
+    catch (DbUpgradeHistoryPolicyException problem) { throw problem }
+    catch (Exception unavailable) { /* Full replay records unavailable committed inventory. */ }
+    if (headInventory != null) {
+      requireUnchangedMigrations(headInventory, workingInventory, 'HEAD to working tree')
+      result.historyValidation.headAddedSelectedPaths =
+        requireAppendedMigrations(headInventory, workingInventory, selectedMigration, 'HEAD to working tree')
+      if (indexInventory != null) {
+        requireUnchangedMigrations(headInventory, indexInventory, 'HEAD to index')
+        result.historyValidation.indexAddedSelectedPaths =
+          requireAppendedMigrations(headInventory, indexInventory, selectedMigration, 'HEAD to index')
+      }
+      result.historyValidation.headInventory = headInventory
+      result.historyValidation.headInventoryStatus = 'Verified'
+      result.historyValidation.status = 'Comparison unavailable — HEAD immutability verified'
+    }
+  }
+  if (headInventory == null) {
+    return full('Actual tested Git HEAD or its migration inventory is unavailable')
+  }
+  if (indexInventory == null) {
+    result.historyValidation.status = 'Index unavailable — HEAD working history verified; full replay required'
+    return full('Indexed migration evidence unavailable; HEAD working history verified')
+  }
+  try {
+    if (result.testedSourceSha == null) { return full('Actual tested Git source is unavailable') }
+    String base = explicit
+    def env = options.environment ?: [:]
+    boolean github = env.GITHUB_EVENT_NAME || env.GITHUB_EVENT_PATH
+    boolean jenkins = env.CHANGE_ID || env.CHANGE_TARGET
+    if (base != null) { result.context = 'explicit comparison ref' }
+    else if (github && jenkins) { return full('Conflicting GitHub and Jenkins comparison context') }
+    else if (github) {
+      result.context = 'GitHub pull request event'
+      if (env.GITHUB_EVENT_NAME != 'pull_request' || !env.GITHUB_EVENT_PATH || !env.GITHUB_SHA) {
+        return full('Missing or unsupported GitHub pull request context')
+      }
+      def eventFile = new File(env.GITHUB_EVENT_PATH.toString())
+      if (!eventFile.isFile() || eventFile.length() > 4 * 1024 * 1024) { return full('GitHub event is unavailable or oversized') }
+      def event = new JsonSlurper().parse(eventFile)
+      def baseValue = event?.pull_request?.base?.sha
+      def headValue = event?.pull_request?.head?.sha
+      if (!(baseValue instanceof String) || !(headValue instanceof String) ||
+          !(baseValue ==~ /[0-9a-f]{40}/) || !(headValue ==~ /[0-9a-f]{40}/) ||
+          env.GITHUB_SHA != result.testedSourceSha) { return full('Conflicting or malformed GitHub source identities') }
+      def parents = localGit(repository, ['show','-s','--format=%P',result.testedSourceSha]).stdout.trim().split(' ') as List
+      if (result.testedSourceSha != headValue && parents != [baseValue,headValue]) {
+        return full('GitHub tested source is neither the recorded head nor its exact merge checkout')
+      }
+      base = baseValue
+    } else if (jenkins) {
+      result.context = 'Jenkins immediate pull request target'
+      if (!env.CHANGE_ID || !validRef(env.CHANGE_TARGET) || env.GIT_COMMIT != result.testedSourceSha) {
+        return full('Missing or conflicting Jenkins source/target context')
+      }
+      def target = env.CHANGE_TARGET.toString()
+      def available = ["refs/heads/${target}","refs/remotes/origin/${target}"].collect { resolve(it.toString()) }.findAll { it }.unique()
+      if (available.size() != 1) { return full('Missing or ambiguous Jenkins immediate target') }
+      base = available.first()
+    } else { return full(mode == 'full' ? 'Explicit full replay' : 'No trustworthy comparison base supplied') }
+    result.comparisonRef = base
+    result.baseSha = resolve(base)
+    if (!result.baseSha) { return full('Comparison base commit is unavailable or ambiguous locally') }
+    def shallow = localGit(repository, ['rev-parse','--is-shallow-repository'])
+    if (shallow.exitCode != 0 || shallow.stdout.trim() != 'false') { return full('Git history is shallow or cannot be verified') }
+    def merge = localGit(repository, ['merge-base','--all',result.baseSha,result.testedSourceSha])
+    def boundaries = merge.stdout.readLines().findAll { it }
+    if (merge.exitCode != 0 || boundaries.size() != 1) { return full('Comparison history is unrelated or has an ambiguous merge base') }
+    result.mergeBaseSha = boundaries.first()
+    if (localGit(repository, ['merge-base','--is-ancestor',result.baseSha,result.testedSourceSha]).exitCode != 0) {
+      return full('Comparison base has advanced or diverged beyond the actual tested source')
+    }
+    def comparisonInventory = committedMigrationInventory(repository, result.baseSha)
+    requireUnchangedMigrations(comparisonInventory, workingInventory, 'comparison to tested tree')
+    requireUnchangedMigrations(comparisonInventory, indexInventory, 'comparison to index')
+    def existingPaths = comparisonInventory*.path.toSet()
+    def addedSelectedPaths = requireAppendedMigrations(comparisonInventory, workingInventory,
+      selectedMigration, 'comparison to tested tree')
+    requireAppendedMigrations(comparisonInventory, indexInventory, selectedMigration, 'comparison to index')
+    result.historyValidation = result.historyValidation + [status:'PASS', comparisonSha:result.baseSha,
+      comparisonInventory:comparisonInventory, addedSelectedPaths:addedSelectedPaths]
+    def paths = [] as Set
+    [['diff','--name-only','--no-renames','-z',result.mergeBaseSha,result.testedSourceSha,'--'],
+     ['diff','--cached','--name-only','--no-renames','-z','HEAD','--'],
+     ['diff','--name-only','--no-renames','-z','--'],
+     ['ls-files','--others','--exclude-standard','-z']].each { args ->
+      def diff = localGit(repository,args)
+      if (diff.exitCode != 0) { throw new GradleException('Cannot inspect complete local Git changes') }
+      paths.addAll(diff.stdout.split('\u0000').findAll { it })
+    }
+    // A newly introduced declared input must be selected even when a local
+    // exclude rule hides that input from the ordinary untracked inventory.
+    declared.values().flatten().unique().each { path ->
+      if (new File(repository, path).isFile() &&
+          localGit(repository, ['cat-file','-e',"${result.mergeBaseSha}:${path}".toString()]).exitCode != 0) {
+        paths.add(path)
+      }
+    }
+    // Complete-tree inventory also exposes ignored additions outside configured
+    // locations instead of hiding them behind Git's untracked ignore rules.
+    workingInventory.findAll { !existingPaths.contains(it.path) }.each { paths.add(migrationPrefix + it.path) }
+    result.changedPaths = paths.toList().sort()
+    def shared = { String path ->
+      path in ['build.gradle','settings.gradle','gradle.properties','gradlew','gradlew.bat','Jenkinsfile',
+        'Dockerfile','.dockerignore','compose.yml','compose.yaml','bin/run-in-docker.sh',
+        '.java-version','.tool-versions','.sdkmanrc','build.gradle.kts','settings.gradle.kts'] ||
+      path.startsWith('Jenkinsfile') || path.startsWith('docker-compose.') ||
+      ['gradle/','docker/','charts/','.github/workflows/','src/dbUnitTest/framework/',
+       'src/dbUnitTest/support/','src/main/java/','src/main/resources/application'].any { path.startsWith(it) } ||
+      path.startsWith('src/dbUnitTest/db_upgrade_') || path.startsWith('src/dbUnitTest/upgrade_lifecycle')
+    }
+    def sharedPaths = result.changedPaths.findAll { shared(it) }
+    if (sharedPaths) { return full("Shared database/build input changed: ${sharedPaths.join(', ')}".toString()) }
+    if (mode == 'full') { return full('Explicit full replay') }
+    def known = declared.values().flatten().toSet()
+    def unknown = result.changedPaths.findAll { path ->
+      (path.startsWith('src/main/resources/db/') || path.startsWith('src/dbUnitTest/')) && !known.contains(path)
+    }
+    if (unknown) { return full("Unclassified database input changed: ${unknown.join(', ')}".toString()) }
+    scenarios.each { scenario ->
+      def affected = declared[scenario.id].findAll { it in paths }
+      result.reasons[scenario.id] = affected ? "Selected — changed inputs: ${affected.join(', ')}".toString() : 'Not selected — unchanged'
+      if (affected) { result.selected.add(scenario) }
+    }
+    result
+  } catch (DbUpgradeHistoryPolicyException problem) {
+    throw problem
+  } catch (Exception problem) {
+    full("Comparison evidence unavailable: ${problem.class.simpleName}".toString())
+  }
+}
