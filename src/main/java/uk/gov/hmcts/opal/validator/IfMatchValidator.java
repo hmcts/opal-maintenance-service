@@ -4,9 +4,9 @@ import org.springframework.stereotype.Component;
 import uk.gov.hmcts.opal.common.exception.OpalApiException;
 import uk.gov.hmcts.opal.exception.RequestValidationError;
 
-/** Parses the conditional replacement version without exposing supplied header values. */
+/** Parses an If-Match version without exposing supplied header values. */
 @Component
-public class DraftCasefileVersionValidator {
+public class IfMatchValidator {
 
     public long parseIfMatch(String ifMatch) {
         if (ifMatch == null || !ifMatch.matches("\"[0-9]+\"")) {
