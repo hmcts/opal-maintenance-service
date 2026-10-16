@@ -75,9 +75,39 @@ class OpenApiSchemaValidatorTest {
     private static OpenApiSchemaValidator validator;
 
     @BeforeAll
-    static void loadGeneratedSchema() throws IOException {
+    static void loadBundledSchemas() throws IOException {
         validator = new OpenApiSchemaValidator(new PathMatchingResourcePatternResolver()
-            .getResources("classpath*:openapi-validation/*.json"));
+            .getResources("classpath*:openapi-bundled.yaml"));
+    }
+
+    @Test
+    void acceptsCompleteReplacementWithoutCreationOnlyTopLevelType() {
+        ObjectNode replacement = request();
+        replacement.remove("casefile_type");
+        assertThatCode(() -> validateReplacement(replacement)).doesNotThrowAnyException();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"business_unit_id", "casefile"})
+    void rejectsMissingReplacementProperties(String property) {
+        ObjectNode replacement = request();
+        replacement.remove("casefile_type");
+        replacement.remove(property);
+        assertThatThrownBy(() -> validateReplacement(replacement)).isInstanceOf(OpalApiException.class);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"version_number", "casefile_type", "casefile_snapshot", "timeline_data",
+        "submitted_by", "created_date", "casefile_status", "status_message", "validated_by"})
+    void rejectsServerOwnedReplacementProperties(String property) {
+        ObjectNode replacement = request();
+        replacement.remove("casefile_type");
+        replacement.put(property, "SYNTHETIC_PRIVATE_VALUE");
+        assertThatThrownBy(() -> validateReplacement(replacement)).isInstanceOf(OpalApiException.class);
+    }
+
+    private static void validateReplacement(ObjectNode replacement) {
+        validator.validate("DraftCasefileReplaceRequest", replacement.toString().getBytes(StandardCharsets.UTF_8));
     }
 
     @Test
@@ -263,6 +293,44 @@ class OpenApiSchemaValidatorTest {
     }
 
     @Test
+    void loadsConditionalSchemaDirectlyFromOpenApiYaml() throws IOException {
+        Resource bundle = new ByteArrayResource("""
+            openapi: 3.1.1
+            info: {title: Synthetic test, version: '1'}
+            paths: {}
+            components:
+              schemas:
+                TestRequest:
+                  type: object
+                  additionalProperties: false
+                  required: [organisation]
+                  properties:
+                    organisation: {type: boolean}
+                    name: {$ref: '#/components/schemas/TestName'}
+                  if:
+                    properties:
+                      organisation: {const: true}
+                  then:
+                    required: [name]
+                TestName:
+                  type: string
+                  minLength: 1
+            """.getBytes(StandardCharsets.UTF_8));
+        OpenApiSchemaValidator direct = new OpenApiSchemaValidator(new Resource[]{bundle});
+        assertThatCode(() -> direct.validate("TestRequest",
+            "{\"organisation\":false}".getBytes(StandardCharsets.UTF_8))).doesNotThrowAnyException();
+        assertThatCode(() -> direct.validate("TestRequest",
+            "{\"organisation\":true,\"name\":\"Synthetic\"}".getBytes(StandardCharsets.UTF_8)))
+            .doesNotThrowAnyException();
+        assertThatThrownBy(() -> direct.validate("TestRequest",
+            "{\"organisation\":true}".getBytes(StandardCharsets.UTF_8)))
+            .isInstanceOf(OpalApiException.class);
+        assertThatThrownBy(() -> direct.validate("TestRequest",
+            "{\"organisation\":true,\"name\":\"\"}".getBytes(StandardCharsets.UTF_8)))
+            .isInstanceOf(OpalApiException.class);
+    }
+
+    @Test
     void unknownAnnotationSchemaIsServerConfigurationError() {
         assertThatThrownBy(() -> validator.validate("UnknownSchema", REQUEST.getBytes(StandardCharsets.UTF_8)))
             .isInstanceOf(IllegalStateException.class);
@@ -280,20 +348,30 @@ class OpenApiSchemaValidatorTest {
     @ParameterizedTest
     @ValueSource(strings = {"", "{", "{\"type\":\"invalid\"}",
         "{\"$ref\":\"#/missing\"}", "{\"$ref\":\"https://example.invalid/schema\"}",
+        "{\"$ref\":\"classpath:other.yaml#/components/schemas/Other\"}",
+        "{\"$ref\":5}",
         "{\"properties\":{\"nested\":{\"$ref\":\"#/missing\"}}}",
-        "{\"components\":{\"schemas\":{\"Broken\":{\"type\":\"invalid\"}}}}"})
+        "{\"properties\":{\"nested\":{\"type\":\"invalid\"}}}"})
     void brokenSchemasFailInitialization(String schema) {
         assertThatThrownBy(() -> new OpenApiSchemaValidator(new Resource[]{resource(schema)}))
             .isInstanceOf(RuntimeException.class);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"", "{}", "openapi: 3.0.3\ncomponents: {schemas: {Test: {type: object}}}",
+        "openapi: 3.1.1", "openapi: 3.1.1\ncomponents: {schemas: {}}"})
+    void missingOrUnsupportedBundleFailsInitialization(String document) {
+        Resource bundle = new ByteArrayResource(document.getBytes(StandardCharsets.UTF_8));
+        assertThatThrownBy(() -> new OpenApiSchemaValidator(new Resource[]{bundle}))
+            .isInstanceOf(IllegalStateException.class);
+    }
+
     private static Resource resource(String schema) {
-        return new ByteArrayResource(schema.getBytes(StandardCharsets.UTF_8)) {
-            @Override
-            public String getFilename() {
-                return "Test.json";
-            }
-        };
+        String document = """
+            {"openapi":"3.1.1","info":{"title":"Synthetic test","version":"1"},"paths":{},
+             "components":{"schemas":{"TestRequest":%s}}}
+            """.formatted(schema);
+        return new ByteArrayResource(document.getBytes(StandardCharsets.UTF_8));
     }
 
     private static ObjectNode request() {

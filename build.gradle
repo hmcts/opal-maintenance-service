@@ -127,24 +127,9 @@ tasks.register("bundleOpenApi", JavaExec) {
   args = ["$rootDir/src/main/resources/openapi", layout.buildDirectory.file("openapi-bundled.yaml").get().asFile.absolutePath]
 }
 
-tasks.register('generateOpenApiValidationSchema', JavaExec) {
-  dependsOn 'bundleOpenApi'
-  classpath = sourceSets.openapi.runtimeClasspath
-  group = 'openapi'
-  description = 'Generate runtime request validation JSON Schema from the bundled contract'
-  mainClass = 'uk.gov.hmcts.opal.openapi.OpenApiValidationSchemaGenerator'
-  def bundledInput = layout.buildDirectory.file('openapi-bundled.yaml')
-  def schemaOutput = layout.buildDirectory.file(
-    'generated/openapi-validation/openapi-validation/DraftCasefileAddRequest.json')
-  inputs.file(bundledInput)
-  inputs.property('rootComponent', 'DraftCasefileAddRequest')
-  outputs.file(schemaOutput)
-  args = [bundledInput.get().asFile.absolutePath, 'DraftCasefileAddRequest', schemaOutput.get().asFile.absolutePath]
-}
-
 tasks.named('processResources') {
-  dependsOn 'generateOpenApiValidationSchema'
-  from(layout.buildDirectory.dir('generated/openapi-validation'))
+  dependsOn 'bundleOpenApi'
+  from(layout.buildDirectory.file('openapi-bundled.yaml'))
 }
 
 openApiGenerate {
@@ -489,7 +474,7 @@ dependencies {
   openapiImplementation "io.swagger.parser.v3:swagger-parser:2.1.48"
   openapiImplementation "io.swagger.core.v3:swagger-models:2.2.55"
   openapiImplementation "io.swagger.core.v3:swagger-core:2.2.55"
-  openapiImplementation "tools.jackson.dataformat:jackson-dataformat-yaml"
+  implementation "tools.jackson.dataformat:jackson-dataformat-yaml"
 
   implementation 'com.microsoft.azure:applicationinsights-web:3.7.10'
   implementation 'com.azure:azure-storage-blob:12.36.0'

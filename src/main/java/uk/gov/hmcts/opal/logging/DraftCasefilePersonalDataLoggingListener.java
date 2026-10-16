@@ -78,6 +78,7 @@ public class DraftCasefilePersonalDataLoggingListener {
     private static PersonalDataProcessingCategory processingCategory(Operation operation) {
         return switch (operation) {
             case SUBMISSION -> PersonalDataProcessingCategory.COLLECTION;
+            case RESUBMISSION -> PersonalDataProcessingCategory.ALTERATION;
             case VIEW, LIST_VIEW -> PersonalDataProcessingCategory.CONSULTATION;
         };
     }
@@ -85,6 +86,7 @@ public class DraftCasefilePersonalDataLoggingListener {
     private static String operationName(Operation operation, ParticipantCategory category) {
         String action = switch (operation) {
             case SUBMISSION -> "Submit Draft Casefile - ";
+            case RESUBMISSION -> "Resubmit Draft Casefile - ";
             case VIEW -> "View Draft Casefile - ";
             case LIST_VIEW -> "View Draft Casefiles - ";
         };

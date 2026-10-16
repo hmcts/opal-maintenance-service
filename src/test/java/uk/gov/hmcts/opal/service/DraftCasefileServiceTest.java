@@ -3,9 +3,12 @@ package uk.gov.hmcts.opal.service;
 import jakarta.persistence.EntityNotFoundException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InOrder;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
 import tools.jackson.databind.json.JsonMapper;
 import uk.gov.hmcts.opal.authorisation.MaintenanceUser;
@@ -13,9 +16,12 @@ import uk.gov.hmcts.opal.authorisation.MaintenanceUserService;
 import uk.gov.hmcts.opal.common.exception.OpalApiException;
 import uk.gov.hmcts.opal.dto.VersionedResponse;
 import uk.gov.hmcts.opal.entity.DraftCasefileEntity;
+import uk.gov.hmcts.opal.entity.DraftCasefileStatus;
+import uk.gov.hmcts.opal.generated.model.DraftCasefileReplaceRequest;
 import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent.Operation;
 import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent;
 import uk.gov.hmcts.opal.exception.RequestValidationError;
+import uk.gov.hmcts.opal.exception.ResourceConflictException;
 import uk.gov.hmcts.opal.generated.model.CasefileType;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileAddRequest;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileGetResponse;
@@ -65,8 +71,11 @@ class DraftCasefileServiceTest {
               "organisation":false,"individual_details":{"surname":"Synthetic"}}}}
             """));
     private final DraftCasefileService service = new DraftCasefileService(
-        userService, validator, new DraftCasefileQueryValidator(), repository,
-        new DraftCasefileMapper(new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules()),
+        userService, validator, new DraftCasefileQueryValidator(),
+        new uk.gov.hmcts.opal.validator.IfMatchValidator(), repository,
+        new DraftCasefileMapper(new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules(),
+            new DraftCasefileJsonMapper(JsonMapper.builder().build(),
+                new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules())),
         new DraftCasefileAddResponseMapperImpl(new DraftCasefileJsonMapper(JsonMapper.builder().build(),
             new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules()),
             new DraftCasefileValueMapper()), getMapper,
@@ -226,6 +235,90 @@ class DraftCasefileServiceTest {
 
         verifyNoInteractions(validator, events, clock);
         verify(repository, never()).save(any());
+    }
+
+    @Test
+    void replacesUsingTheMergedFlushedVersionAndOneResubmissionInstant() {
+        var row = rejectedDraft();
+        var replacement = replacement();
+        Instant supplied = Instant.parse("2026-10-09T10:00:00.123456789Z");
+        Instant expected = Instant.parse("2026-10-09T10:00:00.123456Z");
+        when(repository.findById(123L)).thenReturn(Optional.of(row));
+        when(clock.instant()).thenReturn(supplied);
+        var response = new DraftCasefileGetResponse().casefile(request.getCasefile());
+        when(repository.saveAndFlush(any())).thenAnswer(invocation -> {
+            DraftCasefileEntity updated = invocation.getArgument(0);
+            assertThat(updated.getVersionNumber()).isEqualTo(4L);
+            assertThat(updated.getCreatedDate()).isEqualTo(row.getCreatedDate());
+            assertThat(updated.getCasefileStatus()).isEqualTo(DraftCasefileStatus.RESUBMITTED);
+            assertThat(updated.getCasefileStatusDate().toInstant(ZoneOffset.UTC)).isEqualTo(expected);
+            return updated.toBuilder().versionNumber(5L).build();
+        });
+        when(getMapper.toResponse(any())).thenAnswer(invocation -> {
+            assertThat(((DraftCasefileEntity) invocation.getArgument(0)).getVersionNumber()).isEqualTo(5L);
+            return response;
+        });
+        assertThat(service.replaceDraftCasefile(123L, replacement, "\"4\""))
+            .isEqualTo(new VersionedResponse<>(response, 5L));
+        InOrder order = inOrder(repository, userService, validator, getMapper, events);
+        order.verify(repository).findById(123L);
+        order.verify(userService).requireAuthorisedUser((short) 1, CREATE_MANAGE_DRAFT_CASEFILES);
+        order.verify(validator).validate((short) 1, CasefileType.REMO_IN, replacement.getCasefile());
+        order.verify(repository).saveAndFlush(any());
+        order.verify(getMapper).toResponse(any());
+        order.verify(events).publishEvent(new DraftCasefilePersonalDataEvent(Operation.RESUBMISSION,
+            123L, user.userId(), user.ipAddress(), expected,
+            new DraftCasefileParticipantCategoryResolver().resolve(replacement.getCasefile())));
+        verify(clock).instant();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"missing", "owner", "permission", "state", "version", "validation", "null-version"})
+    void rejectedReplacementDoesNotPersistOrPublish(String failure) {
+        DraftCasefileEntity row = rejectedDraft();
+        DraftCasefileReplaceRequest replacement = replacement();
+        Class<? extends Throwable> error = OpalApiException.class;
+        switch (failure) {
+            case "missing" -> error = EntityNotFoundException.class;
+            case "owner" -> {
+                replacement.businessUnitId((short) 2);
+                error = ResourceConflictException.class;
+            }
+            case "permission" -> {
+                when(userService.requireAuthorisedUser((short) 1, CREATE_MANAGE_DRAFT_CASEFILES))
+                    .thenThrow(new AccessDeniedException("Denied"));
+                error = AccessDeniedException.class;
+            }
+            case "state" -> {
+                row = row.toBuilder().casefileStatus(DraftCasefileStatus.SUBMITTED).build();
+                error = ResourceConflictException.class;
+            }
+            case "version" -> {
+                row = row.toBuilder().versionNumber(5L).build();
+                error = ObjectOptimisticLockingFailureException.class;
+            }
+            case "null-version" -> {
+                row = row.toBuilder().versionNumber(null).build();
+                error = IllegalStateException.class;
+            }
+            case "validation" -> doThrow(new OpalApiException(RequestValidationError.INVALID_REQUEST, "Invalid"))
+                .when(validator).validate((short) 1, CasefileType.REMO_IN, replacement.getCasefile());
+            default -> throw new IllegalArgumentException("Unexpected test case");
+        }
+        when(repository.findById(123L)).thenReturn(failure.equals("missing") ? Optional.empty() : Optional.of(row));
+        assertThatThrownBy(() -> service.replaceDraftCasefile(123L, replacement, "\"4\""))
+            .isInstanceOf(error);
+        verify(repository, never()).saveAndFlush(any());
+        verifyNoInteractions(getMapper, events, clock);
+    }
+
+    private DraftCasefileReplaceRequest replacement() {
+        return new DraftCasefileReplaceRequest().businessUnitId((short) 1).casefile(request.getCasefile());
+    }
+
+    private DraftCasefileEntity rejectedDraft() {
+        return storedDraft().toBuilder().casefileType("REMO In").casefileStatus(DraftCasefileStatus.REJECTED)
+            .createdDate(java.time.LocalDateTime.of(2026, 10, 1, 12, 0)).timelineData("[]").build();
     }
 
     private DraftCasefileEntity storedDraft() {

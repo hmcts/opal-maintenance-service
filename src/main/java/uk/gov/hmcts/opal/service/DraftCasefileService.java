@@ -4,8 +4,14 @@ import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import uk.gov.hmcts.opal.exception.ResourceConflictException;
+import uk.gov.hmcts.opal.entity.DraftCasefileStatus;
+import uk.gov.hmcts.opal.generated.model.CasefileType;
+import uk.gov.hmcts.opal.generated.model.DraftCasefileReplaceRequest;
+import uk.gov.hmcts.opal.validator.IfMatchValidator;
 import uk.gov.hmcts.opal.authorisation.MaintenanceUser;
 import uk.gov.hmcts.opal.authorisation.MaintenanceUserService;
 import uk.gov.hmcts.opal.dto.DraftCasefileFilter;
@@ -52,6 +58,7 @@ public class DraftCasefileService {
     private final MaintenanceUserService maintenanceUserService;
     private final DraftCasefileValidator validator;
     private final DraftCasefileQueryValidator queryValidator;
+    private final IfMatchValidator ifMatchValidator;
     private final DraftCasefileRepository repository;
     private final DraftCasefileMapper mapper;
     private final DraftCasefileAddResponseMapper addResponseMapper;
@@ -73,6 +80,39 @@ public class DraftCasefileService {
             entity.getDraftCasefileId(), user.userId(), user.ipAddress(), submittedAt,
             participantCategoryResolver.resolve(request.getCasefile())));
         return new VersionedResponse<>(response, entity.getVersionNumber());
+    }
+
+    @Transactional
+    public VersionedResponse<DraftCasefileGetResponse> replaceDraftCasefile(
+        Long id, DraftCasefileReplaceRequest request, String ifMatch
+    ) {
+        final long expectedVersion = ifMatchValidator.parseIfMatch(ifMatch);
+        DraftCasefileEntity existing = repository.findById(id)
+            .orElseThrow(() -> new EntityNotFoundException("Draft Casefile not found"));
+        final MaintenanceUser user = maintenanceUserService.requireAuthorisedUser(
+            existing.getBusinessUnitId(), CREATE_MANAGE_DRAFT_CASEFILES);
+        if (!existing.getBusinessUnitId().equals(request.getBusinessUnitId())) {
+            throw new ResourceConflictException("Business Unit must match the stored owner");
+        }
+        if (existing.getCasefileStatus() != DraftCasefileStatus.REJECTED) {
+            throw new ResourceConflictException("Only a rejected Draft Casefile can be replaced");
+        }
+        if (existing.getVersionNumber() == null) {
+            throw new IllegalStateException("Stored Draft Casefile version is unavailable");
+        }
+        if (existing.getVersionNumber() != expectedVersion) {
+            throw new ObjectOptimisticLockingFailureException(DraftCasefileEntity.class, id);
+        }
+        validator.validate(existing.getBusinessUnitId(), CasefileType.fromValue(existing.getCasefileType()),
+            request.getCasefile());
+        Instant resubmittedAt = clock.instant().truncatedTo(ChronoUnit.MICROS);
+        DraftCasefileEntity saved = repository.saveAndFlush(
+            mapper.toResubmittedEntity(existing, request, user, resubmittedAt));
+        DraftCasefileGetResponse response = getMapper.toResponse(saved);
+        eventPublisher.publishEvent(new DraftCasefilePersonalDataEvent(Operation.RESUBMISSION,
+            saved.getDraftCasefileId(), user.userId(), user.ipAddress(), resubmittedAt,
+            participantCategoryResolver.resolve(request.getCasefile())));
+        return new VersionedResponse<>(response, saved.getVersionNumber());
     }
 
     @Transactional(readOnly = true)

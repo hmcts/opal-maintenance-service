@@ -10,13 +10,13 @@ The source contracts are the YAML files under `src/main/resources/openapi`.
 `OpenApiBundler` combines them into `build/openapi-bundled.yaml`, and OpenAPI
 Generator creates Spring interfaces and models under `build/generated/openapi`.
 
-`generateOpenApiValidationSchema` exports the `DraftCasefileAddRequest` root and
-unchanged bundled components to
-`build/generated/openapi-validation/openapi-validation/DraftCasefileAddRequest.json`.
-It runs before resources are packaged, so normal tests and `bootJar` receive the
-same fresh schema. The export preserves local references and schema keywords,
-including conditional rules, before OpenAPI Generator normalization. Missing
-root components and external or unresolved references fail the build.
+`processResources` packages `build/openapi-bundled.yaml` with the application.
+At startup, `OpenApiSchemaValidator` loads the component schemas directly from
+that document using NetworkNT's OpenAPI 3.1 dialect. There are no separate
+validation-schema exports or per-request generation tasks. Validation uses the
+unchanged bundle, including conditional rules, before OpenAPI Generator
+normalization. Missing or duplicate bundles, invalid component schemas and
+external or unresolved references fail initialization.
 
 Treat these build locations as generated output. Do not edit or commit them.
 Do not maintain a second request schema under source resources.
@@ -26,10 +26,9 @@ mapped to Jackson 3 `JsonNode`. Lifecycle date-time fields use `OffsetDateTime`;
 date-only fields remain `LocalDate`. The detailed Casefile OpenAPI schema remains
 the structural validation contract. Annotate concrete controller methods with
 `@OpenApiRequest("DraftCasefileAddRequest")` to validate original request bytes
-before binding. Compiled schemas are loaded at startup; missing, duplicate or
-broken resources fail initialization. No remote schemas are loaded. Format
-assertions are enabled, and invalid JSON or contract violations use shared safe
-400 Problem Details. Unannotated endpoints keep their existing binding behavior.
+before binding. Compiled schemas are cached at startup. No remote schemas are
+loaded. Format assertions are enabled, and invalid JSON or contract violations
+use shared safe 400 Problem Details. Unannotated endpoints keep their existing binding behavior.
 
 Use relative component references between source files, for example:
 
@@ -123,7 +122,7 @@ is an operational safeguard, not a schema field-validation rule.
 After changing OpenAPI source files or bundler behaviour, run:
 
 ```bash
-./gradlew bundleOpenApi generateOpenApiValidationSchema
+./gradlew processResources
 ./gradlew openApiGenerate compileJava --no-daemon
 ./gradlew build --no-daemon
 ```
@@ -137,11 +136,11 @@ Do not treat successful YAML parsing alone as sufficient: generation,
 compilation, tests, and repository checks must all pass in proportion to the
 change.
 
-Inspect the generated validation JSON to confirm that the root reference and
-bundled components (especially `if`/`then`, `not`, requiredness and
-`additionalProperties`) are unchanged. Check generated request imports/getters
-for Jackson 3 `JsonNode`, typed Business Unit/case type and lifecycle offset date
-fields. Run the focused runtime and advice tests:
+Inspect the packaged `build/resources/main/openapi-bundled.yaml` to confirm
+that it matches the build bundle and preserves component references and rules
+(especially `if`/`then`, `not`, requiredness and `additionalProperties`). Check
+generated request imports/getters for Jackson 3 `JsonNode`, typed Business
+Unit/case type and lifecycle offset date fields. Run the focused runtime and advice tests:
 
 ```bash
 ./gradlew test --tests '*OpenApiSchemaValidatorTest' --tests '*OpenApiRequestBodyAdviceTest'
