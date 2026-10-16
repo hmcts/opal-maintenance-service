@@ -35,3 +35,18 @@ SET casefile = '{"respondent_account":{"respondent":{}},"applicant":{},
         {"creditor_sequence":7,"account_id":null,"account_number":null,"name":"Synthetic M1"},
         {"creditor_sequence":2,"account_id":null,"account_number":null,"name":"Synthetic M2"}]}'::json
 WHERE draft_casefile_id = 910202;
+
+INSERT INTO maintenance_applications
+    (application_id, application_code, application_title, application_group, active, date_used_from)
+VALUES (31020, 'TEST', 'Synthetic Draft Application', 'Create Casefile', true, DATE '2000-01-01');
+
+-- Synthetic parent required by the draft account publication-link foreign key.
+INSERT INTO respondent_accounts
+    (respondent_account_id, business_unit_id, account_number, application_id, account_balance,
+     orders_balance, orders_amount, payment_period, total_arrears, account_status,
+     last_movement_date, date_arrears_last_updated, allow_cheques, cheque_clearance_period,
+     credit_trans_clearance_period, casefile_type, interest_flag, indexation, payment_arrangement,
+     version_number)
+VALUES (101, 31021, 'R101', 31020, 0, 0, 0, 'Weekly', 0, 'L',
+        TIMESTAMP '2026-10-01 12:00:00', TIMESTAMP '2026-10-01 12:00:00', true, 10, 0,
+        'REMO In', false, 'None', 'Court', 1);
