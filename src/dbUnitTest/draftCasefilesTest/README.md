@@ -48,17 +48,6 @@ reconciliation. The workbook describes the intended combined TDIA relationship;
 no additional sequencing note is required solely for the approved FK deferral.
 Human SQL review, QA, deployment and ticket closure are separate delivery states.
 
-## PO-10630 replacement coverage
-
-Replacement introduces no database object, column, enum, routine, constraint or
-migration change. The existing suite remains sufficient for the database-owned
-contract. PostgreSQL-backed `DraftCasefileReplaceIntegrationTest` and
-`DraftCasefileReplaceTransactionIntegrationTest` prove row preservation, JPA
-version increments, competing writers and caller-owned rollback. The logical
-request and generated JSON objects remain backend-owned; see
-`docs/REPLACE_DRAFT_CASEFILE.md`. No migration upgrade-path rerun is required for
-this unchanged migration.
-
 ## Check & Validate publication link — PO-10659
 
 `ddl/V1_30__add_draft_casefiles_account_id_foreign_key.sql` adds
