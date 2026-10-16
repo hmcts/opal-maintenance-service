@@ -14,7 +14,7 @@ import uk.gov.hmcts.opal.common.exception.OpalApiException;
 import uk.gov.hmcts.opal.entity.CountryEntity;
 import uk.gov.hmcts.opal.entity.MaintenanceApplicationEntity;
 import uk.gov.hmcts.opal.entity.MajorCreditorEntity;
-import uk.gov.hmcts.opal.exception.DraftCasefileError;
+import uk.gov.hmcts.opal.exception.RequestValidationError;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileAddRequest;
 import uk.gov.hmcts.opal.validator.DraftCasefileValidator;
 
@@ -86,7 +86,7 @@ class DraftCasefileReferenceRepositoryIntegrationTest extends BaseIntegrationTes
             .containsExactlyInAnyOrder(true, false);
         OpalApiException failure = catchThrowableOfType(OpalApiException.class, () -> validator.validate(request()));
         assertThat(failure).isNotNull();
-        assertThat(failure.getError()).isEqualTo(DraftCasefileError.INVALID_REQUEST);
+        assertThat(failure.getError()).isEqualTo(RequestValidationError.INVALID_REQUEST);
         assertThat(failure.getDetail()).isEqualTo("Country CJS code must identify exactly one Country");
         assertThat(countries.findByCjsCode((short) 31005)).isEmpty();
     }

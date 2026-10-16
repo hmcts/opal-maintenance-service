@@ -17,7 +17,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.ColumnTransformer;
 import org.hibernate.annotations.JdbcType;
+import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.dialect.type.PostgreSQLJsonPGObjectJsonType;
+import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
 
@@ -72,6 +74,7 @@ public class DraftCasefileEntity {
     private String casefileType;
 
     @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     @ColumnTransformer(write = "?::public.t_draft_casefile_status_enum")
     @Column(name = "casefile_status", nullable = false, columnDefinition = "public.t_draft_casefile_status_enum")
     private DraftCasefileStatus casefileStatus;

@@ -6,7 +6,7 @@ import tools.jackson.databind.JsonNode;
 import uk.gov.hmcts.opal.common.exception.OpalApiException;
 import uk.gov.hmcts.opal.entity.CountryEntity;
 import uk.gov.hmcts.opal.entity.ResultEntity;
-import uk.gov.hmcts.opal.exception.DraftCasefileError;
+import uk.gov.hmcts.opal.exception.RequestValidationError;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileAddRequest;
 import uk.gov.hmcts.opal.repository.CountryRepository;
 import uk.gov.hmcts.opal.repository.MaintenanceApplicationRepository;
@@ -129,6 +129,6 @@ public class DraftCasefileValidator {
     }
 
     private static OpalApiException invalid(String detail) {
-        return new OpalApiException(DraftCasefileError.INVALID_REQUEST, detail);
+        return new OpalApiException(RequestValidationError.INVALID_REQUEST, detail);
     }
 }

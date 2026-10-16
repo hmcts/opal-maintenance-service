@@ -2,40 +2,61 @@ package uk.gov.hmcts.opal.service;
 
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uk.gov.hmcts.opal.authorisation.MaintenanceUser;
 import uk.gov.hmcts.opal.authorisation.MaintenanceUserService;
+import uk.gov.hmcts.opal.dto.DraftCasefileFilter;
 import uk.gov.hmcts.opal.dto.VersionedResponse;
 import uk.gov.hmcts.opal.entity.DraftCasefileEntity;
-import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent;
+import uk.gov.hmcts.opal.event.DraftCasefileListPersonalDataEvent;
 import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent.Operation;
+import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent.ParticipantCategory;
+import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileAddRequest;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileAddResponse;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileGetResponse;
+import uk.gov.hmcts.opal.generated.model.DraftCasefileListResponse;
+import uk.gov.hmcts.opal.generated.model.DraftCasefileLifecycleStatus;
+import uk.gov.hmcts.opal.generated.model.DraftCasefileSummary;
 import uk.gov.hmcts.opal.logging.DraftCasefileParticipantCategoryResolver;
+import uk.gov.hmcts.opal.mapper.DraftCasefileAddResponseMapper;
 import uk.gov.hmcts.opal.mapper.DraftCasefileGetMapper;
 import uk.gov.hmcts.opal.mapper.DraftCasefileMapper;
+import uk.gov.hmcts.opal.mapper.DraftCasefileSummaryMapper;
 import uk.gov.hmcts.opal.repository.DraftCasefileRepository;
+import uk.gov.hmcts.opal.repository.DraftCasefileSummaryProjection;
 import uk.gov.hmcts.opal.validator.DraftCasefileValidator;
+import uk.gov.hmcts.opal.validator.DraftCasefileQueryValidator;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.util.EnumMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import static uk.gov.hmcts.opal.authorisation.MaintenancePermission.CHECK_VALIDATE_DRAFT_CASEFILES;
 import static uk.gov.hmcts.opal.authorisation.MaintenancePermission.CREATE_MANAGE_DRAFT_CASEFILES;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j(topic = "opal.DraftCasefileService")
 public class DraftCasefileService {
 
     private final MaintenanceUserService maintenanceUserService;
     private final DraftCasefileValidator validator;
+    private final DraftCasefileQueryValidator queryValidator;
     private final DraftCasefileRepository repository;
     private final DraftCasefileMapper mapper;
+    private final DraftCasefileAddResponseMapper addResponseMapper;
     private final DraftCasefileGetMapper getMapper;
+    private final DraftCasefileSummaryMapper summaryMapper;
     private final DraftCasefileParticipantCategoryResolver participantCategoryResolver;
     private final ApplicationEventPublisher eventPublisher;
     private final Clock clock;
@@ -47,7 +68,7 @@ public class DraftCasefileService {
         validator.validate(request);
         Instant submittedAt = clock.instant().truncatedTo(ChronoUnit.MICROS);
         DraftCasefileEntity entity = repository.save(mapper.toEntity(request, user, submittedAt));
-        DraftCasefileAddResponse response = mapper.toResponse(entity);
+        DraftCasefileAddResponse response = addResponseMapper.toResponse(entity);
         eventPublisher.publishEvent(new DraftCasefilePersonalDataEvent(Operation.SUBMISSION,
             entity.getDraftCasefileId(), user.userId(), user.ipAddress(), submittedAt,
             participantCategoryResolver.resolve(request.getCasefile())));
@@ -70,5 +91,49 @@ public class DraftCasefileService {
             entity.getDraftCasefileId(), user.userId(), user.ipAddress(), clock.instant(),
             participantCategoryResolver.resolve(response.getCasefile())));
         return versionedResponse;
+    }
+
+    @Transactional(readOnly = true)
+    public DraftCasefileListResponse listDraftCasefiles(
+        Short businessUnitId, String submittedBy, String notSubmittedBy,
+        List<DraftCasefileLifecycleStatus> casefileStatus, LocalDate casefileStatusFromDate,
+        LocalDate casefileStatusToDate, String restrict
+    ) {
+        DraftCasefileFilter filter = queryValidator.validate(businessUnitId, submittedBy, notSubmittedBy,
+            casefileStatus, casefileStatusFromDate, casefileStatusToDate, restrict);
+        MaintenanceUser user = maintenanceUserService.requireAuthorisedUser(filter.businessUnitId(),
+            CREATE_MANAGE_DRAFT_CASEFILES, CHECK_VALIDATE_DRAFT_CASEFILES);
+        if ("counts".equals(restrict)) {
+            long count = repository.countMatching(filter);
+            log.debug(":listDraftCasefiles: businessUnitId={}, countsOnly=true, count={}",
+                filter.businessUnitId(), count);
+            return new DraftCasefileListResponse().count(count);
+        }
+        List<DraftCasefileSummaryProjection> rows = repository.findSummaries(filter);
+        List<DraftCasefileSummary> summaries = rows.stream().map(summaryMapper::toSummary).toList();
+        DraftCasefileListResponse response = new DraftCasefileListResponse()
+            .count((long) summaries.size()).summaries(summaries);
+        if (!rows.isEmpty()) {
+            eventPublisher.publishEvent(listAccessEvent(user, summaries));
+        }
+        log.debug(":listDraftCasefiles: businessUnitId={}, countsOnly=false, count={}",
+            filter.businessUnitId(), summaries.size());
+        return response;
+    }
+
+    private DraftCasefileListPersonalDataEvent listAccessEvent(
+        MaintenanceUser user, List<DraftCasefileSummary> summaries
+    ) {
+        Map<ParticipantCategory, Set<Long>> grouped = new EnumMap<>(ParticipantCategory.class);
+        for (DraftCasefileSummary summary : summaries) {
+            Set<ParticipantCategory> categories =
+                participantCategoryResolver.resolveSummary(summary.getCasefileSnapshot());
+            for (ParticipantCategory category : categories) {
+                grouped.computeIfAbsent(category, unused -> new LinkedHashSet<>()).add(summary.getDraftCasefileId());
+            }
+        }
+        Map<ParticipantCategory, List<Long>> identifiers = new EnumMap<>(ParticipantCategory.class);
+        grouped.forEach((category, ids) -> identifiers.put(category, List.copyOf(ids)));
+        return new DraftCasefileListPersonalDataEvent(user.userId(), user.ipAddress(), clock.instant(), identifiers);
     }
 }
