@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import uk.gov.hmcts.common.exceptions.standard.UnauthorizedException;
 import uk.gov.hmcts.opal.common.controllers.advice.OpalProblemDetailFactory;
+import uk.gov.hmcts.opal.testing.DraftCasefileTestingFailureException;
 
 @Order(Ordered.HIGHEST_PRECEDENCE)
 @RestControllerAdvice(basePackages = "uk.gov.hmcts.opal.controllers")
@@ -34,6 +35,19 @@ public class MaintenanceGlobalExceptionHandler {
             false, null, LOG
         );
         return OpalProblemDetailFactory.responseWithProblemDetail(HttpStatus.UNAUTHORIZED, problemDetail);
+    }
+
+    @ExceptionHandler(DraftCasefileTestingFailureException.class)
+    public ResponseEntity<ProblemDetail> handleDraftCasefileTestingFailure(
+        DraftCasefileTestingFailureException exception
+    ) {
+        return problemResponse(
+            HttpStatus.INTERNAL_SERVER_ERROR,
+            "Internal Server Error",
+            "An unexpected error occurred while processing your request",
+            "internal-server-error",
+            exception
+        );
     }
 
     @ExceptionHandler(MissingServletRequestParameterException.class)

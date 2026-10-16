@@ -229,14 +229,16 @@ class DraftCasefileDatabaseIntegrationTest extends BaseIntegrationTest {
 
     @Test
     void headerTriggeredFailureRollsBackFlushedRowWithoutLogging() throws Exception {
-        mockMvc.perform(post("/draft-casefiles")
+        String response = mockMvc.perform(post("/draft-casefiles")
                 .with(authentication(DraftCasefileHttpFixture.token((short) 1)))
                 .header("X-Opal-Testing-Failure", "after-save")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(validBody))
             .andExpect(status().isInternalServerError())
             .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
-            .andExpect(jsonPath("$.operation_id").isNotEmpty());
+            .andExpect(jsonPath("$.operation_id").isNotEmpty())
+            .andReturn().getResponse().getContentAsString();
+        assertThat(response).doesNotContain("Controlled Draft Casefile failure after save");
         assertThat(repository.count()).isZero();
         verifyNoInteractions(logging);
     }

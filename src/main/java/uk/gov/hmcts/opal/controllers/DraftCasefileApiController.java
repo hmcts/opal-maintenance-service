@@ -23,10 +23,10 @@ public class DraftCasefileApiController implements DraftCasefileApi {
     @Override
     @OpenApiRequest("DraftCasefileAddRequest")
     public ResponseEntity<DraftCasefileAddResponse> addDraftCasefile(
-        String xOpalTestingFailure,
-        DraftCasefileAddRequest request
+        DraftCasefileAddRequest request,
+        String testingFailureHeader
     ) {
-        DraftCasefileFailureMode failureMode = testingFailure.resolve(xOpalTestingFailure);
+        DraftCasefileFailureMode failureMode = testingFailure.resolve(testingFailureHeader);
         DraftCasefileSubmission submission = service.addDraftCasefile(request, failureMode);
         return ResponseEntity.status(HttpStatus.CREATED)
             .eTag(Long.toString(submission.version()))
