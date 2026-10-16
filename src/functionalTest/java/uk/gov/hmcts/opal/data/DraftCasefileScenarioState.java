@@ -8,18 +8,21 @@ public final class DraftCasefileScenarioState {
 
     private String marker;
     private Response latestResponse;
+    private Response createdResponse;
     private Long createdId;
     private String cleanupToken;
 
     public void reset() {
         marker = "PO10287-" + UUID.randomUUID();
         latestResponse = null;
+        createdResponse = null;
         createdId = null;
         cleanupToken = null;
     }
 
     public void clearAfterCleanup() {
         latestResponse = null;
+        createdResponse = null;
         createdId = null;
         cleanupToken = null;
     }
@@ -37,6 +40,14 @@ public final class DraftCasefileScenarioState {
 
     public void latestResponse(Response response) {
         latestResponse = response;
+    }
+
+    public Response createdResponse() {
+        return createdResponse;
+    }
+
+    public void createdResponse(Response response) {
+        createdResponse = response;
     }
 
     public Long createdId() {

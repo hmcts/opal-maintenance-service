@@ -64,12 +64,14 @@ class DraftCasefileRequestFactoryTest {
         assertThat(firstMarker).matches("PO10287-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}"
             + "-[0-9a-f]{12}");
         state.latestResponse(new ResponseBuilder().setStatusCode(201).build());
+        state.createdResponse(state.latestResponse());
         state.createdId(123);
         state.cleanupToken("test-token-placeholder");
 
         state.clearAfterCleanup();
         assertThat(state.marker()).isEqualTo(firstMarker);
         assertThat(state.latestResponse()).isNull();
+        assertThat(state.createdResponse()).isNull();
         assertThat(state.createdId()).isNull();
         assertThat(state.cleanupToken()).isNull();
 
