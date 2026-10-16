@@ -13,9 +13,11 @@ import uk.gov.hmcts.opal.common.user.authorisation.model.UserStateV2;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 public final class DraftCasefileHttpFixture {
 
@@ -27,11 +29,16 @@ public final class DraftCasefileHttpFixture {
     }
 
     public static OpalJwtAuthenticationToken token(short businessUnitId) {
+        return token(businessUnitId, MaintenancePermission.CREATE_MANAGE_DRAFT_CASEFILES);
+    }
+
+    public static OpalJwtAuthenticationToken token(short businessUnitId, MaintenancePermission... permissions) {
+        Set<Permission> granted = Arrays.stream(permissions)
+            .map(permission -> new Permission(permission.getId(), permission.getDescription()))
+            .collect(Collectors.toSet());
         UserStateV2 state = UserStateV2.builder().userId(123L).name("Synthetic Submitter")
             .domains(Map.of(Domain.MAINTENANCE, new DomainBusinessUnitUsers(List.of(
-                new BusinessUnitUser("BUU-1", businessUnitId, Set.of(new Permission(
-                    MaintenancePermission.CREATE_MANAGE_DRAFT_CASEFILES.getId(),
-                    MaintenancePermission.CREATE_MANAGE_DRAFT_CASEFILES.getDescription()))))))).build();
+                new BusinessUnitUser("BUU-1", businessUnitId, granted))))).build();
         Jwt jwt = Jwt.withTokenValue("synthetic-test-token").header("alg", "none").claim("sub", "synthetic-user")
             .issuedAt(Instant.EPOCH).expiresAt(Instant.EPOCH.plusSeconds(60)).build();
         return new OpalJwtAuthenticationToken(state, Domain.MAINTENANCE, jwt, List.of(), null);
