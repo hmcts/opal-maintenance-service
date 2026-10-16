@@ -27,9 +27,11 @@ import uk.gov.hmcts.opal.generated.model.DraftCasefileAddRequest;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileAddResponse;
 import uk.gov.hmcts.opal.service.DraftCasefileService;
 import uk.gov.hmcts.opal.support.DraftCasefileHttpFixture;
+import uk.gov.hmcts.opal.testing.DraftCasefileFailureMode;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -65,7 +67,7 @@ class DraftCasefileControllerIntegrationTest extends BaseIntegrationTest {
     @Test
     void acceptsRawCasefileAndArbitraryNamedStringsWithoutApplyingGeneratedDefaults() throws Exception {
         String body = validBody.replace("100.00", "arbitrary named string");
-        when(service.addDraftCasefile(any())).thenReturn(
+        when(service.addDraftCasefile(any(), eq(DraftCasefileFailureMode.NONE))).thenReturn(
             new DraftCasefileSubmission(new DraftCasefileAddResponse().draftCasefileId(123L), 7L));
         mockMvc.perform(post("/draft-casefiles").with(authentication(DraftCasefileHttpFixture.token((short) 1)))
             .contentType(MediaType.APPLICATION_JSON).content(body))
@@ -75,10 +77,22 @@ class DraftCasefileControllerIntegrationTest extends BaseIntegrationTest {
             .andExpect(jsonPath("$.version_number").doesNotExist())
             .andExpect(jsonPath("$.draft_casefile_id").value(123));
         ArgumentCaptor<DraftCasefileAddRequest> captured = ArgumentCaptor.forClass(DraftCasefileAddRequest.class);
-        verify(service).addDraftCasefile(captured.capture());
+        verify(service).addDraftCasefile(captured.capture(), eq(DraftCasefileFailureMode.NONE));
         assertThat(captured.getValue().getCasefile())
             .isEqualTo(JsonMapper.builder().build().readTree(body).get("casefile"));
         assertThat(captured.getValue().getCasefile().has("minor_creditors")).isFalse();
+    }
+
+    @Test
+    void rejectsFailureHeaderWhenTestingSupportIsDisabled() throws Exception {
+        mockMvc.perform(post("/draft-casefiles")
+                .with(authentication(DraftCasefileHttpFixture.token((short) 1)))
+                .header("X-Opal-Testing-Failure", "after-save")
+                .contentType(MediaType.APPLICATION_JSON).content(validBody))
+            .andExpect(status().isBadRequest())
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+            .andExpect(jsonPath("$.operation_id").isNotEmpty());
+        verifyNoInteractions(service);
     }
 
     @ParameterizedTest
@@ -130,7 +144,7 @@ class DraftCasefileControllerIntegrationTest extends BaseIntegrationTest {
             case 503 -> new DataAccessResourceFailureException("Synthetic connection failure");
             default -> new InvalidDataAccessResourceUsageException("Synthetic persistence failure");
         };
-        when(service.addDraftCasefile(any())).thenThrow(failure);
+        when(service.addDraftCasefile(any(), eq(DraftCasefileFailureMode.NONE))).thenThrow(failure);
         String response = mockMvc.perform(post("/draft-casefiles")
                 .with(authentication(DraftCasefileHttpFixture.token((short) 1)))
                 .contentType(MediaType.APPLICATION_JSON).content(validBody))
