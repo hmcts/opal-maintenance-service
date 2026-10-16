@@ -132,6 +132,59 @@ class DraftCasefileRepositoryIntegrationTest extends BaseIntegrationTest {
         });
     }
 
+    @Test
+    void testingSupportMarkerQueryMatchesExactMarkerBusinessUnitAndCreator() {
+        String marker = "PO10287-550e8400-e29b-41d4-a716-446655440000";
+        new TransactionTemplate(transactionManager).executeWithoutResult(transaction -> {
+            insertBusinessUnit();
+            insertSecondBusinessUnit();
+            final Long matchingId = saveTestingRow((short) 31011, "synthetic-bu-user", marker);
+            saveTestingRow((short) 31011, "synthetic-bu-user", "another-marker");
+            saveTestingRow((short) 31012, "synthetic-bu-user", marker);
+            saveTestingRow((short) 31011, "another-bu-user", marker);
+            Long literalWildcardId = saveTestingRow((short) 31011, "synthetic-bu-user", "PO10287-%_");
+
+            assertThat(repository.findTestingSupportIdsByMarker((short) 31011, "synthetic-bu-user", marker))
+                .containsExactly(matchingId);
+            assertThat(repository.findTestingSupportIdsByMarker((short) 31011, "synthetic-bu-user", "PO10287-%_"))
+                .containsExactly(literalWildcardId);
+            assertThat(repository.findTestingSupportIdsByMarker((short) 31011, "synthetic-bu-user", "PO10287-%"))
+                .isEmpty();
+            transaction.setRollbackOnly();
+        });
+    }
+
+    @Test
+    void repositoryDeleteRemovesOnlyTheSelectedTestingRow() {
+        new TransactionTemplate(transactionManager).executeWithoutResult(transaction -> {
+            insertBusinessUnit();
+            Long selectedId = saveTestingRow((short) 31011, "synthetic-bu-user", "selected-marker");
+            final Long otherId = saveTestingRow((short) 31011, "synthetic-bu-user", "other-marker");
+            repository.delete(repository.findById(selectedId).orElseThrow());
+            repository.flush();
+            assertThat(repository.findById(selectedId)).isEmpty();
+            assertThat(repository.findById(otherId)).isPresent();
+            transaction.setRollbackOnly();
+        });
+    }
+
+    private Long saveTestingRow(Short businessUnitId, String submittedBy, String marker) {
+        DraftCasefileEntity mapped = mapper.toEntity(request("REMO In"), user(), SUBMITTED).toBuilder()
+            .businessUnitId(businessUnitId)
+            .submittedBy(submittedBy)
+            .casefile("{\"respondent_account\":{\"account_comment\":\"" + marker + "\"}}")
+            .build();
+        return repository.saveAndFlush(mapped).getDraftCasefileId();
+    }
+
+    private void insertSecondBusinessUnit() {
+        jdbc.update("""
+            INSERT INTO business_units
+                (business_unit_id, business_unit_code, business_unit_name, business_unit_type, welsh_language)
+            VALUES (31012, 'ZD12', 'Second Synthetic Draft Unit', 'Area', false)
+            """);
+    }
+
     private void assertResponseWire(DraftCasefileAddResponse response) {
         JsonNode wire;
         try {
