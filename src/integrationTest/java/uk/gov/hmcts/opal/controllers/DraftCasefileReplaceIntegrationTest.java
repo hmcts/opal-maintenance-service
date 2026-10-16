@@ -150,8 +150,9 @@ class DraftCasefileReplaceIntegrationTest extends BaseIntegrationTest {
         long id = rejectedDraft();
         jdbc.update("UPDATE draft_casefiles SET casefile_status = ?::public.t_draft_casefile_status_enum "
             + "WHERE draft_casefile_id = ?", state.name(), id);
-        assertFailure(id, request(id, replacement()).with(authentication(DraftCasefileHttpFixture.token((short) 1))),
-            409, null);
+        JsonNode problem = assertFailure(id,
+            request(id, replacement()).with(authentication(DraftCasefileHttpFixture.token((short) 1))), 409, null);
+        assertConflict(problem, "resource-conflict", "A conflict occurred with the requested resource");
     }
 
     @ParameterizedTest
@@ -267,10 +268,25 @@ class DraftCasefileReplaceIntegrationTest extends BaseIntegrationTest {
             }
             default -> throw new IllegalArgumentException("Unexpected test case");
         }
-        assertFailure(id, request, expected, output);
+        JsonNode problem = assertFailure(id, request, expected, output);
+        if (failure.equals("owner")) {
+            assertConflict(problem, "resource-conflict", "A conflict occurred with the requested resource");
+        } else if (failure.equals("stale") || failure.equals("optimistic")) {
+            assertConflict(problem, "optimistic-locking", "Conflict updating record. Please try again.");
+        }
     }
 
-    private void assertFailure(long id, MockHttpServletRequestBuilder request, int expected, CapturedOutput output)
+    private void assertConflict(JsonNode problem, String type, String detail) {
+        assertThat(problem.path("type").asString()).isEqualTo("https://hmcts.gov.uk/problems/" + type);
+        assertThat(problem.path("title").asString()).isEqualTo("Conflict");
+        assertThat(problem.path("detail").asString()).isEqualTo(detail);
+        assertThat(problem.path("status").asInt()).isEqualTo(409);
+        assertThat(problem.has("resourceType")).isFalse();
+        assertThat(problem.has("resourceId")).isFalse();
+        assertThat(problem.has("conflictReason")).isFalse();
+    }
+
+    private JsonNode assertFailure(long id, MockHttpServletRequestBuilder request, int expected, CapturedOutput output)
         throws Exception {
         final int start = output == null ? 0 : output.getAll().length();
         Map<String, Object> before = row(id);
@@ -283,6 +299,7 @@ class DraftCasefileReplaceIntegrationTest extends BaseIntegrationTest {
         if (output != null) {
             assertThat(output.getAll().substring(start)).doesNotContain(PRIVATE, "Synthetic address");
         }
+        return JSON.readTree(response);
     }
 
     private MockHttpServletRequestBuilder request(long id, ObjectNode body) {

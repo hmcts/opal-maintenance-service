@@ -55,7 +55,7 @@ class DraftCasefileListServiceTest {
         new DraftCasefileFilter((short) 31021, null, null, List.of(), null, null);
     private final DraftCasefileService service = new DraftCasefileService(
         users, mock(DraftCasefileValidator.class), new DraftCasefileQueryValidator(),
-        new uk.gov.hmcts.opal.validator.DraftCasefileVersionValidator(), repository,
+        new uk.gov.hmcts.opal.validator.IfMatchValidator(), repository,
         mock(DraftCasefileMapper.class),
         mock(DraftCasefileAddResponseMapper.class), mock(DraftCasefileGetMapper.class), summaryMapper,
         new DraftCasefileParticipantCategoryResolver(),
