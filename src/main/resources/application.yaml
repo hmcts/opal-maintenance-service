@@ -123,6 +123,8 @@ launchdarkly:
     is-legacy-mode: ${IS_LEGACY_MODE:true}
 
 opal:
+  openapi:
+    max-request-body-bytes: ${OPAL_OPENAPI_MAX_REQUEST_BODY_BYTES:1048576}
   redis:
     enabled: ${OPAL_REDIS_ENABLED:false}
     ttl-duration: ${OPAL_REDIS_TTL_DURATION:8H}
@@ -162,6 +164,8 @@ logging:
     root: ${ROOT_LOGGING_LEVEL:${ROOT_LOG_LEVEL:INFO}}
     opal: ${OPAL_LOG_LEVEL:INFO}
     opal.UserStateClientService: ERROR
+    # Library 0.0.14 exposes payload identifiers and raw JMS errors; the listener logs safe final failures.
+    uk.gov.hmcts.opal.logging.integration.service.PdpoAsyncPublisherImpl: "OFF"
     org:
       hibernate:
         stat: INFO

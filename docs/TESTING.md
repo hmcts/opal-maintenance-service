@@ -128,8 +128,8 @@ configuration changes. In this repository, `check` depends on `dbUnitTest`
 and `integration` as peer suites.
 Run focused tests with `./gradlew test --tests 'fully.qualified.Pattern'` or
 `./gradlew integration --tests 'fully.qualified.Pattern'`. Focused quality
-commands are `./gradlew checkstyleMain`, `./gradlew pmdMain`, and
-`./gradlew jacocoTestReport`. For documentation-only or similarly
+commands are `./gradlew checkstyleMain` and `./gradlew jacocoTestReport`.
+PMD is not configured in the current build. For documentation-only or similarly
 non-executable changes, run checks appropriate to the changed artefacts and
 record why the baseline build was not run.
 
