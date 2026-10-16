@@ -10,9 +10,9 @@ import uk.gov.hmcts.opal.exception.RequestValidationError;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
-class DraftCasefileVersionValidatorTest {
+class IfMatchValidatorTest {
 
-    private final DraftCasefileVersionValidator validator = new DraftCasefileVersionValidator();
+    private final IfMatchValidator validator = new IfMatchValidator();
 
     @Test
     void parsesQuotedNonNegativeVersionsWithinLongRange() {

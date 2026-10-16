@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import uk.gov.hmcts.common.exceptions.standard.UnauthorizedException;
 import uk.gov.hmcts.opal.common.controllers.advice.OpalProblemDetailFactory;
+import uk.gov.hmcts.opal.exception.ResourceConflictException;
 
 @Order(Ordered.HIGHEST_PRECEDENCE)
 @RestControllerAdvice(basePackages = "uk.gov.hmcts.opal.controllers")
@@ -75,12 +76,18 @@ public class MaintenanceGlobalExceptionHandler {
         return OpalProblemDetailFactory.responseWithProblemDetail(HttpStatus.SERVICE_UNAVAILABLE, problem);
     }
 
+    @ExceptionHandler(ResourceConflictException.class)
+    public ResponseEntity<ProblemDetail> handleResourceConflictException(ResourceConflictException exception) {
+        return problemResponse(HttpStatus.CONFLICT, "Conflict", "A conflict occurred with the requested resource",
+            "resource-conflict", null);
+    }
+
     @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
     public ResponseEntity<ProblemDetail> handleOptimisticLockingFailure(
         ObjectOptimisticLockingFailureException exception
     ) {
-        return problemResponse(HttpStatus.CONFLICT, "Conflict", "Draft Casefile version has changed",
-            "draft-casefile-version-conflict", null);
+        return problemResponse(HttpStatus.CONFLICT, "Conflict", "Conflict updating record. Please try again.",
+            "optimistic-locking", null);
     }
 
     @ExceptionHandler(IllegalStateException.class)

@@ -8,6 +8,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InOrder;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
 import tools.jackson.databind.json.JsonMapper;
 import uk.gov.hmcts.opal.authorisation.MaintenanceUser;
@@ -20,6 +21,7 @@ import uk.gov.hmcts.opal.generated.model.DraftCasefileReplaceRequest;
 import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent.Operation;
 import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent;
 import uk.gov.hmcts.opal.exception.RequestValidationError;
+import uk.gov.hmcts.opal.exception.ResourceConflictException;
 import uk.gov.hmcts.opal.generated.model.CasefileType;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileAddRequest;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileGetResponse;
@@ -70,7 +72,7 @@ class DraftCasefileServiceTest {
             """));
     private final DraftCasefileService service = new DraftCasefileService(
         userService, validator, new DraftCasefileQueryValidator(),
-        new uk.gov.hmcts.opal.validator.DraftCasefileVersionValidator(), repository,
+        new uk.gov.hmcts.opal.validator.IfMatchValidator(), repository,
         new DraftCasefileMapper(new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules(),
             new DraftCasefileJsonMapper(JsonMapper.builder().build(),
                 new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules())),
@@ -278,14 +280,23 @@ class DraftCasefileServiceTest {
         Class<? extends Throwable> error = OpalApiException.class;
         switch (failure) {
             case "missing" -> error = EntityNotFoundException.class;
-            case "owner" -> replacement.businessUnitId((short) 2);
+            case "owner" -> {
+                replacement.businessUnitId((short) 2);
+                error = ResourceConflictException.class;
+            }
             case "permission" -> {
                 when(userService.requireAuthorisedUser((short) 1, CREATE_MANAGE_DRAFT_CASEFILES))
                     .thenThrow(new AccessDeniedException("Denied"));
                 error = AccessDeniedException.class;
             }
-            case "state" -> row = row.toBuilder().casefileStatus(DraftCasefileStatus.SUBMITTED).build();
-            case "version" -> row = row.toBuilder().versionNumber(5L).build();
+            case "state" -> {
+                row = row.toBuilder().casefileStatus(DraftCasefileStatus.SUBMITTED).build();
+                error = ResourceConflictException.class;
+            }
+            case "version" -> {
+                row = row.toBuilder().versionNumber(5L).build();
+                error = ObjectOptimisticLockingFailureException.class;
+            }
             case "null-version" -> {
                 row = row.toBuilder().versionNumber(null).build();
                 error = IllegalStateException.class;
