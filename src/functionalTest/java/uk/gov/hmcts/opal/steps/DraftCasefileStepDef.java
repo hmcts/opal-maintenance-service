@@ -130,16 +130,13 @@ public class DraftCasefileStepDef {
             } catch (RuntimeException exception) {
                 evidence = "Draft cleanup failed for ID " + state.createdId() + " with a request error";
             }
-            boolean alreadyFailed = scenario.isFailed();
+            if (!scenario.isFailed()) {
+                throw new AssertionError(evidence);
+            }
             try {
                 scenario.attach(evidence, "text/plain", "PO-10287 cleanup failure");
             } catch (RuntimeException attachmentFailure) {
-                if (alreadyFailed) {
-                    return;
-                }
-            }
-            if (!alreadyFailed) {
-                throw new AssertionError(evidence);
+                return;
             }
         } finally {
             state.clearAfterCleanup();

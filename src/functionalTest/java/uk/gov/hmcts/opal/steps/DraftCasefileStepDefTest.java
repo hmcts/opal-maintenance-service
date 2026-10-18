@@ -81,8 +81,19 @@ class DraftCasefileStepDefTest {
         assertThatThrownBy(() -> steps.deleteCreatedDraft(scenario))
             .isInstanceOf(AssertionError.class)
             .hasMessage("Draft cleanup failed for ID 123 with status 500");
-        verify(scenario).attach("Draft cleanup failed for ID 123 with status 500", "text/plain",
-            "PO-10287 cleanup failure");
+        verify(scenario, never()).attach(anyString(), anyString(), anyString());
+        assertThat(state.createdId()).isNull();
+    }
+
+    @Test
+    void cleanupRequestErrorFailsAnOtherwisePassingScenarioWithoutAttachment() {
+        prepareCreatedState();
+        when(actions.delete("creator-token", 123L)).thenThrow(new IllegalStateException("sensitive cause"));
+
+        assertThatThrownBy(() -> steps.deleteCreatedDraft(scenario))
+            .isInstanceOf(AssertionError.class)
+            .hasMessage("Draft cleanup failed for ID 123 with a request error");
+        verify(scenario, never()).attach(anyString(), anyString(), anyString());
         assertThat(state.createdId()).isNull();
     }
 
