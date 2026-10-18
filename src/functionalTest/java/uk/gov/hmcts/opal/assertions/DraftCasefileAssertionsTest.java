@@ -71,8 +71,9 @@ class DraftCasefileAssertionsTest {
     @Test
     void requiresSafeCorrelatedPermissionReferenceAndFailureProblems() throws Exception {
         assertSafeProblem(403, DraftCasefileAssertions::assertPermissionProblem);
-        assertSafeProblem(400, DraftCasefileAssertions::assertReferenceProblem);
         assertSafeProblem(500, DraftCasefileAssertions::assertFailureProblem);
+        assertReferenceProblem("Application must identify an active Maintenance Application");
+        assertReferenceProblem("Country must be active");
     }
 
     @Test
@@ -87,6 +88,14 @@ class DraftCasefileAssertionsTest {
     }
 
     private void assertSafeProblem(int status, ProblemCheck check) throws Exception {
+        String detail = switch (status) {
+            case 403 -> "You do not have permission to access this resource";
+            default -> "An unexpected error occurred while processing your request";
+        };
+        assertSafeProblem(status, check, detail);
+    }
+
+    private void assertSafeProblem(int status, ProblemCheck check, String detail) throws Exception {
         String type = switch (status) {
             case 403 -> "forbidden";
             case 400 -> "opal-api-error";
@@ -96,11 +105,6 @@ class DraftCasefileAssertionsTest {
             case 403 -> "Forbidden";
             case 400 -> "Bad Request";
             default -> "Internal Server Error";
-        };
-        String detail = switch (status) {
-            case 403 -> "You do not have permission to access this resource";
-            case 400 -> "An error occurred while processing your request";
-            default -> "An unexpected error occurred while processing your request";
         };
         String safe = """
             {"type":"https://hmcts.gov.uk/problems/%s","title":"%s","detail":"%s","status":%d,
@@ -126,6 +130,12 @@ class DraftCasefileAssertionsTest {
         assertThrows(AssertionError.class, () -> check.verify(
             response(status, "application/problem+json", safe.replace("instance/op-123", "instance/other"),
                 null, null), MARKER));
+    }
+
+    private void assertReferenceProblem(String detail) throws Exception {
+        ProblemCheck check = (response, marker) ->
+            DraftCasefileAssertions.assertReferenceProblem(response, marker, detail);
+        assertSafeProblem(400, check, detail);
     }
 
     private Response created() {

@@ -124,9 +124,9 @@ public final class DraftCasefileAssertions {
             "You do not have permission to access this resource", marker);
     }
 
-    public static void assertReferenceProblem(Response response, String marker) throws IOException {
+    public static void assertReferenceProblem(Response response, String marker, String detail) throws IOException {
         assertSafeProblem(response, 400, "opal-api-error", "Bad Request",
-            "An error occurred while processing your request", marker);
+            detail, marker);
     }
 
     public static void assertFailureProblem(Response response, String marker) throws IOException {
