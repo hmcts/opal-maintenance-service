@@ -3,27 +3,63 @@
  *
  * MODULE      : order_terms_pgtap_tests.sql
  *
- * DESCRIPTION : Verify the Order Terms schema, integrity rules and account interactions.
+ * DESCRIPTION : Verify the Order Terms schema, generic Result-response storage, integrity rules and account interactions.
  *
  * CHANGE HISTORY:
  *
  * Date        Author        Ticket        Nature of Change
  * ----------  ------------  ------------  ----------------------------------------
  * 03/10/2026  Chris Larkin  PO-10653      Initial pgTAP test suite.
+ * 17/10/2026  Frankie Moran  PO-10646     Generic response storage and metadata evolution coverage.
  */
+-- OPAL-DB-UPGRADE {"id":"order_terms.result_responses","candidate":"ddl/V1_46__add_order_terms_result_responses.sql","scope":"both","data":"approved-synthetic","inputs":["src/main/resources/db/migration/ddl/V1_29__create_order_terms_table.sql","src/main/resources/db/migration/ddl/V1_26__create_respondent_accounts_table.sql","src/main/resources/db/migration/ddl/V1_27__create_creditor_accounts_table.sql"],"contract":{"type":"data","objects":{"created":[],"replaced":[]},"preserve":{"rows":["public.business_units","public.respondent_accounts","public.creditor_accounts","public.results","public.maintenance_applications","public.configuration_items"],"tables":["public.business_units","public.respondent_accounts","public.creditor_accounts","public.results","public.maintenance_applications","public.configuration_items"],"routines":[],"enums":[],"sequences":["public.order_terms_id_seq","public.respondent_account_id_seq","public.creditor_account_id_seq"]},"assertion":"order_terms.responses","custom":{"prepare":"src/dbUnitTest/upgradeCases/order_terms_result_responses_prepare.sql","verify":"src/dbUnitTest/upgradeCases/order_terms_result_responses_verify.sql"}}}
+-- Approved data scenario: S10, user-approved 17 October 2026, docs/superpowers/brainstorming/2026-10-17-p-insert-order-terms-discussion.md; two synthetic predecessor Order Terms, minimal and fully populated.
 
 -- PO-10653: V1_29__create_order_terms_table.sql; Tasks 14 and 16.
--- Boundary applicability: fresh DB-01; direct PostgreSQL catalogue and behaviour.
--- Existing-state validation: Not run - user-approved initial-schema scope exception.
--- Initial delivery assumes no established affected account workflow; no upgrade path is claimed.
+-- Historical PO-10653 boundary: fresh DB-01; direct PostgreSQL catalogue and behaviour.
+-- Historical existing-state validation: Not run - user-approved initial-schema scope exception.
+-- Historical initial delivery assumed no established affected account workflow; no upgrade path was claimed.
+-- PO-10646 schema prerequisite; local work package: order-terms-provider-integration.
+-- Current verification scope: fresh DB-01 and actual-predecessor DB-03, approved schema scenario S10.
 -- Table expectations were independently checked against promoted TDIA v162 and the approved plan.
 -- Graph checks prove database transaction participation; backend orchestration/status is outside scope.
 \set ON_ERROR_STOP on
+\if :{?opal_assertion_group}
+    SELECT :'opal_assertion_group'='order_terms.responses' AS ot_known_group \gset
+    \if :ot_known_group
+    \else
+        DO $group$ BEGIN RAISE EXCEPTION 'Unknown Order Terms assertion group'; END; $group$;
+    \endif
+\endif
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap;
 SET LOCAL search_path = public, pg_temp;
 SET LOCAL TIME ZONE 'UTC';
-SELECT plan(141);
+SELECT plan(178);
+
+-- ---------------------------------------------------------------------------
+-- Scenario: Generic Result responses have the approved nullable JSON catalogue contract.
+-- Setup:    Inspect the new column and exact named CHECK before any response-column DML.
+-- Expected: JSON has no default, the exact comment and only the validated immediate top-level array CHECK.
+-- ---------------------------------------------------------------------------
+
+SELECT has_column('public','order_terms','result_responses','generic response column exists');
+SELECT col_type_is('public','order_terms','result_responses','json','responses retain JSON storage');
+SELECT col_is_null('public','order_terms','result_responses','responses permit SQL NULL');
+SELECT col_hasnt_default('public','order_terms','result_responses','responses have no default');
+SELECT is(COL_DESCRIPTION('public.order_terms'::REGCLASS,
+    (SELECT attnum FROM pg_attribute WHERE attrelid='public.order_terms'::REGCLASS
+       AND attname='result_responses')),
+    'Result-response JSON array captured for the Order Term; NULL when not captured or unavailable.',
+    'response comment matches the approved wording');
+SELECT is((SELECT JSONB_BUILD_ARRAY(contype::TEXT,convalidated,condeferrable,condeferred,
+        conkey=ARRAY[(SELECT attnum FROM pg_attribute
+            WHERE attrelid='public.order_terms'::REGCLASS AND attname='result_responses')]::SMALLINT[],
+        PG_GET_EXPR(conbin,conrelid))
+    FROM pg_constraint WHERE conrelid='public.order_terms'::REGCLASS
+      AND conname='ot_result_responses_array_ck'),
+    '["c",true,false,false,true,"((result_responses IS NULL) OR (json_typeof(result_responses) = ''array''::text))"]'::JSONB,
+    'named validated immediate CHECK has only the approved top-level expression');
 
 -- ---------------------------------------------------------------------------
 -- Scenario: The promoted table has exactly the declared physical columns.
@@ -39,12 +75,12 @@ SELECT is(
     ) ORDER BY attnum)
     FROM pg_attribute
     WHERE attrelid = 'public.order_terms'::regclass AND attnum > 0 AND NOT attisdropped),
-    '[["order_terms_id","bigint",true],["respondent_account_id","bigint",true],["creditor_account_id","bigint",true],["result_id","character varying(6)",true],["posted_date","timestamp without time zone",true],["posted_by","character varying(20)",false],["posted_by_name","character varying(100)",false],["original_posted_date","timestamp without time zone",false],["imposed_date","timestamp without time zone",true],["imposed_amount","numeric",true],["arrears_amount","numeric",false],["completed","boolean",true],["child_name","character varying(100)",false],["child_birth_date","timestamp without time zone",false],["expiry_date","timestamp without time zone",false],["expiry_terms","boolean",false],["remitted_amount","numeric",false]]'::jsonb,
+    '[["order_terms_id","bigint",true],["respondent_account_id","bigint",true],["creditor_account_id","bigint",true],["result_id","character varying(6)",true],["posted_date","timestamp without time zone",true],["posted_by","character varying(20)",false],["posted_by_name","character varying(100)",false],["original_posted_date","timestamp without time zone",false],["imposed_date","timestamp without time zone",true],["imposed_amount","numeric",true],["arrears_amount","numeric",false],["completed","boolean",true],["child_name","character varying(100)",false],["child_birth_date","timestamp without time zone",false],["expiry_date","timestamp without time zone",false],["expiry_terms","boolean",false],["remitted_amount","numeric",false],["result_responses","json",false]]'::jsonb,
     'exact ordered columns, physical types and nullability'
 );
 
 -- ---------------------------------------------------------------------------
--- Scenario: All column comments retain the promoted TDIA descriptions.
+-- Scenario: All column comments retain the promoted TDIA and approved storage descriptions.
 -- Setup:    Read comments in physical column order.
 -- Expected: Every comment equals the independently checked source wording.
 -- ---------------------------------------------------------------------------
@@ -70,22 +106,23 @@ SELECT is(
         'Child birth date for the payable maintenance component',
         'Expiry date of the payable maintenance component',
         'Whether further-education expiry terms apply',
-        'Remitted arrears or order-term amount; null until a remittance is recorded'
+        'Remitted arrears or order-term amount; null until a remittance is recorded',
+        'Result-response JSON array captured for the Order Term; NULL when not captured or unavailable.'
     ]::text[],
-    'all column comments match the promoted TDIA verbatim'
+    'all column comments match the promoted TDIA and approved storage wording verbatim'
 );
 
 -- ---------------------------------------------------------------------------
--- Scenario: Only the declared keys and indexes are installed.
+-- Scenario: Only the declared keys, top-level storage CHECK and indexes are installed.
 -- Setup:    Inspect named constraints, PK columns, index keys and index properties.
--- Expected: No extra uniqueness, CHECK, index or user trigger is introduced.
+-- Expected: Only the top-level response storage CHECK is added; no extra key, index or user trigger.
 -- ---------------------------------------------------------------------------
 
 SELECT is(
     (SELECT array_agg(conname::text ORDER BY conname) FROM pg_constraint
      WHERE conrelid = 'public.order_terms'::regclass AND contype IN ('p', 'u', 'f', 'c')),
-    ARRAY['order_terms_pk', 'ot_creditor_account_id_fk', 'ot_respondent_account_id_fk', 'ot_result_id_fk']::text[],
-    'exact table constraint inventory, including the absence of business CHECKs'
+    ARRAY['order_terms_pk', 'ot_creditor_account_id_fk', 'ot_respondent_account_id_fk', 'ot_result_id_fk', 'ot_result_responses_array_ck']::text[],
+    'exact table constraint inventory, including only the top-level response storage CHECK'
 );
 
 SELECT col_is_pk('public', 'order_terms', 'order_terms_id', 'order_terms_id is the sole primary-key column');
@@ -307,6 +344,159 @@ SELECT ok((SELECT remitted_amount IS NULL AND child_name IS NULL AND child_birth
                    AND expiry_date IS NULL AND expiry_terms IS NULL
        FROM public.order_terms WHERE order_terms_id = (SELECT id FROM cv_subject)),
      'ordinary publication leaves remittance and optional child/expiry metadata NULL');
+
+-- ---------------------------------------------------------------------------
+-- Scenario: Unavailable, intentionally empty and captured response documents remain distinct.
+-- Setup:    Use existing valid parents and a separate generated-ID term; assign SQL NULL, [] and raw JSON.
+-- Expected: Legacy NULLs remain; raw whitespace, escapes, exact strings, Unicode and array order survive.
+-- ---------------------------------------------------------------------------
+
+CREATE TEMP TABLE ot_response_subject(id BIGINT PRIMARY KEY);
+WITH inserted AS (
+    INSERT INTO public.order_terms (
+        respondent_account_id,
+        creditor_account_id,
+        result_id,
+        posted_date,
+        imposed_date,
+        imposed_amount,
+        completed
+    )
+    SELECT
+        r.respondent_account_id,
+        c.creditor_account_id,
+        'CVOT53',
+        TIMESTAMP '2026-01-01 12:00:00',
+        TIMESTAMP '2026-01-01 12:00:00',
+        12.34,
+        FALSE
+    FROM cv_respondent r CROSS JOIN cv_creditor c
+    RETURNING order_terms_id
+) INSERT INTO ot_response_subject SELECT order_terms_id FROM inserted;
+CREATE TEMP TABLE ot_response_expected(raw TEXT NOT NULL);
+INSERT INTO ot_response_expected VALUES
+($json$ [ { "parameter_name" : "Amount", "response" : "00012.30" }, { "parameter_name":"Note", "response":"  Caf\u00e9  " } ] $json$);
+
+SELECT ok((SELECT result_responses IS NULL FROM public.order_terms
+    WHERE order_terms_id=(SELECT id FROM cv_subject)),'legacy omitted-column writer reads SQL NULL');
+SELECT lives_ok($sql$UPDATE public.order_terms SET result_responses=NULL
+    WHERE order_terms_id=(SELECT id FROM ot_response_subject)$sql$,'explicit SQL NULL accepted');
+SELECT ok((SELECT result_responses IS NULL FROM public.order_terms
+    WHERE order_terms_id=(SELECT id FROM ot_response_subject)),'explicit SQL NULL reads SQL NULL');
+SELECT lives_ok($sql$UPDATE public.order_terms SET result_responses='[]'::JSON
+    WHERE order_terms_id=(SELECT id FROM ot_response_subject)$sql$,'empty captured array accepted');
+SELECT is((SELECT result_responses::TEXT FROM public.order_terms
+    WHERE order_terms_id=(SELECT id FROM ot_response_subject)),'[]','empty array reads unchanged');
+SELECT ok((SELECT result_responses IS NOT NULL FROM public.order_terms
+    WHERE order_terms_id=(SELECT id FROM ot_response_subject)) AND
+    (SELECT result_responses IS NULL FROM public.order_terms
+    WHERE order_terms_id=(SELECT id FROM cv_subject)),'captured empty and unavailable are distinct');
+SELECT lives_ok($sql$UPDATE public.order_terms SET result_responses=(SELECT raw::JSON FROM ot_response_expected)
+    WHERE order_terms_id=(SELECT id FROM ot_response_subject)$sql$,'complete raw array accepted');
+SELECT is((SELECT result_responses::TEXT FROM public.order_terms
+    WHERE order_terms_id=(SELECT id FROM ot_response_subject)),
+    (SELECT raw FROM ot_response_expected),'raw document whitespace escapes strings and ordering survive');
+SELECT is((SELECT result_responses->1->>'response' FROM public.order_terms
+    WHERE order_terms_id=(SELECT id FROM ot_response_subject)),'  Café  ','decoded Unicode and spaces survive');
+SELECT is((SELECT ARRAY(SELECT entry->>'parameter_name'
+    FROM JSON_ARRAY_ELEMENTS(t.result_responses) WITH ORDINALITY a(entry,position) ORDER BY position)
+    FROM public.order_terms t WHERE order_terms_id=(SELECT id FROM ot_response_subject)),
+    ARRAY['Amount','Note']::TEXT[],'array order and numeric-looking response are not normalized');
+
+-- ---------------------------------------------------------------------------
+-- Scenario: The storage CHECK accepts arrays without validating their elements.
+-- Setup:    Replace the captured array with null, numeric and duplicate-name elements.
+-- Expected: The array is accepted and preserved exactly; this is not procedure metadata-validation success.
+-- ---------------------------------------------------------------------------
+
+SELECT lives_ok($sql$UPDATE public.order_terms SET result_responses=
+    '[null,7,{"parameter_name":"Amount","response":null},{"parameter_name":"Amount","response":"again"}]'::JSON
+    WHERE order_terms_id=(SELECT id FROM ot_response_subject)$sql$,
+    'storage accepts invalid interiors; this is not procedure validation success');
+SELECT is((SELECT result_responses::TEXT FROM public.order_terms
+    WHERE order_terms_id=(SELECT id FROM ot_response_subject)),
+    '[null,7,{"parameter_name":"Amount","response":null},{"parameter_name":"Amount","response":"again"}]',
+    'storage-only acceptance retains invalid interior document exactly');
+
+-- ---------------------------------------------------------------------------
+-- Scenario: Every prohibited top-level JSON value fails the named storage CHECK.
+-- Setup:    Capture native diagnostics and before/after text for JSON null, object, string, number and Booleans.
+-- Expected: Each UPDATE raises 23514 for ot_result_responses_array_ck and preserves the previous document.
+-- ---------------------------------------------------------------------------
+
+CREATE FUNCTION pg_temp.ot_response_rejection(document TEXT)
+RETURNS TABLE(actual_code TEXT,actual_constraint TEXT,preserved BOOLEAN)
+LANGUAGE plpgsql AS $test$
+DECLARE before_value TEXT; after_value TEXT;
+BEGIN
+    SELECT result_responses::TEXT INTO STRICT before_value FROM public.order_terms
+    WHERE order_terms_id=(SELECT id FROM ot_response_subject);
+    actual_code:=NULL; actual_constraint:=NULL;
+    BEGIN
+        UPDATE public.order_terms SET result_responses=document::JSON
+        WHERE order_terms_id=(SELECT id FROM ot_response_subject);
+    EXCEPTION WHEN OTHERS THEN
+        GET STACKED DIAGNOSTICS actual_code=RETURNED_SQLSTATE,actual_constraint=CONSTRAINT_NAME;
+    END;
+    SELECT result_responses::TEXT INTO STRICT after_value FROM public.order_terms
+    WHERE order_terms_id=(SELECT id FROM ot_response_subject);
+    preserved:=after_value IS NOT DISTINCT FROM before_value;
+    RETURN NEXT;
+END;
+$test$;
+CREATE TEMP TABLE ot_response_rejections AS
+SELECT document,r.* FROM (VALUES ('null'),('{}'),('"scalar"'),('42'),('true'),('false')) v(document)
+CROSS JOIN LATERAL pg_temp.ot_response_rejection(v.document) r;
+SELECT is(ARRAY[actual_code,actual_constraint],ARRAY['23514','ot_result_responses_array_ck']::TEXT[],
+    FORMAT('top-level %s fails the named CHECK',document)) FROM ot_response_rejections ORDER BY document;
+SELECT ok(preserved,FORMAT('rejected top-level %s leaves response unchanged',document))
+FROM ot_response_rejections ORDER BY document;
+
+-- ---------------------------------------------------------------------------
+-- Scenario: Malformed JSON fails native parsing and preserves the existing response document.
+-- Setup:    Capture the current raw array and attempt to assign the malformed document [}.
+-- Expected: PostgreSQL raises 22P02 and the exact previous response text remains.
+-- ---------------------------------------------------------------------------
+
+SELECT result_responses::TEXT AS raw_before FROM public.order_terms
+WHERE order_terms_id=(SELECT id FROM ot_response_subject) \gset ot_response_
+SELECT throws_ok($sql$UPDATE public.order_terms SET result_responses='[}'::JSON
+    WHERE order_terms_id=(SELECT id FROM ot_response_subject)$sql$,
+    '22P02',NULL,'malformed JSON fails native parsing');
+SELECT is((SELECT result_responses::TEXT FROM public.order_terms
+    WHERE order_terms_id=(SELECT id FROM ot_response_subject)),
+    :'ot_response_raw_before','native malformed JSON failure preserves existing document');
+
+-- ---------------------------------------------------------------------------
+-- Scenario: Later Result metadata edits do not rewrite responses or recalculate original columns.
+-- Setup:    Restore the raw array, capture all 17 original columns and edit only suite-owned CVOT53 metadata.
+-- Expected: New metadata is visible while captured JSON, every original value and legacy SQL NULL are unchanged.
+-- ---------------------------------------------------------------------------
+
+UPDATE public.order_terms SET result_responses=(SELECT raw::JSON FROM ot_response_expected)
+WHERE order_terms_id=(SELECT id FROM ot_response_subject);
+CREATE TEMP VIEW ot_response_original AS
+SELECT order_terms_id,respondent_account_id,creditor_account_id,result_id,
+    posted_date,posted_by,posted_by_name,original_posted_date,imposed_date,imposed_amount,
+    arrears_amount,completed,child_name,child_birth_date,expiry_date,expiry_terms,remitted_amount
+FROM public.order_terms WHERE order_terms_id=(SELECT id FROM ot_response_subject);
+SELECT ROW_TO_JSON(original_columns)::TEXT AS typed_before FROM ot_response_original original_columns
+\gset ot_response_
+SELECT result_responses::TEXT AS raw_before FROM public.order_terms
+WHERE order_terms_id=(SELECT id FROM ot_response_subject) \gset ot_response_
+SELECT lives_ok($sql$UPDATE public.results SET result_parameters=
+    '[{"name":"Later","type":"text-60","mandatory":true,"min":1,"max":60,"language_dependent":false}]'::JSON
+    WHERE result_id='CVOT53'$sql$,'test-owned metadata can change after storage');
+SELECT is((SELECT result_parameters::TEXT FROM public.results WHERE result_id='CVOT53'),
+    '[{"name":"Later","type":"text-60","mandatory":true,"min":1,"max":60,"language_dependent":false}]',
+    'later metadata definition is visible');
+SELECT is((SELECT result_responses::TEXT FROM public.order_terms
+    WHERE order_terms_id=(SELECT id FROM ot_response_subject)),
+    :'ot_response_raw_before','later metadata does not rewrite captured responses');
+SELECT is((SELECT ROW_TO_JSON(original_columns)::TEXT FROM ot_response_original original_columns),
+    :'ot_response_typed_before','later metadata does not recalculate any original column');
+SELECT ok((SELECT result_responses IS NULL FROM public.order_terms
+    WHERE order_terms_id=(SELECT id FROM cv_subject)),'later metadata leaves legacy unavailable responses NULL');
 
 -- ---------------------------------------------------------------------------
 -- Scenario: Every column enforces its independently checked NULL contract.
