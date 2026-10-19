@@ -125,6 +125,33 @@ disable scenario actions while the JUnit helper tests execute normally:
 ./gradlew functionalOpal --tests 'uk.gov.hmcts.opal.*.DraftCasefile*Test' -Dcucumber.execution.dry-run=true
 ```
 
+## Draft Casefile publication tests
+
+The normal integration suite tests HTTP decisions and PostgreSQL transaction
+boundaries with a controlled publisher. To test real broker acceptance, provision
+an otherwise unused queue with a `test-` prefix and set `RUN_SERVICE_BUS_TESTS=true`
+and `TEST_SERVICEBUS_QUEUE` to that queue's name. Supply the normal Service Bus
+connection settings. For a disposable emulator exposed on a mapped port,
+`TEST_SERVICEBUS_AMQP_URI` overrides the test connection URI (no credentials in the URI).
+
+```bash
+./gradlew integration --tests '*DraftCasefileQueueIntegrationTest'
+```
+
+These tests consume their synthetic messages from the dedicated queue. They prove
+persistent ID-only publication, bounded connection failure, and that an accepted
+message survives a later database rollback without successful-decision logging.
+Do not point them at an application queue. Remove the test queue or disposable
+emulator after the run; keep credentials out of files and command arguments.
+
+The opt-in `@PO10631` functional scenarios require `RM_DRAFT_CASEFILE_CHECKER_USER`
+and separate submitted synthetic drafts identified by
+`RM_CHECKER_DRAFT_ID_PUBLISHING_PENDING`, `RM_CHECKER_DRAFT_ID_REJECTED`,
+`RM_CHECKER_DRAFT_ID_DELETED` and `RM_CHECKER_SELF_DRAFT_ID`. The first three must
+have a different submitter; the last must belong to the checker. Run against a
+configured service with a broker and with the publication consumer stopped, then
+reset the synthetic fixtures before rerunning. Do not use personal or live data.
+
 ## Database migration validation
 
 Normal Docker Compose use is a persistent local-development workflow.

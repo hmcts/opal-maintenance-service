@@ -13,6 +13,7 @@ import org.springframework.core.annotation.Order;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
+import org.springframework.jms.JmsException;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
@@ -74,6 +75,12 @@ public class MaintenanceGlobalExceptionHandler {
             "database-unavailable", true, null, LOG
         );
         return OpalProblemDetailFactory.responseWithProblemDetail(HttpStatus.SERVICE_UNAVAILABLE, problem);
+    }
+
+    @ExceptionHandler(JmsException.class)
+    public ResponseEntity<ProblemDetail> handleJmsException(JmsException exception) {
+        return problemResponse(HttpStatus.SERVICE_UNAVAILABLE, "Service Unavailable",
+            "Messaging service is currently unavailable", "messaging-unavailable", null);
     }
 
     @ExceptionHandler(ResourceConflictException.class)

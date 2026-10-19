@@ -131,6 +131,19 @@ The response should have status `UP`. The service API is available at
 `http://localhost:4551`, and User Service remains available from Docker at
 `http://localhost:4555`.
 
+## Draft publication queue
+
+Approval uses the Service Bus emulator started by the shared infrastructure stack.
+Use the current shared `ServiceBus_Emulator_config.json`, which includes
+`rm-publish-draft-casefile-queue`. The application defaults to that queue over
+AMQP on localhost. `SERVICEBUS_RM_PUBLISH_DRAFT_CASEFILE_QUEUE_NAME` overrides the
+destination; the existing `SERVICEBUS_CONNECTION_STRING`, `SERVICEBUS_PROTOCOL`,
+`SERVICEBUS_SEND_TIMEOUT_MS` and `SERVICEBUS_IDLE_TIMEOUT_MS` settings control the
+connection. PR deployments provision a release-prefixed queue automatically.
+
+The publisher sends only the draft ID. The publication consumer is delivered
+separately; an approval remains pending until that consumer processes it.
+
 ## Debug logging
 
 Logging defaults to INFO. To enable DEBUG for a particular logger, use these

@@ -31,6 +31,8 @@ java:
           alias: SERVICEBUS_CONNECTION_STRING
         - name: servicebus-shared-access-key
           alias: SERVICEBUS_SHARED_ACCESS_KEY
+        - name: servicebus-rm-publish-draft-casefile-queue-name
+          alias: SERVICEBUS_RM_PUBLISH_DRAFT_CASEFILE_QUEUE_NAME
         - name: servicebus-logging-pdpl-queue-name
           alias: SERVICEBUS_LOGGING_PDPL_QUEUE_NAME
         - name: managed-redis-connection-string
