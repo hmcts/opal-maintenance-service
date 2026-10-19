@@ -6,6 +6,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.context.jdbc.Sql.ExecutionPhase.AFTER_TEST_METHOD;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -15,6 +16,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.MediaType;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -192,6 +194,47 @@ class TestingSupportControllerIntegrationTest extends BaseIntegrationTest {
         mockMvc.perform(delete("/testing-support/draft-casefiles/{id}", owned).with(denied))
             .andExpect(status().isForbidden());
         assertThat(repository.findById(owned)).isPresent();
+    }
+
+    @Test
+    void draftRoutesRejectPermissionHeldForAnotherBusinessUnit() throws Exception {
+        Long owned = save((short) 44, "L044JG", MARKER);
+        var wrongUnit = authentication(DraftCasefileHttpFixture.token((short) 1, "L044JG", true));
+
+        mockMvc.perform(get("/testing-support/draft-casefiles/{id}", owned).with(wrongUnit))
+            .andExpect(status().isForbidden());
+        mockMvc.perform(get("/testing-support/draft-casefiles/markers/{marker}", MARKER).with(wrongUnit))
+            .andExpect(status().isForbidden());
+        mockMvc.perform(delete("/testing-support/draft-casefiles/{id}", owned).with(wrongUnit))
+            .andExpect(status().isForbidden());
+        assertThat(repository.findById(owned)).isPresent();
+    }
+
+    @Test
+    void malformedMarkersReturnSafeBadRequestProblems() throws Exception {
+        String invalidMarker = "PO10287-invalid-marker";
+
+        String response = mockMvc.perform(get("/testing-support/draft-casefiles/markers/{marker}", invalidMarker)
+                .with(allowedUser()))
+            .andExpect(status().isBadRequest())
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+            .andExpect(jsonPath("$.status").value(400))
+            .andExpect(jsonPath("$.operation_id").isNotEmpty())
+            .andReturn().getResponse().getContentAsString();
+
+        assertThat(response).doesNotContain(invalidMarker, "account_comment", "casefile");
+    }
+
+    @Test
+    void absentDraftsAreConcealedForInspectAndDelete() throws Exception {
+        long absentId = Long.MAX_VALUE;
+
+        mockMvc.perform(get("/testing-support/draft-casefiles/{id}", absentId).with(allowedUser()))
+            .andExpect(status().isNotFound())
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON));
+        mockMvc.perform(delete("/testing-support/draft-casefiles/{id}", absentId).with(allowedUser()))
+            .andExpect(status().isNotFound())
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON));
     }
 
     private static RequestPostProcessor allowedUser() {

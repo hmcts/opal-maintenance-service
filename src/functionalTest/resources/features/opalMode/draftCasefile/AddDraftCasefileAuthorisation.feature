@@ -6,5 +6,3 @@ Feature: Draft Casefile creation authorisation
     And I prepare a valid uniquely marked Draft Casefile
     When I submit the Draft Casefile
     Then the Draft Casefile permission failure is returned
-    And I am testing as the "opal-test@dev.platform.hmcts.net" user
-    And no Draft Casefile exists for the scenario marker

@@ -119,16 +119,9 @@ public class DraftCasefileStepDef {
             if (state.createdId() == null) {
                 return;
             }
-            String evidence;
-            try {
-                Response cleanup = actions.delete(state.cleanupToken(), state.createdId());
-                if (cleanup.statusCode() == 204) {
-                    return;
-                }
-                evidence = "Draft cleanup failed for ID " + state.createdId()
-                    + " with status " + cleanup.statusCode();
-            } catch (RuntimeException exception) {
-                evidence = "Draft cleanup failed for ID " + state.createdId() + " with a request error";
+            String evidence = cleanupEvidence();
+            if (evidence == null) {
+                return;
             }
             if (!scenario.isFailed()) {
                 throw new AssertionError(evidence);
@@ -141,6 +134,26 @@ public class DraftCasefileStepDef {
         } finally {
             state.clearAfterCleanup();
             requestBody = null;
+        }
+    }
+
+    private String cleanupEvidence() {
+        Response cleanup;
+        try {
+            cleanup = actions.delete(state.cleanupToken(), state.createdId());
+        } catch (RuntimeException exception) {
+            return "Draft cleanup failed for ID " + state.createdId() + " with a request error";
+        }
+        if (cleanup.statusCode() != 204) {
+            return "Draft cleanup failed for ID " + state.createdId()
+                + " with status " + cleanup.statusCode();
+        }
+        try {
+            Response lookup = actions.findByMarker(state.cleanupToken(), state.marker());
+            assertNoMarkerMatches(lookup);
+            return null;
+        } catch (IOException | RuntimeException | AssertionError exception) {
+            return "Draft cleanup verification failed for ID " + state.createdId();
         }
     }
 }

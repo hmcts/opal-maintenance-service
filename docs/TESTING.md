@@ -72,9 +72,13 @@ only technical metadata or IDs, never the complete Casefile, snapshot, or
 timeline content. The controlled rollback scenario sends
 `X-Opal-Testing-Failure: after-save` on the create request; this value is
 request-scoped and available only while testing support is enabled. A successful
-create is deleted with the token captured for that create. The forbidden,
-invalid-reference, and rollback scenarios assert zero marker matches and do
-not delete unrelated data.
+create is deleted with the token captured for that create, then an exact marker
+lookup confirms that cleanup removed the row. Invalid-reference and rollback
+scenarios assert zero marker matches and do not delete unrelated data. The
+forbidden scenario proves the deployed permission denial; its no-persistence
+guarantee is covered by `DraftCasefileAuthenticationIntegrationTest` because
+testing-support marker lookups are intentionally scoped to the authenticated
+creator.
 
 ## Database migration validation
 

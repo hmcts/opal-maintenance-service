@@ -9,8 +9,6 @@ import uk.gov.hmcts.opal.actions.DraftCasefileActions;
 import uk.gov.hmcts.opal.data.DraftCasefileRequestFactory;
 import uk.gov.hmcts.opal.data.DraftCasefileScenarioState;
 
-import java.io.IOException;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -37,6 +35,8 @@ class DraftCasefileStepDefTest {
         Response created = response(201, "{\"draft_casefile_id\":123}");
         when(actions.create(eq("creator-token"), anyString(), eq(null))).thenReturn(created);
         when(actions.delete("creator-token", 123L)).thenReturn(response(204, ""));
+        when(actions.findByMarker(eq("creator-token"), anyString())).thenReturn(response(200,
+            "{\"count\":0,\"draft_casefile_ids\":[]}"));
 
         try (MockedStatic<BearerTokenStepDef> bearer = mockStatic(BearerTokenStepDef.class)) {
             bearer.when(BearerTokenStepDef::getToken).thenReturn("creator-token", "later-token");
@@ -48,6 +48,7 @@ class DraftCasefileStepDefTest {
         assertThat(state.cleanupToken()).isEqualTo("creator-token");
         steps.deleteCreatedDraft(scenario);
         verify(actions).delete("creator-token", 123L);
+        verify(actions).findByMarker("creator-token", state.marker());
         assertThat(state.createdId()).isNull();
         assertThat(state.createdResponse()).isNull();
         assertThat(state.cleanupToken()).isNull();
@@ -98,6 +99,19 @@ class DraftCasefileStepDefTest {
     }
 
     @Test
+    void cleanupVerificationFailsWhenTheMarkerStillExists() {
+        prepareCreatedState();
+        when(actions.delete("creator-token", 123L)).thenReturn(response(204, ""));
+        when(actions.findByMarker(eq("creator-token"), anyString())).thenReturn(response(200,
+            "{\"count\":1,\"draft_casefile_ids\":[123]}"));
+
+        assertThatThrownBy(() -> steps.deleteCreatedDraft(scenario))
+            .isInstanceOf(AssertionError.class)
+            .hasMessage("Draft cleanup verification failed for ID 123");
+        assertThat(state.createdId()).isNull();
+    }
+
+    @Test
     void failedCleanupAttachesEvidenceButPreservesPrimaryFailure() {
         prepareCreatedState();
         when(scenario.isFailed()).thenReturn(true);
@@ -108,20 +122,6 @@ class DraftCasefileStepDefTest {
         verify(scenario).attach("Draft cleanup failed for ID 123 with status 500", "text/plain",
             "PO-10287 cleanup failure");
         assertThat(state.createdId()).isNull();
-    }
-
-    @Test
-    void lookupUsesTheCurrentAuthorisedTokenAfterAnUnauthorisedCreate() throws IOException {
-        steps.resetScenario();
-        when(actions.findByMarker(eq("support-token"), anyString())).thenReturn(response(200,
-            "{\"count\":0,\"draft_casefile_ids\":[]}"));
-
-        try (MockedStatic<BearerTokenStepDef> bearer = mockStatic(BearerTokenStepDef.class)) {
-            bearer.when(BearerTokenStepDef::getToken).thenReturn("support-token");
-            steps.assertNoDraftForMarker();
-        }
-
-        verify(actions).findByMarker("support-token", state.marker());
     }
 
     @Test
