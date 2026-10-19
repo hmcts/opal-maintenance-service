@@ -44,11 +44,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
     "spring.flyway.locations=classpath:db/migration/ddl",
     "opal.redis.enabled=false", "management.health.redis.enabled=false",
     "opal.testing-support-endpoints.enabled=true",
-    "opal.testing-support-endpoints.draft-casefile-cleanup.enabled=true",
-    "opal.testing-support-endpoints.draft-casefile-cleanup.environment=integration",
-    "opal.testing-support-endpoints.draft-casefile-cleanup.business-unit-id=1",
-    "opal.testing-support-endpoints.draft-casefile-cleanup.user-id=123",
-    "opal.testing-support-endpoints.draft-casefile-cleanup.business-unit-user-id=BUU-1"
 })
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @Sql("/draft-casefile/reference-fixtures.sql")
@@ -93,6 +88,17 @@ class DraftCasefileCleanupAuthenticationIntegrationTest extends BaseIntegrationT
             .andExpect(status().isNoContent());
         assertThat(repository.findById(id)).isEmpty();
         AUTH.server().verify(2, getRequestedFor(urlEqualTo(USER_STATE_PATH)));
+    }
+
+    @Test
+    void anotherAuthenticatedSubmitterCanCleanTheirOwnDraft() throws Exception {
+        stubUserState("wrong-user");
+        String bearer = bearer();
+        long id = submit(bearer);
+        assertThat(repository.findById(id).orElseThrow().getSubmittedBy()).isEqualTo("BUU-OTHER");
+        mockMvc.perform(delete(PATH, id).header(HttpHeaders.AUTHORIZATION, bearer).header("Test-Run-Reference", RUN))
+            .andExpect(status().isNoContent());
+        assertThat(repository.findById(id)).isEmpty();
     }
 
     @ParameterizedTest
@@ -151,7 +157,7 @@ class DraftCasefileCleanupAuthenticationIntegrationTest extends BaseIntegrationT
              "status":"ACTIVE","version":1,"domains":{"maintenance":{"business_unit_users":[{
              "business_unit_user_id":"%s","business_unit_id":%d,"permissions":%s}]}}}
             """.formatted(variant.equals("wrong-user") ? 124 : 123,
-                variant.equals("wrong-buu") ? "BUU-OTHER" : "BUU-1", variant.equals("wrong-bu") ? 2 : 1,
-                permissions))));
+                (variant.equals("wrong-buu") || variant.equals("wrong-user")) ? "BUU-OTHER" : "BUU-1",
+                variant.equals("wrong-bu") ? 2 : 1, permissions))));
     }
 }

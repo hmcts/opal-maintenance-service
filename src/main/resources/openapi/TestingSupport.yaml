@@ -8,13 +8,13 @@ paths:
     delete:
       tags: [Testing Support]
       operationId: cleanupDraftCasefile
-      summary: Deletes an automation-owned synthetic submitted Draft Casefile
+      summary: Deletes the authenticated submitter's synthetic submitted Draft Casefile
       description: >-
-        Available only when both testing-support and draft cleanup are enabled in an allowed test environment.
-        Requires the configured automation identity and permission 21 in its configured Maintenance Business Unit.
-        Existing rows must match that BU and submitter and the exact run reference in respondent_account.remo_reference.
+        Registered when testing-support is enabled. Deployments must disable testing-support in production.
+        Requires permission 21 in the stored draft's Maintenance Business Unit and a matching authenticated submitter.
+        Existing rows must match the exact run reference in respondent_account.remo_reference.
         Only unvalidated SUBMITTED rows without published account links can be deleted.
-        Already-absent IDs succeed after caller authorisation. No GET request or If-Match header is required.
+        Already-absent IDs succeed after authentication; no draft remains for an ownership or BU permission check. No GET request or If-Match header is required.
       security:
         - TestingSupportBearerAuth: []
       parameters:
@@ -36,7 +36,7 @@ paths:
             pattern: '^E2E-[0-9a-f]{16}$'
       responses:
         '204':
-          description: Deleted, or already absent after caller authorisation
+          description: Deleted, or already absent after authentication
         '400':
           description: Invalid identifier or missing or invalid run-reference header
           content:
@@ -50,7 +50,7 @@ paths:
               schema:
                 $ref: './common.yaml#/components/schemas/ProblemDetail'
         '403':
-          description: Caller, stored ownership or run-reference scope is not permitted
+          description: Caller permission, stored ownership or run-reference scope is not permitted
           content:
             application/problem+json:
               schema:

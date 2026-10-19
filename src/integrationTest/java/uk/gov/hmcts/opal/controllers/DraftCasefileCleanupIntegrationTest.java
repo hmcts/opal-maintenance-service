@@ -66,11 +66,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
     "spring.flyway.locations=classpath:db/migration/ddl",
     "opal.redis.enabled=false", "management.health.redis.enabled=false",
     "opal.testing-support-endpoints.enabled=true",
-    "opal.testing-support-endpoints.draft-casefile-cleanup.enabled=true",
-    "opal.testing-support-endpoints.draft-casefile-cleanup.environment=integration",
-    "opal.testing-support-endpoints.draft-casefile-cleanup.business-unit-id=1",
-    "opal.testing-support-endpoints.draft-casefile-cleanup.user-id=123",
-    "opal.testing-support-endpoints.draft-casefile-cleanup.business-unit-user-id=BUU-1"
 })
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @Sql({"/draft-casefile/reference-fixtures.sql", "/draft-casefile/cleanup-scope-fixtures.sql"})
@@ -192,7 +187,7 @@ class DraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"missing-permission", "checker", "wrong-bu", "wrong-user", "wrong-buu"})
-    void rejectsUnauthorisedIdentityIncludingAbsentId(String variant) throws Exception {
+    void rejectsUnauthorisedIdentityForExistingDraft(String variant) throws Exception {
         DraftCasefileEntity before = repository.findById(submit(RUN)).orElseThrow();
         Set<Permission> permissions = switch (variant) {
             case "missing-permission" -> Set.of();
@@ -201,12 +196,29 @@ class DraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
         };
         OpalJwtAuthenticationToken caller = DraftCasefileHttpFixture.token(
             (short) (variant.equals("wrong-bu") ? 2 : 1), variant.equals("wrong-user") ? 124L : 123L,
-            variant.equals("wrong-buu") ? "BUU-OTHER" : "BUU-1", permissions);
-        for (long id : new long[] {before.getDraftCasefileId(), Long.MAX_VALUE}) {
-            mockMvc.perform(delete(CLEANUP, id).with(authentication(caller)).header("Test-Run-Reference", RUN))
-                .andExpect(status().isForbidden());
-        }
+            (variant.equals("wrong-buu") || variant.equals("wrong-user")) ? "BUU-OTHER" : "BUU-1", permissions);
+        mockMvc.perform(delete(CLEANUP, before.getDraftCasefileId()).with(authentication(caller))
+                .header("Test-Run-Reference", RUN)).andExpect(status().isForbidden());
         assertUnchanged(before);
+    }
+
+    @Test
+    void authenticatedRepeatSucceedsWithoutBusinessUnitPermissions() throws Exception {
+        var caller = DraftCasefileHttpFixture.token((short) 1, 124L, "BUU-OTHER", Set.of());
+        mockMvc.perform(delete(CLEANUP, Long.MAX_VALUE).with(authentication(caller))
+                .header("Test-Run-Reference", RUN)).andExpect(status().isNoContent());
+    }
+
+    @Test
+    void anotherOwnerCanCleanTheirOwnDraftInAnotherBusinessUnit() throws Exception {
+        DraftCasefileEntity original = repository.findById(submit(RUN)).orElseThrow();
+        var other = repository.saveAndFlush(original.toBuilder()
+            .businessUnitId((short) 2).submittedBy("BUU-2").build());
+        var caller = DraftCasefileHttpFixture.token((short) 2, 124L, "BUU-2",
+            Set.of(new Permission(21L, "Create and Manage Draft Casefiles")));
+        mockMvc.perform(delete(CLEANUP, other.getDraftCasefileId()).with(authentication(caller))
+                .header("Test-Run-Reference", RUN)).andExpect(status().isNoContent());
+        assertThat(repository.findById(other.getDraftCasefileId())).isEmpty();
     }
 
     @ParameterizedTest

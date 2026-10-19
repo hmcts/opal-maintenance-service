@@ -135,10 +135,10 @@ record why the baseline build was not run.
 
 ## Synthetic Draft Casefile cleanup
 
-The [cleanup guide](DRAFT_CASEFILE_TEST_CLEANUP.md) defines operator prerequisites,
+The [cleanup guide](DRAFT_CASEFILE_TEST_CLEANUP.md) defines shared enablement,
 the HTTP contract and future Cypress capture/ledger handling. Service checks use
 synthetic data in disposable PostgreSQL 17 and signed JWT/local WireMock fixtures;
-no shared service or dedicated real account is required for these automated checks.
+no shared service or real account is required for these automated checks.
 
 ```bash
 ./gradlew test --tests '*DraftCasefileCleanup*'
@@ -153,10 +153,11 @@ The integration suites prove real POST-ID-to-DELETE behavior, caller/BU/run scop
 lifecycle/publication rejection, embedded-data deletion, sibling/reference retention,
 rollback after a real flush, safe repeats and actual PostgreSQL locking-SELECT
 contention. Signed JWT cases verify bearer validation, User Service permission 21
-and identity restrictions. Disabled HTTP/runtime-doc tests distinguish authenticated
-404 from anonymous 401. Unit tests cover both flags and fail-closed environment/
-owner configuration. These are endpoint/application tests, rather than direct
-database schema assertions.
+and submitter ownership, including another user cleaning their own draft. Disabled
+HTTP/runtime-doc tests distinguish authenticated 404 from anonymous 401. Missing IDs return 204 to authenticated callers.
+Unit tests cover enabled/disabled/default-off shared-flag behaviour and
+caller-derived ownership without additional environment or owner configuration. These are endpoint/application
+tests, rather than direct database schema assertions.
 
 No migration-specific boundary assertions required: cleanup adds no schema,
 routine or persistent SQL contract. Existing `draft_casefiles_pgtap_tests.sql` and

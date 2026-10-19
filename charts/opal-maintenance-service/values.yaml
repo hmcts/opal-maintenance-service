@@ -39,8 +39,6 @@ java:
     RUN_DB_MIGRATION_ON_STARTUP: true
     OPAL_RM_FRONTEND_URL: https://opal-rm-frontend.{{ .Values.global.environment }}.apps.hmcts.net
     TESTING_SUPPORT_ENDPOINTS_ENABLED: false
-    OPAL_DEPLOYMENT_ENVIRONMENT: "{{ .Values.global.environment }}"
-    DRAFT_CASEFILE_CLEANUP_ENABLED: false
     LAUNCH_DARKLY_ENABLED: true
     OPAL_REDIS_ENABLED: true
     OPAL_USER_SERVICE_API_URL: https://opal-user-service.{{ .Values.global.environment }}.platform.hmcts.net

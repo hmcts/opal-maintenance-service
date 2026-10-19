@@ -10,7 +10,7 @@ import uk.gov.hmcts.opal.service.DraftCasefileCleanupService;
 @RestController
 @RequiredArgsConstructor
 @ConditionalOnProperty(prefix = "opal.testing-support-endpoints",
-    name = {"enabled", "draft-casefile-cleanup.enabled"}, havingValue = "true")
+    name = "enabled", havingValue = "true")
 public class TestingSupportDraftCasefileController implements TestingSupportApi {
 
     private final DraftCasefileCleanupService service;

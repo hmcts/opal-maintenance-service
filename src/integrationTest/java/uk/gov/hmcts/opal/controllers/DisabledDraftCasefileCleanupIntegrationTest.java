@@ -21,8 +21,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @TestPropertySource(properties = {
     "spring.flyway.locations=classpath:db/migration/ddl",
     "opal.redis.enabled=false", "management.health.redis.enabled=false",
-    "opal.testing-support-endpoints.enabled=true",
-    "opal.testing-support-endpoints.draft-casefile-cleanup.enabled=false"
+    "opal.testing-support-endpoints.enabled=false"
 })
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class DisabledDraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {

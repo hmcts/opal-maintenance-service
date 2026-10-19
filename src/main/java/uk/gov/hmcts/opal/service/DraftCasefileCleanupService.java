@@ -11,7 +11,6 @@ import org.springframework.transaction.annotation.Transactional;
 import uk.gov.hmcts.opal.authorisation.MaintenanceUser;
 import uk.gov.hmcts.opal.authorisation.MaintenanceUserService;
 import uk.gov.hmcts.opal.common.exception.OpalApiException;
-import uk.gov.hmcts.opal.config.DraftCasefileCleanupProperties;
 import uk.gov.hmcts.opal.entity.DraftCasefileEntity;
 import uk.gov.hmcts.opal.entity.DraftCasefileStatus;
 import uk.gov.hmcts.opal.exception.DraftCasefileError;
@@ -24,29 +23,23 @@ import static uk.gov.hmcts.opal.authorisation.MaintenancePermission.CREATE_MANAG
 @Service
 @RequiredArgsConstructor
 @ConditionalOnProperty(prefix = "opal.testing-support-endpoints",
-    name = {"enabled", "draft-casefile-cleanup.enabled"}, havingValue = "true")
+    name = "enabled", havingValue = "true")
 public class DraftCasefileCleanupService {
 
     private final MaintenanceUserService users;
     private final DraftCasefileRepository repository;
-    private final DraftCasefileCleanupProperties properties;
     private final ObjectMapper objectMapper;
 
     @Transactional
     public void cleanup(Long draftCasefileId, String testRunReference) {
-        MaintenanceUser caller = users.requireAuthorisedUser(
-            properties.businessUnitId(), CREATE_MANAGE_DRAFT_CASEFILES);
-        if (!properties.userId().equals(caller.userId())
-            || !properties.businessUnitUserId().equals(caller.businessUnitUserId())) {
-            throw denied();
-        }
         Optional<DraftCasefileEntity> found = repository.findForCleanupById(draftCasefileId);
         if (found.isEmpty()) {
             return;
         }
         DraftCasefileEntity draft = found.orElseThrow();
-        if (!properties.businessUnitId().equals(draft.getBusinessUnitId())
-            || !properties.businessUnitUserId().equals(draft.getSubmittedBy())) {
+        MaintenanceUser caller = users.requireAuthorisedUser(
+            draft.getBusinessUnitId(), CREATE_MANAGE_DRAFT_CASEFILES);
+        if (!caller.businessUnitUserId().equals(draft.getSubmittedBy())) {
             throw denied();
         }
         requireMatchingRun(draft.getCasefile(), testRunReference);

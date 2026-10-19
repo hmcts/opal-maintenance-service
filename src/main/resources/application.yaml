@@ -134,12 +134,6 @@ opal:
     active-directory-justice-auth-uri: https://login.microsoftonline.com
   testing-support-endpoints:
     enabled: ${TESTING_SUPPORT_ENDPOINTS_ENABLED:false}
-    draft-casefile-cleanup:
-      enabled: ${DRAFT_CASEFILE_CLEANUP_ENABLED:false}
-      environment: ${OPAL_DEPLOYMENT_ENVIRONMENT:}
-      business-unit-id: ${DRAFT_CASEFILE_CLEANUP_BUSINESS_UNIT_ID:}
-      user-id: ${DRAFT_CASEFILE_CLEANUP_USER_ID:}
-      business-unit-user-id: ${DRAFT_CASEFILE_CLEANUP_BUSINESS_UNIT_USER_ID:}
   test-user:
     email: ${OPAL_TEST_USER_EMAIL:opal-test@HMCTS.NET}
     password: ${OPAL_TEST_USER_PASSWORD:}

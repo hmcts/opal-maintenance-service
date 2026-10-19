@@ -13,7 +13,6 @@ import org.springframework.security.access.AccessDeniedException;
 import uk.gov.hmcts.opal.authorisation.MaintenanceUser;
 import uk.gov.hmcts.opal.authorisation.MaintenanceUserService;
 import uk.gov.hmcts.opal.common.exception.OpalApiException;
-import uk.gov.hmcts.opal.config.DraftCasefileCleanupProperties;
 import uk.gov.hmcts.opal.entity.DraftCasefileEntity;
 import uk.gov.hmcts.opal.entity.DraftCasefileStatus;
 import uk.gov.hmcts.opal.exception.DraftCasefileError;
@@ -40,12 +39,10 @@ class DraftCasefileCleanupServiceTest {
 
     private static final String RUN = "E2E-0123456789abcdef";
     private static final String EMPTY_ACCOUNT = "{\"account_id\":null,\"account_number\":null}";
-    private final DraftCasefileCleanupProperties properties =
-        new DraftCasefileCleanupProperties(true, "integration", (short) 1, 123L, "BUU-1");
     private final MaintenanceUserService users = mock(MaintenanceUserService.class);
     private final DraftCasefileRepository repository = mock(DraftCasefileRepository.class);
     private final DraftCasefileCleanupService service = new DraftCasefileCleanupService(
-        users, repository, properties, new ObjectMapper());
+        users, repository, new ObjectMapper());
 
     @BeforeEach
     void authoriseAutomation() {
@@ -56,57 +53,57 @@ class DraftCasefileCleanupServiceTest {
     @Test
     void deletesOwnedMarkedSubmittedDraft() {
         DraftCasefileEntity draft = ownedDraft();
-        when(repository.findForCleanupById(41L)).thenReturn(Optional.of(draft));
+        found(draft);
         service.cleanup(41L, RUN);
         var ordered = inOrder(users, repository);
-        ordered.verify(users).requireAuthorisedUser((short) 1, CREATE_MANAGE_DRAFT_CASEFILES);
         ordered.verify(repository).findForCleanupById(41L);
+        ordered.verify(users).requireAuthorisedUser((short) 1, CREATE_MANAGE_DRAFT_CASEFILES);
         ordered.verify(repository).delete(draft);
         ordered.verify(repository).flush();
     }
 
     @Test
-    void absentDraftStillRequiresAuthorisationAndSucceeds() {
+    void absentDraftSucceedsWithoutAnOwnerToCheck() {
         when(repository.findForCleanupById(41L)).thenReturn(Optional.empty());
         service.cleanup(41L, RUN);
-        verify(users).requireAuthorisedUser((short) 1, CREATE_MANAGE_DRAFT_CASEFILES);
+        verifyNoInteractions(users);
         assertNoDeletion();
-    }
-
-    @Test
-    void rejectsOtherUserBeforeReadingDraft() {
-        when(users.requireAuthorisedUser((short) 1, CREATE_MANAGE_DRAFT_CASEFILES))
-            .thenReturn(new MaintenanceUser(124L, "BUU-1", "Synthetic Automation", "192.0.2.1"));
-        assertDenied();
-        verifyNoInteractions(repository);
-    }
-
-    @Test
-    void rejectsOtherBusinessUnitUserBeforeReadingDraft() {
-        when(users.requireAuthorisedUser((short) 1, CREATE_MANAGE_DRAFT_CASEFILES))
-            .thenReturn(new MaintenanceUser(123L, "BUU-OTHER", "Synthetic Automation", "192.0.2.1"));
-        assertDenied();
-        verifyNoInteractions(repository);
-    }
-
-    @Test
-    void missingPermissionRejectsBeforeReadingDraft() {
-        AccessDeniedException failure = new AccessDeniedException("Permission is required");
-        when(users.requireAuthorisedUser((short) 1, CREATE_MANAGE_DRAFT_CASEFILES)).thenThrow(failure);
-        assertThatThrownBy(() -> service.cleanup(41L, RUN)).isSameAs(failure);
-        verifyNoInteractions(repository);
-    }
-
-    @Test
-    void rejectsDifferentStoredBusinessUnit() {
-        found(ownedDraft().toBuilder().businessUnitId((short) 2).build());
-        assertDenied();
     }
 
     @Test
     void rejectsDifferentStoredSubmitter() {
         found(ownedDraft().toBuilder().submittedBy("BUU-OTHER").build());
         assertDenied();
+    }
+
+    @Test
+    void missingPermissionRejectsWithoutDeletion() {
+        found(ownedDraft());
+        AccessDeniedException failure = new AccessDeniedException("Permission is required");
+        when(users.requireAuthorisedUser((short) 1, CREATE_MANAGE_DRAFT_CASEFILES)).thenThrow(failure);
+        assertThatThrownBy(() -> service.cleanup(41L, RUN)).isSameAs(failure);
+        assertNoDeletion();
+    }
+
+    @Test
+    void checksPermissionInTheStoredBusinessUnit() {
+        found(ownedDraft().toBuilder().businessUnitId((short) 2).build());
+        AccessDeniedException failure = new AccessDeniedException("No identity for requested Business Unit");
+        when(users.requireAuthorisedUser((short) 2, CREATE_MANAGE_DRAFT_CASEFILES)).thenThrow(failure);
+        assertThatThrownBy(() -> service.cleanup(41L, RUN)).isSameAs(failure);
+        verify(users, never()).requireAuthorisedUser((short) 1, CREATE_MANAGE_DRAFT_CASEFILES);
+        assertNoDeletion();
+    }
+
+    @Test
+    void anotherUserCanCleanTheirOwnDraftInAnotherBusinessUnit() {
+        DraftCasefileEntity draft = ownedDraft().toBuilder().businessUnitId((short) 2).submittedBy("BUU-2").build();
+        found(draft);
+        when(users.requireAuthorisedUser((short) 2, CREATE_MANAGE_DRAFT_CASEFILES))
+            .thenReturn(new MaintenanceUser(124L, "BUU-2", "Synthetic Submitter", "192.0.2.1"));
+        service.cleanup(41L, RUN);
+        verify(repository).delete(draft);
+        verify(repository).flush();
     }
 
     @ParameterizedTest
