@@ -10,7 +10,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.TestPropertySource;
@@ -28,6 +31,7 @@ import uk.gov.hmcts.opal.support.DraftCasefileHttpFixture;
 import java.time.LocalDateTime;
 
 @AutoConfigureMockMvc
+@ExtendWith(OutputCaptureExtension.class)
 @TestPropertySource(properties = {
     "spring.flyway.locations=classpath:db/migration/ddl",
     "opal.redis.enabled=false",
@@ -116,6 +120,33 @@ class TestingSupportControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    void markerLookupAcceptsEscapedNullOutsideMarkerWithoutExposingContent(CapturedOutput output) throws Exception {
+        String casefile = """
+            {"respondent_account":{"account_comment":"%s","other":"SYNTHETIC_PRIVATE_VALUE\\u0000"},
+             "other":"SYNTHETIC_PRIVATE_VALUE\\u0000"}
+            """.formatted(MARKER);
+        Long owned = saveCasefile((short) 44, "L044JG", casefile);
+        saveCasefile((short) 44, "L044JG", casefile.replace(MARKER, MARKER + "\\u0000"));
+
+        String response = mockMvc.perform(get("/testing-support/draft-casefiles/markers/{marker}", MARKER)
+                .with(allowedUser()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.*", hasSize(2)))
+            .andExpect(jsonPath("$.count").value(1))
+            .andExpect(jsonPath("$.draft_casefile_ids", hasSize(1)))
+            .andExpect(jsonPath("$.draft_casefile_ids[0]").value(owned))
+            .andReturn().getResponse().getContentAsString();
+        mockMvc.perform(get("/testing-support/draft-casefiles/markers/{marker}", OTHER_MARKER).with(allowedUser()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.count").value(0))
+            .andExpect(jsonPath("$.draft_casefile_ids").isEmpty());
+
+        assertThat(repository.findById(owned).orElseThrow().getCasefile()).isEqualTo(casefile);
+        assertThat(response).doesNotContain(MARKER, "SYNTHETIC_PRIVATE_VALUE", "\"casefile\"", "account_comment");
+        assertThat(output).doesNotContain("SYNTHETIC_PRIVATE_VALUE");
+    }
+
+    @Test
     void ownerCanDeleteMarkedDraftWithoutRemovingOtherRows() throws Exception {
         Long owned = save((short) 44, "L044JG", MARKER);
         Long other = save((short) 44, "OTHER", MARKER);
@@ -168,12 +199,17 @@ class TestingSupportControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     private Long save(short businessUnitId, String owner, String marker) {
+        return saveCasefile(businessUnitId, owner,
+            "{\"respondent_account\":{\"account_comment\":\"" + marker + "\"}}");
+    }
+
+    private Long saveCasefile(short businessUnitId, String owner, String casefile) {
         LocalDateTime created = LocalDateTime.of(2026, 10, 16, 10, 11);
         DraftCasefileEntity entity = DraftCasefileEntity.builder()
             .businessUnitId(businessUnitId).submittedBy(owner).submittedByName("Synthetic Submitter")
             .createdDate(created).casefileStatus(DraftCasefileStatus.SUBMITTED).casefileStatusDate(created)
             .casefileType("REMO In")
-            .casefile("{\"respondent_account\":{\"account_comment\":\"" + marker + "\"}}")
+            .casefile(casefile)
             .casefileSnapshot("{}").timelineData("[{\"status\":\"Submitted\"}]").build();
         return repository.saveAndFlush(entity).getDraftCasefileId();
     }

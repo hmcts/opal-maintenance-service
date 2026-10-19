@@ -155,6 +155,31 @@ class DraftCasefileRepositoryIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    void testingSupportMarkerQueryAcceptsEscapedNullOutsideMarker() {
+        String marker = "PO10287-550e8400-e29b-41d4-a716-446655440000";
+        String casefile = """
+            {"respondent_account":{"account_comment":"%s","other":"synthetic\\u0000"},
+             "other":"synthetic\\u0000"}
+            """.formatted(marker);
+        new TransactionTemplate(transactionManager).executeWithoutResult(transaction -> {
+            insertBusinessUnit();
+            final Long matchingId = saveTestingCasefile((short) 31011, "synthetic-bu-user", casefile);
+            final Long escapedMarkerId = saveTestingCasefile((short) 31011, "synthetic-bu-user",
+                casefile.replace("PO10287", "\\u0050O10287"));
+            saveTestingCasefile((short) 31011, "synthetic-bu-user", casefile.replace(marker, marker + "\\u0000"));
+            saveTestingCasefile((short) 31011, "synthetic-bu-user", casefile.replace(marker, "another-marker"));
+
+            assertThat(repository.findTestingSupportIdsByMarker((short) 31011, "synthetic-bu-user", marker))
+                .containsExactly(matchingId, escapedMarkerId);
+            assertThat(repository.findTestingSupportIdsByMarker((short) 31011, "synthetic-bu-user",
+                "PO10287-550e8400-e29b-41d4-a716-446655440001")).isEmpty();
+            assertThat(JSON.readTree(repository.findById(matchingId).orElseThrow().getCasefile())
+                .at("/respondent_account/other").asString()).isEqualTo("synthetic" + '\0');
+            transaction.setRollbackOnly();
+        });
+    }
+
+    @Test
     void repositoryDeleteRemovesOnlyTheSelectedTestingRow() {
         new TransactionTemplate(transactionManager).executeWithoutResult(transaction -> {
             insertBusinessUnit();
@@ -169,10 +194,15 @@ class DraftCasefileRepositoryIntegrationTest extends BaseIntegrationTest {
     }
 
     private Long saveTestingRow(Short businessUnitId, String submittedBy, String marker) {
+        return saveTestingCasefile(businessUnitId, submittedBy,
+            "{\"respondent_account\":{\"account_comment\":\"" + marker + "\"}}");
+    }
+
+    private Long saveTestingCasefile(Short businessUnitId, String submittedBy, String casefile) {
         DraftCasefileEntity mapped = mapper.toEntity(request("REMO In"), user(), SUBMITTED).toBuilder()
             .businessUnitId(businessUnitId)
             .submittedBy(submittedBy)
-            .casefile("{\"respondent_account\":{\"account_comment\":\"" + marker + "\"}}")
+            .casefile(casefile)
             .build();
         return repository.saveAndFlush(mapped).getDraftCasefileId();
     }
