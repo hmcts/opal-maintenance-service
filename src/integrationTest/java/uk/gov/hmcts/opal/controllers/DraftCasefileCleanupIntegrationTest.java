@@ -23,6 +23,7 @@ import org.springframework.test.context.jdbc.SqlMergeMode;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import uk.gov.hmcts.opal.BaseIntegrationTest;
 import uk.gov.hmcts.opal.common.spring.security.OpalJwtAuthenticationToken;
@@ -36,6 +37,7 @@ import uk.gov.hmcts.opal.repository.MaintenanceApplicationRepository;
 import uk.gov.hmcts.opal.repository.ResultRepository;
 import uk.gov.hmcts.opal.support.DraftCasefileHttpFixture;
 
+import java.sql.PreparedStatement;
 import java.time.LocalDateTime;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
@@ -43,6 +45,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -359,8 +362,11 @@ class DraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
         CountDownLatch locked = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
         CountDownLatch cleanupLookup = new CountDownLatch(1);
+        final AtomicInteger writerPid = new AtomicInteger();
+        final AtomicInteger cleanupPid = new AtomicInteger();
         doAnswer(invocation -> {
             if (Thread.currentThread().getName().equals("synthetic-cleanup-reader")) {
+                cleanupPid.set(transactionBackendPid());
                 cleanupLookup.countDown();
             }
             return repositoryDelegate.answer(invocation);
@@ -368,6 +374,7 @@ class DraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
         try {
             final Future<?> writer = executor.submit(() -> new TransactionTemplate(transactionManager)
                 .executeWithoutResult(transaction -> {
+                    writerPid.set(transactionBackendPid());
                     DraftCasefileEntity draft = repository.findForCleanupById(id).orElseThrow();
                     repository.saveAndFlush(draft.toBuilder().casefileStatus(DraftCasefileStatus.REJECTED).build());
                     locked.countDown();
@@ -379,6 +386,7 @@ class DraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
                 return cleanup(id, RUN).andReturn().getResponse().getStatus();
             });
             assertThat(cleanupLookup.await(5, TimeUnit.SECONDS)).isTrue();
+            awaitBlockedCleanupSelect(cleanupPid.get(), writerPid.get());
             release.countDown();
             writer.get(10, TimeUnit.SECONDS);
             assertThat(reader.get(10, TimeUnit.SECONDS)).isEqualTo(409);
@@ -386,14 +394,73 @@ class DraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
                 .isEqualTo(DraftCasefileStatus.REJECTED);
         } finally {
             release.countDown();
-            executor.shutdownNow();
-            doAnswer(repositoryDelegate).when(repository).findForCleanupById(id);
+            executor.shutdown();
+            try {
+                if (!executor.awaitTermination(10, TimeUnit.SECONDS)) {
+                    executor.shutdownNow();
+                    assertThat(executor.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
+                }
+            } finally {
+                doAnswer(repositoryDelegate).when(repository).findForCleanupById(id);
+            }
+        }
+    }
+
+    // These bounded diagnostics inspect actual PostgreSQL contention, independently of request scheduling.
+    private int transactionBackendPid() {
+        assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isTrue();
+        return jdbc.query(connection -> {
+            PreparedStatement statement = connection.prepareStatement("SELECT pg_backend_pid()");
+            statement.setQueryTimeout(1);
+            return statement;
+        }, result -> {
+            assertThat(result.next()).isTrue();
+            return result.getInt(1);
+        });
+    }
+
+    private void awaitBlockedCleanupSelect(int cleanupPid, int writerPid) throws InterruptedException {
+        assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+        assertThat(cleanupPid).isPositive().isNotEqualTo(writerPid);
+        assertThat(writerPid).isPositive();
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        LockObservation last;
+        do {
+            // The test thread has no ambient transaction, so this uses an independent observer connection.
+            last = jdbc.query(connection -> {
+                PreparedStatement statement = connection.prepareStatement("""
+                    SELECT state, wait_event_type, ? = ANY(pg_blocking_pids(pid)) AS blocked_by_writer, query
+                    FROM pg_stat_activity WHERE pid = ?
+                    """);
+                statement.setQueryTimeout(1);
+                statement.setInt(1, writerPid);
+                statement.setInt(2, cleanupPid);
+                return statement;
+            }, result -> result.next()
+                ? new LockObservation(result.getString("state"), result.getString("wait_event_type"),
+                    result.getBoolean("blocked_by_writer"), result.getString("query"))
+                : new LockObservation("missing", "", false, ""));
+            if (last.isBlockedCleanupSelect()) {
+                return;
+            }
+            Thread.sleep(25);
+        } while (System.nanoTime() < deadline);
+        assertThat(last.isBlockedCleanupSelect())
+            .as("Cleanup must wait on writer in its locking SELECT, not a later DELETE; last observation: %s", last)
+            .isTrue();
+    }
+
+    private record LockObservation(String state, String waitEventType, boolean blockedByWriter, String query) {
+        private boolean isBlockedCleanupSelect() {
+            return "active".equals(state) && "Lock".equals(waitEventType) && blockedByWriter
+                && query.matches("(?is)^\\s*select\\b.*\\bfrom\\s+(?:public\\.)?draft_casefiles\\b.*"
+                    + "\\bfor\\s+(?:no\\s+key\\s+)?update\\b.*");
         }
     }
 
     private static void await(CountDownLatch latch) {
         try {
-            assertThat(latch.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThat(latch.await(15, TimeUnit.SECONDS)).isTrue();
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Synthetic lock test interrupted", exception);
