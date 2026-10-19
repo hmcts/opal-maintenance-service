@@ -114,8 +114,8 @@ credentials, or reusable connection details.
 
 ### DB-04 pgTAP test placement
 
-DB-04 migration-specific checks live under `src/dbUnitTest`, grouped by
-the maintained database object or feature and run by the
+New DB-04 migration-specific suites live directly under `src/dbUnitTest`,
+named for the maintained database object and run by the
 [DB-01 database-owned suite](#db-01-suite-semantics). Keep the
 migration and ticket association in the test metadata or handoff rather than
 using a ticket-specific directory. The checks must use direct PostgreSQL
@@ -145,8 +145,8 @@ mechanics and patterns, command-failing output, and the common evidence format.
 
 ### Planned DB-06 procedure-side testing
 
-Stored-procedure checks live under `src/dbUnitTest`, grouped by the
-maintained procedure or feature and run by the
+New stored-procedure suites live directly under `src/dbUnitTest`, named for
+the maintained procedure and run by the
 [DB-01 database-owned suite](#db-01-suite-semantics). Keep the
 migration and ticket association in the test metadata or handoff. Call the
 procedure directly through PostgreSQL rather than through Spring, a backend
@@ -197,6 +197,47 @@ real AAD/User Service setup; enable testing-support endpoints explicitly with
 `TESTING_SUPPORT_ENDPOINTS_ENABLED=true` before using its ping or authenticated
 diagnostic requests. Never place a bearer value in a tracked Bruno file.
 
+## Routine suites and framework gaps
+
+Follow the authoritative [pgTAP suite layout](#pgtap-suite-layout) for placement,
+single-suite ownership, SQL/pgTAP assertions and coordination, runner
+restrictions, and existing-path exceptions. This section adds verification and
+tooling-gap requirements to that layout contract.
+
+For a required multiple-session concurrency scenario, identify the actual
+SQL/pgTAP mechanism in the owning suite, its disposable-harness prerequisites,
+independent sessions, bounded coordination, command-failing assertions, and
+verified cleanup. In-suite test-only `dblink` coordination, as used by the
+account-number allocator suite, can execute through `dbUnitTest` without a
+separate Gradle orchestration hook. Confirm the mechanism's availability and
+execution evidence for the scenario; neither a missing shared hook nor test
+source alone establishes whether the required coverage is verified.
+
+The current `gradle/db-unit-test.gradle` implements the fresh DB-01 path and
+has no maintained predecessor target. A standalone upgrade recipe does not
+establish a maintained DB-03 framework capability.
+
+If mandatory coverage requires an unavailable mechanism, include a concrete
+enabling task or linked, independently reviewable work package under
+[Required prerequisite delivery](CONTRIBUTING.md#required-prerequisite-delivery).
+Record the scenario and tooling gap, and make the package's owner or assignment
+status, deliverable and current versus proposed interface, consuming-suite
+integration, sequence and acceptance evidence explicit. An owner or future
+framework reference alone is insufficient. The full delivery plan is blocked
+while that package or a required decision is absent; bounded routine work that
+does not depend on it can still progress. Keep the required coverage visible
+and unmet until the supported SQL/pgTAP mechanism can execute it through the
+maintained framework and execution evidence proves it. Do not omit coverage or
+claim availability based on a proposed hook. The existing
+[DB-03 unmet upgrade requirement policy](#db-04-pgtap-test-placement) still
+applies.
+
+Any future framework phases that carry test observations across connections
+must define their state lifetime, ownership and cleanup, with a coordinated,
+narrowly scoped amendment to the transaction guidance when the framework is
+delivered. A proposed phase interface grants no transaction exception: the
+current pgTAP suite requirement to end with `ROLLBACK` remains in force.
+
 ## DB-10 pgTAP execution
 
 Database contracts live under `src/dbUnitTest`. `dbUnitTest` discovers both
@@ -206,8 +247,12 @@ the `*_unit_tests.sql` suffix remains supported for existing suites.
 For a database object's schema contract, combine catalogue and behavioral
 assertions in one `*_pgtap_tests.sql` suite rather than splitting them by test
 type.
-Maintenance Applications combines catalogue and behavioral checks in
+Follow the [pgTAP suite layout](#pgtap-suite-layout) for all new or updated
+database-owned tests.
+The existing Maintenance Applications suite combines these checks in
 `maintenanceApplicationsTest/maintenance_applications_pgtap_tests.sql`.
+Introduced or changed routines use the owning suite and framework-gap rules in
+[Routine suites and framework gaps](#routine-suites-and-framework-gaps).
 Discovered suites are part of Gradle and the normal `check` lifecycle.
 
 The task starts a fresh PostgreSQL 17 container with pgTAP, confirms the empty
@@ -274,6 +319,50 @@ or the pgTAP plan count.
 
 These conventions apply to new and amended suites; do not modify unrelated
 legacy tests solely to add headers.
+
+### pgTAP suite layout
+
+- Give each function or stored procedure one self-contained pgTAP suite named
+  `<routine_name>_pgtap_tests.sql`. Keep all scenarios and assertions for that
+  routine in that file. Use the same single-suite approach for a database
+  object's schema contract; schema and reference-data contracts retain their
+  existing separate ownership.
+- Place every new suite directly under `src/dbUnitTest`. Do not create object,
+  feature, ticket, `support` or other subdirectories beneath that test root.
+  Identify the tested routine or object in the suite filename instead.
+- Keep routine-specific setup, synthetic fixtures, independent expected
+  results, temporary SQL helpers and cleanup inside the owning suite. Do not
+  split them into separate setup, fixture, boundary or concurrency SQL files,
+  and do not include another suite or support SQL using `\i` or `\ir`.
+- Database assertions, routine test coordination, fixtures, test-only SQL
+  helpers and cleanup stay inside self-contained SQL/pgTAP suites. Run the
+  suites through the existing Gradle-owned `dbUnitTest` framework. Do not add
+  Python or shell database test runners for assertions or test coordination,
+  including ignored, generated, or temporary scripts and executable runbook
+  recipes, or shell commands inside a suite through `\!`, `COPY ... PROGRAM`
+  or an equivalent mechanism. This restriction concerns database testing;
+  unrelated metadata or documentation tooling and the existing shared Gradle
+  lifecycle orchestration remain permitted.
+- Keep interaction checks in the consuming routine's suite. Preserve applicable
+  success, boundary/failure, row-scope, repeat, rollback and real concurrency
+  coverage within that suite. If required SQL-only tooling is unavailable,
+  report the gap rather than silently dropping coverage or adding a shell
+  runner.
+- README documentation may sit directly alongside the suites. Existing suites,
+  authoritative reference-data fixtures and framework self-tests retain their
+  current paths unless their relocation is explicitly in scope; their legacy
+  folders are not a precedent for new suite layout. Do not add new routine
+  support files.
+
+For example, two functions have two independently discoverable suites directly
+under the database test root:
+
+```text
+src/dbUnitTest/
+├── f_get_check_letter_pgtap_tests.sql
+├── f_get_account_number_pgtap_tests.sql
+└── README.md
+```
 
 ### pgTAP scenario introductions
 

@@ -55,7 +55,15 @@ public class OpenApiRequestBodyAdvice extends RequestBodyAdviceAdapter {
         return new BufferedInputMessage(inputMessage.getHeaders(), body);
     }
 
-    private record BufferedInputMessage(HttpHeaders headers, byte[] body) implements HttpInputMessage {
+    private static final class BufferedInputMessage implements HttpInputMessage {
+        private final HttpHeaders headers;
+        private final byte[] body;
+
+        private BufferedInputMessage(HttpHeaders headers, byte[] body) {
+            this.headers = headers;
+            this.body = body;
+        }
+
         @Override
         public InputStream getBody() {
             return new ByteArrayInputStream(body);

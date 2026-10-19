@@ -20,8 +20,11 @@ the same change.
 - Use `src/test/java` for unit tests, `src/integrationTest/java` for
   Spring/database integration tests, `src/functionalTest/java` for functional
   HTTP tests, and `src/smokeTest/java` for smoke tests.
-- Keep database-owned pgTAP suites under `src/dbUnitTest`, grouped by the
-  database object or object area they verify and named `*_pgtap_tests.sql`.
+- Place new database-owned pgTAP suites directly under `src/dbUnitTest`, named
+  `*_pgtap_tests.sql` for the database object they verify. Each function or
+  procedure has one self-contained suite. Do not add subdirectories, support
+  SQL or shell test scripts. Follow the authoritative
+  [pgTAP suite layout](TESTING.md#pgtap-suite-layout).
 - Keep Helm deployment configuration under `charts/`, quality and security-tool
   configuration under `config/`, supporting assets under `lib/`, and local or
   container helpers under `bin/`.
@@ -137,7 +140,8 @@ sufficient validation.
 - Assess compatibility, locks, table rewrites, data volume, environment scope,
   and recovery before authoring a migration.
 - Follow [Database Migrations](DATABASE_MIGRATIONS.md) for naming, version
-  discovery, connection safety, validation, and release evidence.
+  discovery, connection safety, routine scope, validation ownership, native
+  PostgreSQL failures, design evidence, and release requirements.
 
 ## Configuration and operations
 
@@ -169,6 +173,10 @@ sufficient validation.
   unchanged suite demonstrated to remain sufficient, or record a reviewed DB-04
   no-assertion exception. Run `./gradlew dbUnitTest` and record its non-sensitive
   evidence for applicable database changes.
+- Follow [Routine suites and framework gaps](TESTING.md#routine-suites-and-framework-gaps)
+  for routine suite ownership, SQL/pgTAP assertions, test coordination, and
+  required upgrade or concurrency coverage when a framework mechanism is
+  unavailable. The discovery of legacy suffixes does not change that contract.
 - Functional and smoke tests use `TEST_URL`, defaulting to
   `http://localhost:4551`, and require a suitable running service.
 - Assert observable behaviour rather than implementation details. Use real DTOs,

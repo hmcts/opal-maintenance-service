@@ -117,6 +117,11 @@ AS $$
 
 Replace the sample parameter rows with one row for every parameter in the routine signature, retaining signature order. For a replaced or recreated routine, place any trustworthy carried-forward change rows above the new current change row.
 
+Retain the blank comment lines shown in the template between `OPAL Program`,
+`MODULE`, `DESCRIPTION`, `PARAMETERS` and `CHANGE HISTORY`, and before the
+change-history column headings. Keep continuation lines within each section
+together.
+
 ## Safe schema changes
 
 When an application and schema cannot change atomically, prefer expand, backfill, and contract sequencing. Preserve compatibility with the currently deployed application until the rollout no longer needs it.
@@ -148,6 +153,93 @@ Preserve authoritative comment wording exactly. Readability edits must not
 change definitions or quoted text. Apply these conventions to new or safely
 editable SQL; never rewrite an already-applied Flyway migration solely for
 formatting. The [immutability rules](#immutability-and-forward-fixes) still apply.
+
+### Functions and stored procedures
+
+Use the following conventions in new or safely editable routine SQL. Apply
+them to both functions and procedures; do not reformat applied migrations.
+
+- Use descriptive names so the code explains ordinary assignments and
+  calculations. Follow established naming conventions and choose constant
+  names that describe their purpose.
+- Write PostgreSQL built-in function names in uppercase, for example
+  `NOW()`, `TO_CHAR()`, `MAX()`, `MIN()`, `SUBSTRING()`, `LPAD()` and `CHR()`.
+  Preserve the declared spelling of application-defined routines and quoted
+  identifiers.
+- Declare sequence bounds as named `CONSTANT` values and use those names in
+  queries, comparisons and sequence resets. Prefer the same approach for
+  other fixed business limits. Choose a type that preserves the value's
+  meaning, including leading zeroes where significant; convert explicitly
+  for numeric comparisons. Simple arithmetic increments need no artificial
+  constants, and independent test expectations must not be derived from the
+  production constants.
+- Add short purpose comments before significant loops, query blocks and
+  non-obvious branches or calculations. State what the block achieves first,
+  then explain relevant mechanics or limits. For example, an allocation loop
+  comment should describe inserting the allocation before explaining retry
+  behaviour. Avoid narrating every statement or retaining commented-out
+  debugging code.
+- Put one blank line before a purpose comment when it follows executable
+  statements. Keep consecutive comment lines together and keep the comment
+  attached to the code it describes. No extra blank line is needed immediately
+  after an indented block opening such as `BEGIN`, `ELSE` or `THEN`.
+- Separate an `IF` block from preceding statements and from subsequent work
+  with one blank line. If the block has a purpose comment, place the blank
+  line before that comment rather than between the comment and the `IF`.
+- Keep consecutive outer `END IF;` statements together. A single blank line
+  after an inner block's `END IF;` can distinguish that completed sub-block
+  from the remaining outer closures; do not space out every closing statement.
+- Put one blank line between declarations and the routine's main `BEGIN`,
+  before an `EXCEPTION` handler, and after `GET STACKED DIAGNOSTICS` before
+  composing or processing the captured error details.
+- Preserve the [routine header template](#stored-procedure-and-function-template)
+  and its section spacing. These body-comment conventions supplement the
+  required headers and [pgTAP scenario introductions](TESTING.md#pgtap-scenario-introductions).
+
+### Exception messages and defaults
+
+- Build contextual exception messages with `FORMAT()`. Start with the routine
+  name and failed operation, then include the relevant safe identifiers or
+  candidate values needed to identify the failure. For an allocation failure,
+  include the candidate account number and Business Unit. Do not include
+  secrets, PII or entire input records.
+- When handling a PostgreSQL exception, retain the original `SQLSTATE` and
+  `SQLERRM` in any contextual replacement message. Use `GET STACKED DIAGNOSTICS`
+  to capture relevant available metadata, such as `CONSTRAINT_NAME`, and retain
+  it in the corresponding `RAISE ... USING` fields. Capture only useful fields;
+  do not invent constraint details for a directly raised business exception.
+- Use a bare `RAISE;` when the contract calls for propagating the original
+  exception unchanged. Do not add a handler solely to reformat every error or
+  convert failures into success. Backend services retain transaction and
+  run-status ownership.
+- For a new contextual or business exception using the default `P0001`, omit
+  `ERRCODE`. Specify a condition or error code only when the approved contract
+  requires a different SQLSTATE. Keep tests explicit about the expected code.
+- Omit routine declaration clauses that only restate PostgreSQL defaults,
+  including `VOLATILE`, `CALLED ON NULL INPUT` and `SECURITY INVOKER`, when
+  omission preserves the approved effective behaviour. Preserve required
+  non-default settings and verify the effective properties when replacing an
+  existing routine.
+
+For example, the terminal allocation-collision handler composes its message
+and preserves the caught constraint without restating the default error code:
+
+```sql
+GET STACKED DIAGNOSTICS v_constraint = CONSTRAINT_NAME;
+
+v_error_message := FORMAT(
+    'f_get_account_number: allocation failed after five attempts; Account number = %s, BU = %s; %s: %s',
+    v_number, pi_business_unit_id, SQLSTATE, SQLERRM);
+
+RAISE EXCEPTION USING
+    MESSAGE = v_error_message,
+    CONSTRAINT = v_constraint;
+```
+
+This excerpt belongs inside the final-attempt exception handler; it does not
+replace the retry loop. See PostgreSQL's
+[exception diagnostics](https://www.postgresql.org/docs/17/plpgsql-control-structures.html#PLPGSQL-EXCEPTION-DIAGNOSTICS)
+and [error-reporting syntax and defaults](https://www.postgresql.org/docs/17/plpgsql-errors-and-messages.html).
 
 ## Data migrations and environment scope
 
@@ -244,21 +336,61 @@ does not create a second framework and must not use Spring or backend
 integration-test fixtures. Testing owns the suite's availability status; the
 following requirements describe the planned workflow only.
 
+Resolve the actual candidate and its immediate predecessor from the selected
+Flyway migration locations at the implementation baseline. The predecessor is
+the greatest selected version below the candidate, using Flyway's numerical
+version ordering across those locations. Do not infer it from lexical filename
+order, the preceding DDL file, or the candidate number minus one.
+
 For a candidate migration with an immediate predecessor, use this
 Flyway-native sequence:
 
-1. Start a disposable PostgreSQL instance.
-2. Apply the selected migration locations only through the candidate's
-   immediate predecessor, allowing existing migrations to establish the prior
-   schema and normal reference data.
-3. Add no further rows when the candidate does not depend on existing data. If
-   it does, require an approved data-scenario contract that defines the
+1. Start a disposable PostgreSQL 17 instance, retaining DB-01's empty-start,
+   explicit-location, external-target refusal, and connection-safety rules.
+2. Migrate and validate only through the actual predecessor, allowing existing
+   migrations to establish the prior schema and normal reference data. Assert
+   the exact successful selected history prefix, with no candidate or later
+   migration applied.
+3. Add no further business rows when the candidate does not depend on existing
+   data. If it does, require an approved data-scenario contract that defines the
    pre-change conditions, business and edge cases, and expected outcomes. The
    process and owner for producing and approving that contract remain to be
    decided. Translate only its approved cases into the smallest deterministic
    synthetic dataset.
-4. Apply the candidate migration.
-5. Assert the relevant schema, reference-data, and affected-row outcomes.
+4. Capture the relevant scoped predecessor rows and objects through the owning
+   SQL/pgTAP suite. Keep test observation state outside application objects and
+   preserve it across the migration and verification phases.
+5. Apply only the candidate as the next migration and validate at that same
+   candidate boundary. No later migration may run before candidate assertions.
+6. Compare the scoped predecessor rows and objects before functional fixtures
+   or routine calls mutate them, then assert the relevant schema,
+   reference-data, and affected-row outcomes and applicable database contract.
+   Capture the complete candidate Flyway history for the repeat comparison.
+7. Migrate and validate again at the same candidate boundary. Require native
+   evidence of zero newly applied migrations and complete Flyway history
+   equality with the captured candidate history; counts or script names alone
+   do not prove this. History equality does not replace row/object preservation
+   assertions.
+8. Remove and verify removal of test-owned observation state, then destroy the
+   disposable database and container automatically and confirm cleanup.
+
+Any future maintained DB-03 implementation that uses separate SQL connections
+must give predecessor observations a durable lifetime inside the disposable
+target. TEMP objects and rolled-back observations cannot carry evidence between
+those connections. Committing narrowly owned test observation state during
+preparation and its removal during cleanup requires an explicit, narrow
+exception to the [pgTAP transaction contract](TESTING.md#db-10-pgtap-execution),
+documented and delivered with the maintained framework before use. This planned
+requirement grants no current suite permission to commit and does not change
+production routine transaction ownership.
+
+Retain non-sensitive evidence of actual candidate/predecessor paths and versions,
+selected locations, phase results and assertion counts, validation, native repeat
+results, history equality, scoped preservation, and confirmed test-state and
+target cleanup. Migration, validation, SQL, assertion, or cleanup failure must
+fail the maintained command. Preserve primary and cleanup failures and identify
+unexecuted phases when a failure stops the workflow; an incomplete run cannot
+establish upgrade verification.
 
 An initial migration with no predecessor uses the fresh-database path from an
 empty disposable database. Record its predecessor and upgrade setup as not
@@ -312,21 +444,34 @@ Use the current
 assertion mechanics and patterns, command-failing output, and the common
 evidence format. DB-04 defines the required migration-specific contract and
 outcomes without duplicating those mechanics.
+Follow the [pgTAP suite layout](TESTING.md#pgtap-suite-layout): one
+self-contained SQL suite per function or procedure, with new suites directly
+under `src/dbUnitTest` and no subdirectories, separate support SQL or shell
+test scripts.
 
 ### Planned DB-06 stored-procedure responsibility contract
 
 DB-06 owns the responsibility boundary for stored procedures introduced or
 changed by migrations. A stored procedure performs its declared database work
-and raises a PostgreSQL exception when that work cannot complete. It must not
+and propagates a PostgreSQL exception when that work cannot complete, whether
+native or deliberately raised under the error contract below. It must not
 commit, roll back, or otherwise own a transaction boundary, and it must not
 create or update run-status records. The calling backend service owns the
 transaction boundary and the run-status lifecycle; this guide does not
 prescribe the backend implementation mechanics. Record any required backend or
 status-persistence change as separate work outside this database workstream.
 
+Keep a lightweight record-at-a-time insertion helper focused on its declared
+mapping, allocation, integrity, insertion, and output contract. Collection
+iteration, optional-element selection, and publication-wide orchestration or
+completeness checks belong to an identified caller or a separately scoped
+orchestration routine. Document that boundary before adding those
+responsibilities to a helper. A database orchestration routine still does not
+own the backend transaction or run-status lifecycle.
+
 The contract for each introduced or changed procedure must document:
 
-- Inputs and input validation.
+- Inputs and input validation, including the ownership evidence below.
 - Outputs or result shape.
 - Affected-row scope and other database side effects.
 - SQLSTATE and error behaviour.
@@ -349,6 +494,129 @@ Collect evidence proportionate to the change:
   including error and empty outcomes where relevant.
 - Record exact commands, target type, selected locations, results, and reasons for skipped checks.
 - Never claim a shared environment or deployment was validated unless it actually was.
+
+#### Validation ownership and integrity
+
+For each proposed validation rule, record its authoritative requirement source
+and revision or confirmed decision, its enforcement owner, and verification
+evidence that the owner enforces it at the required point in the workflow.
+Distinguish implemented coverage from intended or pending coverage. A rule in
+design collateral establishes a requirement; its presence alone does not assign
+that rule to the procedure.
+
+Detailed request formatting, completeness, JSON-shape, and whitespace checks
+may belong to backend or UI validation, or deliberately form part of the
+procedure's contract. Agree that boundary using the actual supported callers.
+Do not remove required checks on unverified claims of UI/backend coverage or on
+Fines precedent: another service's routine and business rules do not establish
+this service's enforcement. Record unresolved ownership or coverage as a gap
+and do not claim that the affected contract is complete.
+
+Use existing PostgreSQL type, nullability, primary-key, unique, foreign-key, and
+check constraints for integrity they already enforce. Justify any duplicate
+existence precheck against the required semantics and error contract. Retain
+protection that those constraints do not provide, including:
+
+- Required Party classification and valid pairings of references; separate
+  foreign keys do not prove these relationships.
+- Supplied-code resolution: a supplied but unresolved code must not silently
+  become a nullable identifier merely because the resulting foreign key accepts
+  null.
+- Polymorphic target integrity, such as a Notes target without a foreign key;
+  retain target validation unless an evidenced alternative is agreed.
+- Declared row scope, cardinality, allocation, and output guarantees. Do not
+  silently discard conflicting or unused supplied data during mapping.
+
+Justify each explicit lock using the caller's actual transaction lifetime,
+isolation assumptions, and a supported concurrent deletion, key-change, or
+other competing operation. State the interval and outcome it protects and map
+that scenario to verification evidence or an explicit framework gap under
+[Routine suites and framework gaps](TESTING.md#routine-suites-and-framework-gaps).
+A lookup or insertion-window lock does not establish permanent referential
+integrity. Apply this validation and locking guidance to functions where
+applicable.
+
+#### Native errors and deliberate exceptions
+
+Native PostgreSQL constraint, type, or conversion failures may satisfy the
+expected error contract without an additional precheck or `RAISE`. For every
+deliberate precheck, explicit exception, or SQLSTATE translation, explain what
+required semantic protection, diagnostic, or compatible caller behaviour it
+adds beyond existing constraints and native propagation. Consider concurrent
+changes when assessing a precheck; it does not replace the constraint.
+
+Record the failure condition, evidenced SQLSTATE and relevant diagnostic
+context, including constraint identity where callers rely on it. Preserve
+compatible errors and useful diagnostics; do not swallow failures or turn them
+into successful results. A justified handler or `RAISE` remains valid. Do not
+invent a universal error-code scheme or require translation of every native
+failure. An intentional incompatible error change needs an explicit contract
+and delivery sequence, together with direct PostgreSQL evidence for the
+affected outcomes.
+
+## Routine LLD documentation
+
+When the ticket requires a function or procedure LLD, document the delivered
+contract from implementation and verified evidence. These requirements are
+self-contained; another service or agent-context checkout is not required.
+Use a concise purpose-based page title and reuse the matching page under the
+selected Functions or Procedures parent. Preserve unrelated content and fresh
+user edits; a style preference does not justify a duplicate or relocation.
+
+Start with References containing the delivered ticket and relevant design
+collateral, then one Overview and Scope covering purpose, routines, callers,
+and ownership. Distinguish design-intended callers from inspected call sites.
+Keep implementation revisions, dependency delivery, validation, deployment,
+and recovery evidence in the handoff. Closely related routines may share a page;
+give each its own named section, placing helpers before callers and linking
+existing descriptions rather than duplicating them.
+
+For each routine, include:
+
+| Section | Required evidence |
+| --- | --- |
+| Input / Output Parameters | Schema-qualified signature in parameter order, defaults, IN/OUT/INOUT modes, and effective PostgreSQL types where declared syntax differs. State accepted inputs, required/optional and null behaviour, and exact outputs or return shape. Describe a procedure's CALL/OUT/INOUT contract without inventing a function RETURNS clause. |
+| Database Dependencies | Tables, sequences, types, and called routines, with direct reads/inserts/updates/deletes, affected-row scope and counts where known, and helper/caller relationships. Distinguish indirect constraint/default effects; state explicitly when a pure calculation helper affects no records. |
+| Logic and Workflow | Ordered work, calculations, decisions, loops, retry bounds and restart points. A simple calculation helper may use clear logic and an implementation-derived worked example. Record diagram applicability and its reason for every routine in the handoff. |
+| Error Handling | Conditions and their results or evidenced SQLSTATEs, distinguishing null results, deliberate exceptions, retries/exhaustion, and unchanged native propagation. Do not invent catches, codes, or retries. |
+| Performance Considerations | Evidenced work, record access, scans, locks, and contention. Separate code-based implications from measurements; do not claim latency, index use, scalability, or guarantees without evidence. |
+
+Document backend ownership of transaction boundaries and run-status updates
+where relevant. Explain implemented exception-block rollback or retry behaviour
+without presenting it as ownership of the caller's transaction. Surface
+conflicting design and implementation evidence in the handoff.
+
+Use a workflow diagram when branches, loops/retries, multi-step database work,
+or orchestration benefit from it. Keep labels and paths readable and show
+relevant native/error exits, retry bounds, and the correct restart point.
+Preserve editable logical source alongside the render where practical. For
+every diagram used, render and visually inspect the actual output at its
+intended reading size for clipping, overlaps, labels, and path destinations.
+Separately compare decisions, branches, loops, helper calls, record operations,
+returns, and failure exits against the implementation. Record both checks and
+their results. If either check is unavailable, retain the draft and identify the
+missing evidence; do not claim the diagram is validated or publication-ready.
+
+When the exact LLD Acceptance Criterion requires publication, prepare a
+reviewable draft and ensure authorization covers the target pages and change
+scope. Reuse approval already given for that scope. Discover existing pages
+before creating a missing child, and resolve ambiguous targets or material
+evidence conflicts before the affected write. Read fresh page content, title,
+parent, and version immediately before editing; apply only scoped changes and
+use version checks where available. On conflict, reread and reconcile. After an
+uncertain save or create, read back or rediscover before retrying.
+
+Read back persisted content through an approved authenticated route. Verify
+the target title/parent, covered routines, references and helper order,
+signatures/effective types, outputs, record effects, errors, and preservation of
+unrelated content against the reviewed draft. Verify any saved diagram's
+attachment/media reference resolves to the intended image and renders legibly,
+including editor media identity and collection where applicable. Record saved
+URLs, versions when exposed, per-page results, and unavailable checks accurately.
+A clicked Save button, API timeout, or local draft is not publication evidence. Assess
+the exact ticket LLD Acceptance Criterion against verified saved-page coverage
+separately from the wider Definition of Done; do not claim publication complete
+while required readback or diagram checks are missing.
 
 ## Release and recovery evidence
 
