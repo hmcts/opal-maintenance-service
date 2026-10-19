@@ -6,11 +6,14 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.transaction.annotation.Transactional;
 import uk.gov.hmcts.opal.exception.ResourceConflictException;
 import uk.gov.hmcts.opal.entity.DraftCasefileStatus;
 import uk.gov.hmcts.opal.generated.model.CasefileType;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileReplaceRequest;
+import uk.gov.hmcts.opal.generated.model.DraftCasefileUpdateRequest;
+import uk.gov.hmcts.opal.service.messaging.DraftCasefileQueuePublisher;
 import uk.gov.hmcts.opal.validator.IfMatchValidator;
 import uk.gov.hmcts.opal.authorisation.MaintenanceUser;
 import uk.gov.hmcts.opal.authorisation.MaintenanceUserService;
@@ -42,6 +45,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -67,6 +71,7 @@ public class DraftCasefileService {
     private final DraftCasefileParticipantCategoryResolver participantCategoryResolver;
     private final ApplicationEventPublisher eventPublisher;
     private final Clock clock;
+    private final DraftCasefileQueuePublisher queuePublisher;
 
     @Transactional
     public VersionedResponse<DraftCasefileAddResponse> addDraftCasefile(DraftCasefileAddRequest request) {
@@ -112,6 +117,50 @@ public class DraftCasefileService {
         eventPublisher.publishEvent(new DraftCasefilePersonalDataEvent(Operation.RESUBMISSION,
             saved.getDraftCasefileId(), user.userId(), user.ipAddress(), resubmittedAt,
             participantCategoryResolver.resolve(request.getCasefile())));
+        return new VersionedResponse<>(response, saved.getVersionNumber());
+    }
+
+    @Transactional
+    public VersionedResponse<DraftCasefileGetResponse> updateDraftCasefile(
+        Long id, DraftCasefileUpdateRequest request, String ifMatch
+    ) {
+        final long expectedVersion = ifMatchValidator.parseIfMatch(ifMatch);
+        DraftCasefileEntity existing = repository.findById(id)
+            .orElseThrow(() -> new EntityNotFoundException("Draft Casefile not found"));
+        MaintenanceUser user = maintenanceUserService.requireAuthorisedUser(
+            existing.getBusinessUnitId(), CHECK_VALIDATE_DRAFT_CASEFILES);
+        if (user.businessUnitUserId().equals(existing.getSubmittedBy())) {
+            throw new AccessDeniedException("A Draft Casefile must be checked by a different user");
+        }
+        if (!existing.getBusinessUnitId().equals(request.getBusinessUnitId())) {
+            throw new ResourceConflictException("Business Unit must match the stored owner");
+        }
+        if (existing.getCasefileStatus() != DraftCasefileStatus.SUBMITTED
+            && existing.getCasefileStatus() != DraftCasefileStatus.RESUBMITTED) {
+            throw new ResourceConflictException("Only a submitted or resubmitted Draft Casefile can be checked");
+        }
+        if (existing.getVersionNumber() == null) {
+            throw new IllegalStateException("Stored Draft Casefile version is unavailable");
+        }
+        if (existing.getVersionNumber() != expectedVersion) {
+            throw new ObjectOptimisticLockingFailureException(DraftCasefileEntity.class, id);
+        }
+        Instant decidedAt = clock.instant().truncatedTo(ChronoUnit.MICROS);
+        DraftCasefileEntity saved = repository.saveAndFlush(mapper.toDecidedEntity(existing, request, user, decidedAt));
+        Operation operation = switch (request.getCasefileStatus()) {
+            case PUBLISHING_PENDING -> Operation.APPROVAL;
+            case REJECTED -> Operation.REJECTION;
+            case DELETED -> Operation.DELETION;
+        };
+        if (operation == Operation.APPROVAL) {
+            queuePublisher.publish(id);
+        }
+        DraftCasefileGetResponse response = getMapper.toResponse(saved);
+        Set<ParticipantCategory> categories =
+            EnumSet.copyOf(participantCategoryResolver.resolve(response.getCasefile()));
+        categories.remove(ParticipantCategory.RELATED_PARTIES);
+        eventPublisher.publishEvent(new DraftCasefilePersonalDataEvent(operation, id, user.userId(), user.ipAddress(),
+            decidedAt, categories));
         return new VersionedResponse<>(response, saved.getVersionNumber());
     }
 

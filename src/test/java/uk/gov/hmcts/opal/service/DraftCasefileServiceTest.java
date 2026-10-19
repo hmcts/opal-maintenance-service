@@ -33,6 +33,7 @@ import uk.gov.hmcts.opal.mapper.DraftCasefileMapper;
 import uk.gov.hmcts.opal.mapper.DraftCasefileSummaryMapper;
 import uk.gov.hmcts.opal.mapper.DraftCasefileValueMapper;
 import uk.gov.hmcts.opal.repository.DraftCasefileRepository;
+import uk.gov.hmcts.opal.service.messaging.DraftCasefileQueuePublisher;
 import uk.gov.hmcts.opal.validator.DraftCasefileValidator;
 import uk.gov.hmcts.opal.validator.DraftCasefileQueryValidator;
 
@@ -80,7 +81,7 @@ class DraftCasefileServiceTest {
             new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules()),
             new DraftCasefileValueMapper()), getMapper,
         mock(DraftCasefileSummaryMapper.class),
-        new DraftCasefileParticipantCategoryResolver(), events, clock);
+        new DraftCasefileParticipantCategoryResolver(), events, clock, mock(DraftCasefileQueuePublisher.class));
 
     @BeforeEach
     void setUp() {

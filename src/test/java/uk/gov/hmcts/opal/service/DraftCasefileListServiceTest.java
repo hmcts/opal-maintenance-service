@@ -23,6 +23,7 @@ import uk.gov.hmcts.opal.mapper.DraftCasefileGetMapper;
 import uk.gov.hmcts.opal.mapper.DraftCasefileMapper;
 import uk.gov.hmcts.opal.mapper.DraftCasefileSummaryMapper;
 import uk.gov.hmcts.opal.repository.DraftCasefileRepository;
+import uk.gov.hmcts.opal.service.messaging.DraftCasefileQueuePublisher;
 import uk.gov.hmcts.opal.repository.DraftCasefileSummaryProjection;
 import uk.gov.hmcts.opal.validator.DraftCasefileValidator;
 import uk.gov.hmcts.opal.validator.DraftCasefileQueryValidator;
@@ -59,7 +60,7 @@ class DraftCasefileListServiceTest {
         mock(DraftCasefileMapper.class),
         mock(DraftCasefileAddResponseMapper.class), mock(DraftCasefileGetMapper.class), summaryMapper,
         new DraftCasefileParticipantCategoryResolver(),
-        events, clock);
+        events, clock, mock(DraftCasefileQueuePublisher.class));
 
     @BeforeEach
     void authorise() {

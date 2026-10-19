@@ -250,6 +250,101 @@ paths:
                 $ref: './common.yaml#/components/schemas/ProblemDetail'
 
   /draft-casefiles/{id}:
+    patch:
+      tags: [Draft Casefile]
+      operationId: updateDraftCasefile
+      summary: Approves, rejects or deletes a submitted Draft Casefile
+      description: >-
+        Requires Check and Validate Draft Casefiles permission in the stored owning
+        Business Unit and a checker whose Business Unit User ID differs from the submitter.
+        Only SUBMITTED and RESUBMITTED drafts can be checked. Approval records
+        PUBLISHING_PENDING and sends a persistent ID-only message before committing.
+        Rejection and deletion require a reason and do not publish a message.
+        Casefile content and snapshot are preserved; one decision is appended to the timeline.
+        Broker acceptance and database commit are separate: an accepted message can remain
+        if commit subsequently fails. The publication consumer must verify current state.
+        If-Match must identify the current persisted version using one quoted
+        non-negative decimal integer within the signed 64-bit range.
+      security:
+        - DraftCasefileBearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: integer, format: int64, minimum: 1}
+        - name: If-Match
+          in: header
+          required: true
+          schema:
+            type: string
+            pattern: '^"[0-9]+"$'
+            example: '"0"'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/UpdateRequest'}
+      responses:
+        '200':
+          description: Complete Draft Casefile with the recorded checker decision
+          headers:
+            ETag:
+              description: Strong entity tag identifying the new persisted version.
+              required: true
+              schema: {type: string, example: '"1"'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/GetResponse'}
+        '400':
+          description: Invalid request or If-Match header
+          content:
+            application/problem+json:
+              schema: {$ref: './common.yaml#/components/schemas/ProblemDetail'}
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema: {$ref: './common.yaml#/components/schemas/ProblemDetail'}
+        '403':
+          description: No owning-BU checker permission, or checker is the submitter
+          content:
+            application/problem+json:
+              schema: {$ref: './common.yaml#/components/schemas/ProblemDetail'}
+        '404':
+          description: Draft Casefile not found
+          content:
+            application/problem+json:
+              schema: {$ref: './common.yaml#/components/schemas/ProblemDetail'}
+        '406':
+          description: Requested response media type is not supported
+          content:
+            application/problem+json:
+              schema: {$ref: './common.yaml#/components/schemas/ProblemDetail'}
+        '409':
+          description: Owning Business Unit, lifecycle state or version conflict
+          content:
+            application/problem+json:
+              schema: {$ref: './common.yaml#/components/schemas/ProblemDetail'}
+        '413':
+          description: Request body exceeds the configured size limit
+          content:
+            application/problem+json:
+              schema: {$ref: './common.yaml#/components/schemas/ProblemDetail'}
+        '415':
+          description: Unsupported request media type
+          content:
+            application/problem+json:
+              schema: {$ref: './common.yaml#/components/schemas/ProblemDetail'}
+        '500':
+          description: Internal server error
+          content:
+            application/problem+json:
+              schema: {$ref: './common.yaml#/components/schemas/ProblemDetail'}
+        '503':
+          description: Database or messaging service unavailable
+          content:
+            application/problem+json:
+              schema: {$ref: './common.yaml#/components/schemas/ProblemDetail'}
     put:
       tags: [Draft Casefile]
       operationId: replaceDraftCasefile
@@ -430,6 +525,36 @@ components:
           $ref: './Casefile.yaml#/components/schemas/Casefile'
         casefile_type:
           $ref: './Casefile.yaml#/components/schemas/CasefileType'
+
+    UpdateRequest:
+      type: object
+      additionalProperties: false
+      required: [business_unit_id, casefile_status]
+      properties:
+        business_unit_id:
+          type: integer
+          format: int16
+          minimum: 1
+          maximum: 32767
+          description: Must match the stored owning Business Unit.
+        casefile_status:
+          type: string
+          enum: [PUBLISHING_PENDING, REJECTED, DELETED]
+        status_message:
+          type: string
+          minLength: 1
+          maxLength: 250
+          pattern: '^[\s\S]*\S[\s\S]*$'
+          description: Reason for rejection or deletion; omitted on approval.
+      if:
+        properties:
+          casefile_status: {const: PUBLISHING_PENDING}
+        required: [casefile_status]
+      then:
+        not:
+          required: [status_message]
+      else:
+        required: [status_message]
 
     ReplaceRequest:
       type: object

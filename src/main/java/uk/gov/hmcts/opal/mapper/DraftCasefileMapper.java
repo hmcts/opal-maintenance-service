@@ -15,6 +15,7 @@ import uk.gov.hmcts.opal.generated.model.CasefileSnapshotMinorCreditorAccount;
 import uk.gov.hmcts.opal.generated.model.CasefileSnapshotRespondentAccount;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileAddRequest;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileReplaceRequest;
+import uk.gov.hmcts.opal.generated.model.DraftCasefileUpdateRequest;
 import uk.gov.hmcts.opal.generated.model.CasefileTimelineEntry;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileSubmissionTimelineEntry;
 
@@ -73,6 +74,32 @@ public class DraftCasefileMapper {
                 .casefileStatusDate(LocalDateTime.ofInstant(resubmittedAt, ZoneOffset.UTC))
                 .timelineData(objectMapper.writeValueAsString(timeline))
                 .build();
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Unable to serialize Draft Casefile metadata");
+        }
+    }
+
+    public DraftCasefileEntity toDecidedEntity(DraftCasefileEntity existing,
+                                               DraftCasefileUpdateRequest request,
+                                               MaintenanceUser user, Instant decidedAt) {
+        DraftCasefileStatus status = DraftCasefileStatus.valueOf(request.getCasefileStatus().name());
+        CasefileTimelineEntry.StatusEnum timelineStatus = switch (request.getCasefileStatus()) {
+            case PUBLISHING_PENDING -> CasefileTimelineEntry.StatusEnum.APPROVED;
+            case REJECTED -> CasefileTimelineEntry.StatusEnum.REJECTED;
+            case DELETED -> CasefileTimelineEntry.StatusEnum.DELETED;
+        };
+        List<CasefileTimelineEntry> timeline = new ArrayList<>(jsonMapper.readTimeline(existing.getTimelineData()));
+        timeline.add(new CasefileTimelineEntry().username(user.displayName()).status(timelineStatus)
+            .statusDate(decidedAt.atOffset(ZoneOffset.UTC)).reasonText(request.getStatusMessage()));
+        LocalDateTime timestamp = LocalDateTime.ofInstant(decidedAt, ZoneOffset.UTC);
+        try {
+            var updated = existing.toBuilder().casefileStatus(status).casefileStatusDate(timestamp)
+                .statusMessage(request.getStatusMessage()).timelineData(objectMapper.writeValueAsString(timeline));
+            if (status == DraftCasefileStatus.PUBLISHING_PENDING) {
+                updated.validatedBy(user.businessUnitUserId()).validatedByName(user.displayName())
+                    .validatedDate(timestamp).statusMessage(null);
+            }
+            return updated.build();
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("Unable to serialize Draft Casefile metadata");
         }
