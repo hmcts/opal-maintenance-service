@@ -230,6 +230,16 @@ Functional and smoke tests require a suitable running service and use `TEST_URL`
 The [Bruno collection](bruno) contains requests for the service. See the
 [collection guide](bruno/README.md) for setup and use.
 
+### Synthetic Draft Casefile cleanup
+
+The opt-in test cleanup API removes eligible automation-owned `SUBMITTED` drafts
+using the ID returned by the real POST journey. It defaults disabled and requires
+a dedicated synthetic-only identity, normal bearer authentication and permission
+21. See [Synthetic Draft Casefile test cleanup](docs/DRAFT_CASEFILE_TEST_CLEANUP.md)
+for the request contract, operator configuration, ownership restrictions and
+Cypress capture/cleanup handoff, and [Testing](docs/TESTING.md#synthetic-draft-casefile-cleanup)
+for service verification. GET retrieval and frontend changes are separate work.
+
 ## Database migrations
 
 Schema migrations are stored in `src/main/resources/db/migration/ddl`. Environment data migrations are stored under `src/main/resources/db/migration/data`.

@@ -133,6 +133,41 @@ PMD is not configured in the current build. For documentation-only or similarly
 non-executable changes, run checks appropriate to the changed artefacts and
 record why the baseline build was not run.
 
+## Synthetic Draft Casefile cleanup
+
+The [cleanup guide](DRAFT_CASEFILE_TEST_CLEANUP.md) defines operator prerequisites,
+the HTTP contract and future Cypress capture/ledger handling. Service checks use
+synthetic data in disposable PostgreSQL 17 and signed JWT/local WireMock fixtures;
+no shared service or dedicated real account is required for these automated checks.
+
+```bash
+./gradlew test --tests '*DraftCasefileCleanup*'
+./gradlew integration --tests '*DraftCasefileCleanup*' --tests '*DisabledDraftCasefileCleanup*'
+./gradlew bundleOpenApi generateOpenApiValidationSchema
+./gradlew openApiGenerate compileJava --no-daemon
+./gradlew build --no-daemon
+./gradlew jacocoTestReport
+```
+
+The integration suites prove real POST-ID-to-DELETE behavior, caller/BU/run scope,
+lifecycle/publication rejection, embedded-data deletion, sibling/reference retention,
+rollback after a real flush, safe repeats and actual PostgreSQL locking-SELECT
+contention. Signed JWT cases verify bearer validation, User Service permission 21
+and identity restrictions. Disabled HTTP/runtime-doc tests distinguish authenticated
+404 from anonymous 401. Unit tests cover both flags and fail-closed environment/
+owner configuration. These are endpoint/application tests, rather than direct
+database schema assertions.
+
+No migration-specific boundary assertions required: cleanup adds no schema,
+routine or persistent SQL contract. Existing `draft_casefiles_pgtap_tests.sql` and
+`draft_casefiles_publication_link_pgtap_tests.sql` remain unchanged schema coverage;
+they do not prove endpoint deletion or rollback. Run the full build's `dbUnitTest`
+baseline and inspect its timings, PostgreSQL version and cleanup confirmation in
+`build/reports/dbUnitTest`. Do not infer execution from compilation or task presence.
+Functional/smoke suites require a separately running service; document any omitted
+external check, its setup and expected result. Do not enable cleanup or run it
+against shared data as part of routine local verification.
+
 ## Test design
 
 Mirror production packages, use `*Test`, and assert observable behaviour. Cover validation, error, empty, and configuration paths affected by a change. Keep Testcontainers and network boundaries explicit; do not make unit tests depend on them.
