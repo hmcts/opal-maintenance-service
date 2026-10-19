@@ -1,5 +1,6 @@
 #!groovy
 import uk.gov.hmcts.contino.GithubAPI
+import uk.gov.hmcts.contino.Kubectl
 
 @Library("Infrastructure@2.12.2")
 
@@ -40,6 +41,32 @@ withPipeline(type, product, component) {
   before('akschartsinstall') {
     onPR {
       configurePrUserService(product)
+    }
+  }
+
+  before('functionalTest:dev') {
+    onPR {
+      if (env.DEV_ENABLE_OPAL_USER_SERVICE == 'true') {
+        withAksClient('dev', 'dev', product) {
+          def kubectl = new Kubectl(this, 'dev', product)
+          kubectl.login()
+          String userService = "opal-maintenance-service-pr-${env.CHANGE_ID}-user-service"
+          String port = steps.sh(
+            script: "bash src/functionalTest/resources/user-service/port-forward.sh start "
+              + "'${product}' '${userService}'",
+            returnStdout: true
+          ).trim()
+          env.OPAL_USER_SERVICE_API_URL = "http://127.0.0.1:${port}"
+        }
+      }
+    }
+  }
+
+  afterAlways('functionalTest:dev') {
+    onPR {
+      if (env.DEV_ENABLE_OPAL_USER_SERVICE == 'true') {
+        steps.sh 'bash src/functionalTest/resources/user-service/port-forward.sh stop'
+      }
     }
   }
 }
