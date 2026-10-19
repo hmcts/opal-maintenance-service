@@ -1,0 +1,444 @@
+package uk.gov.hmcts.opal.controllers;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.junit.jupiter.api.BeforeEach;
+import org.mockito.stubbing.Answer;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import org.springframework.test.context.jdbc.Sql;
+import org.springframework.test.context.jdbc.SqlMergeMode;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
+import uk.gov.hmcts.opal.BaseIntegrationTest;
+import uk.gov.hmcts.opal.common.spring.security.OpalJwtAuthenticationToken;
+import uk.gov.hmcts.opal.common.user.authorisation.model.Permission;
+import uk.gov.hmcts.opal.entity.DraftCasefileEntity;
+import uk.gov.hmcts.opal.entity.DraftCasefileStatus;
+import uk.gov.hmcts.opal.logging.integration.service.LoggingService;
+import uk.gov.hmcts.opal.repository.CountryRepository;
+import uk.gov.hmcts.opal.repository.DraftCasefileRepository;
+import uk.gov.hmcts.opal.repository.MaintenanceApplicationRepository;
+import uk.gov.hmcts.opal.repository.ResultRepository;
+import uk.gov.hmcts.opal.support.DraftCasefileHttpFixture;
+
+import java.time.LocalDateTime;
+import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mockingDetails;
+import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static org.springframework.test.context.jdbc.Sql.ExecutionPhase.AFTER_TEST_METHOD;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+@AutoConfigureMockMvc
+@TestPropertySource(properties = {
+    "spring.flyway.locations=classpath:db/migration/ddl",
+    "opal.redis.enabled=false", "management.health.redis.enabled=false",
+    "opal.testing-support-endpoints.enabled=true",
+    "opal.testing-support-endpoints.draft-casefile-cleanup.enabled=true",
+    "opal.testing-support-endpoints.draft-casefile-cleanup.environment=integration",
+    "opal.testing-support-endpoints.draft-casefile-cleanup.business-unit-id=1",
+    "opal.testing-support-endpoints.draft-casefile-cleanup.user-id=123",
+    "opal.testing-support-endpoints.draft-casefile-cleanup.business-unit-user-id=BUU-1"
+})
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
+@Sql({"/draft-casefile/reference-fixtures.sql", "/draft-casefile/cleanup-scope-fixtures.sql"})
+@Sql(scripts = "/draft-casefile/cleanup-scope-cleanup.sql", executionPhase = AFTER_TEST_METHOD)
+class DraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
+
+    private static final String RUN = "E2E-0123456789abcdef";
+    private static final String CLEANUP = "/testing-support/draft-casefiles/{id}";
+    @Autowired
+    private ObjectMapper objectMapper;
+    @Autowired
+    private MockMvc mockMvc;
+    @Autowired
+    private JdbcTemplate jdbc;
+    @Autowired
+    private CountryRepository countries;
+    @Autowired
+    private MaintenanceApplicationRepository applications;
+    @Autowired
+    private ResultRepository results;
+    @Autowired
+    private PlatformTransactionManager transactionManager;
+    @MockitoSpyBean
+    private DraftCasefileRepository repository;
+    @MockitoBean
+    private LoggingService logging;
+
+    private Answer<?> repositoryDelegate;
+
+    @BeforeEach
+    void setUp() {
+        when(logging.personalDataAccessLogAsync(any())).thenReturn(true);
+        // Spring Data exposes abstract proxy methods; preserve the spy's real repository delegate.
+        repositoryDelegate = mockingDetails(repository).getMockCreationSettings().getDefaultAnswer();
+    }
+
+    @Test
+    void realSubmissionIsDeletedWithEmbeddedDataAndRepeatSucceeds() throws Exception {
+        long id = submit(RUN);
+        long otherId = submit("E2E-fedcba9876543210");
+        DraftCasefileEntity before = repository.findById(id).orElseThrow();
+        assertThat(before.getCasefile()).contains("Synthetic cleanup note", "Synthetic cleanup comment");
+        assertThat(before.getCasefileSnapshot()).contains("respondent_account", "applicant_account");
+        assertThat(before.getTimelineData()).contains("Submitted");
+        cleanup(id, RUN).andExpect(status().isNoContent()).andExpect(content().string(""));
+        cleanup(id, RUN).andExpect(status().isNoContent());
+        assertThat(repository.findById(id)).isEmpty();
+        assertThat(repository.findById(otherId)).isPresent();
+        assertThat(countries.findById(5000000301L)).isPresent();
+        assertThat(applications.findById((short) 31020)).isPresent();
+        assertThat(results.findById("MAT")).isPresent();
+    }
+
+    @Test
+    void minorCreditorEmbeddedSnapshotIsDeleted() throws Exception {
+        long id = submit(RUN, true);
+        JsonNode minor = objectMapper.readTree(repository.findById(id).orElseThrow().getCasefileSnapshot())
+            .at("/minor_creditor_accounts/0");
+        assertThat(minor.isObject()).isTrue();
+        assertThat(minor.get("account_id").isNull()).isTrue();
+        assertThat(minor.get("account_number").isNull()).isTrue();
+        cleanup(id, RUN).andExpect(status().isNoContent());
+        assertThat(repository.findById(id)).isEmpty();
+    }
+
+    @Test
+    void postFlushFailureRestoresWholeDraftAndAllowsRetry() throws Exception {
+        long id = submit(RUN);
+        DraftCasefileEntity before = repository.findById(id).orElseThrow();
+        doAnswer(invocation -> {
+            repositoryDelegate.answer(invocation);
+            throw new DataAccessResourceFailureException("Synthetic failure");
+        }).when(repository).flush();
+        try {
+            cleanup(id, RUN).andExpect(status().isServiceUnavailable());
+            assertUnchanged(before);
+        } finally {
+            doAnswer(repositoryDelegate).when(repository).flush();
+        }
+        cleanup(id, RUN).andExpect(status().isNoContent());
+        assertThat(repository.findById(id)).isEmpty();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"0", "-1", "not-a-number", "9223372036854775808"})
+    void rejectsInvalidId(String id) throws Exception {
+        DraftCasefileEntity before = repository.findById(submit(RUN)).orElseThrow();
+        mockMvc.perform(delete("/testing-support/draft-casefiles/" + id)
+                .with(authentication(DraftCasefileHttpFixture.token((short) 1)))
+                .header("Test-Run-Reference", RUN))
+            .andExpect(status().isBadRequest())
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+            .andExpect(jsonPath("$.status").value(400));
+        assertUnchanged(before);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"MISSING", "", "E2E-0123456789ABCDEF", "e2e-0123456789abcdef",
+        "E2E-0123456789abcde", "E2E-0123456789abcdef0"})
+    void rejectsInvalidHeader(String marker) throws Exception {
+        DraftCasefileEntity before = repository.findById(submit(RUN)).orElseThrow();
+        var request = delete(CLEANUP, before.getDraftCasefileId())
+            .with(authentication(DraftCasefileHttpFixture.token((short) 1)));
+        if (!marker.equals("MISSING")) {
+            request.header("Test-Run-Reference", marker);
+        }
+        mockMvc.perform(request).andExpect(status().isBadRequest())
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+            .andExpect(jsonPath("$.status").value(400));
+        assertUnchanged(before);
+    }
+
+    @Test
+    void rejectsDifferentRunWithoutChangingDraft() throws Exception {
+        DraftCasefileEntity before = repository.findById(submit(RUN)).orElseThrow();
+        cleanup(before.getDraftCasefileId(), "E2E-fedcba9876543210").andExpect(status().isForbidden());
+        assertUnchanged(before);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"missing-permission", "checker", "wrong-bu", "wrong-user", "wrong-buu"})
+    void rejectsUnauthorisedIdentityIncludingAbsentId(String variant) throws Exception {
+        DraftCasefileEntity before = repository.findById(submit(RUN)).orElseThrow();
+        Set<Permission> permissions = switch (variant) {
+            case "missing-permission" -> Set.of();
+            case "checker" -> Set.of(new Permission(22L, "Check and validate draft Casefiles"));
+            default -> Set.of(new Permission(21L, "Create and Manage Draft Casefiles"));
+        };
+        OpalJwtAuthenticationToken caller = DraftCasefileHttpFixture.token(
+            (short) (variant.equals("wrong-bu") ? 2 : 1), variant.equals("wrong-user") ? 124L : 123L,
+            variant.equals("wrong-buu") ? "BUU-OTHER" : "BUU-1", permissions);
+        for (long id : new long[] {before.getDraftCasefileId(), Long.MAX_VALUE}) {
+            mockMvc.perform(delete(CLEANUP, id).with(authentication(caller)).header("Test-Run-Reference", RUN))
+                .andExpect(status().isForbidden());
+        }
+        assertUnchanged(before);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"bu", "submitter", "missing-marker", "wrong-marker", "numeric-marker", "scalar"})
+    void rejectsStoredOwnershipMismatch(String variant) throws Exception {
+        DraftCasefileEntity original = repository.findById(submit(RUN)).orElseThrow();
+        ObjectNode payload = (ObjectNode) objectMapper.readTree(original.getCasefile());
+        ObjectNode account = (ObjectNode) payload.get("respondent_account");
+        switch (variant) {
+            case "missing-marker" -> account.remove("remo_reference");
+            case "wrong-marker" -> account.put("remo_reference", "E2E-fedcba9876543210");
+            case "numeric-marker" -> account.put("remo_reference", 123);
+            default -> { }
+        }
+        DraftCasefileEntity before = repository.saveAndFlush(original.toBuilder()
+            .businessUnitId((short) (variant.equals("bu") ? 2 : 1))
+            .submittedBy(variant.equals("submitter") ? "BUU-OTHER" : "BUU-1")
+            .casefile(variant.equals("scalar") ? "\"synthetic\"" : objectMapper.writeValueAsString(payload)).build());
+        cleanup(before.getDraftCasefileId(), RUN).andExpect(status().isForbidden());
+        assertUnchanged(before);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = DraftCasefileStatus.class, names = "SUBMITTED", mode = EnumSource.Mode.EXCLUDE)
+    void rejectsEveryAdvancedLifecycle(DraftCasefileStatus lifecycle) throws Exception {
+        DraftCasefileEntity original = repository.findById(submit(RUN)).orElseThrow();
+        DraftCasefileEntity before = repository.saveAndFlush(original.toBuilder().casefileStatus(lifecycle).build());
+        cleanup(before.getDraftCasefileId(), RUN).andExpect(status().isConflict());
+        assertUnchanged(before);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"validated-date", "validated-by", "validated-name", "account-number"})
+    void rejectsValidationOrPublicationMetadata(String variant) throws Exception {
+        DraftCasefileEntity original = repository.findById(submit(RUN)).orElseThrow();
+        var builder = original.toBuilder();
+        switch (variant) {
+            case "validated-date" -> builder.validatedDate(LocalDateTime.of(2026, 10, 1, 12, 0));
+            case "validated-by" -> builder.validatedBy("BUU-1");
+            case "validated-name" -> builder.validatedByName("Synthetic validator");
+            case "account-number" -> builder.accountNumber("SYNTHETIC-1");
+            default -> throw new IllegalArgumentException(variant);
+        }
+        DraftCasefileEntity before = repository.saveAndFlush(builder.build());
+        cleanup(before.getDraftCasefileId(), RUN).andExpect(status().isConflict());
+        assertUnchanged(before);
+    }
+
+    @Test
+    @SqlMergeMode(SqlMergeMode.MergeMode.MERGE)
+    @Sql("/draft-casefile/cleanup-account-link-fixture.sql")
+    void rejectsPublishedAccountIdAndPreservesLinkedAccount() throws Exception {
+        DraftCasefileEntity original = repository.findById(submit(RUN)).orElseThrow();
+        DraftCasefileEntity before = repository.saveAndFlush(original.toBuilder().accountId(9000000301L).build());
+        cleanup(before.getDraftCasefileId(), RUN).andExpect(status().isConflict());
+        assertUnchanged(before);
+        assertThat(linkedAccountCount()).isEqualTo(1);
+    }
+
+    // No account repository exists; this bounded query verifies the database-facing fixture is untouched.
+    private int linkedAccountCount() {
+        return jdbc.queryForObject("SELECT count(*) FROM respondent_accounts WHERE respondent_account_id = ?",
+            Integer.class, 9000000301L);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"respondent_account", "applicant_account", "minor_creditor_accounts"})
+    void rejectsEverySnapshotAccountLink(String path) throws Exception {
+        long id = submit(RUN, true);
+        for (String field : new String[] {"account_id", "account_number"}) {
+            DraftCasefileEntity original = repository.findById(id).orElseThrow();
+            ObjectNode snapshot = (ObjectNode) objectMapper.readTree(original.getCasefileSnapshot());
+            ObjectNode account = (ObjectNode) snapshot.at("/" + path
+                + (path.equals("minor_creditor_accounts") ? "/0" : ""));
+            if (field.equals("account_id")) {
+                account.put(field, 1L);
+            } else {
+                account.putNull("account_id");
+                account.put(field, "SYNTHETIC-1");
+            }
+            DraftCasefileEntity before = repository.saveAndFlush(original.toBuilder()
+                .casefileSnapshot(objectMapper.writeValueAsString(snapshot)).build());
+            cleanup(id, RUN).andExpect(status().isConflict());
+            assertUnchanged(before);
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"\"synthetic\"", "{}", "{\"minor_creditor_accounts\":{}}"})
+    void rejectsMalformedSnapshot(String snapshot) throws Exception {
+        DraftCasefileEntity original = repository.findById(submit(RUN)).orElseThrow();
+        DraftCasefileEntity before = repository.saveAndFlush(original.toBuilder().casefileSnapshot(snapshot).build());
+        cleanup(before.getDraftCasefileId(), RUN).andExpect(status().isConflict());
+        assertUnchanged(before);
+    }
+
+    @Test
+    void missingDraftSucceedsForValidCaller() throws Exception {
+        cleanup(Long.MAX_VALUE, RUN).andExpect(status().isNoContent());
+    }
+
+    @Test
+    void anonymousCallerCannotDeleteDraft() throws Exception {
+        DraftCasefileEntity before = repository.findById(submit(RUN)).orElseThrow();
+        mockMvc.perform(delete(CLEANUP, before.getDraftCasefileId()).header("Test-Run-Reference", RUN))
+            .andExpect(status().isUnauthorized());
+        assertUnchanged(before);
+    }
+
+    @Test
+    void runtimeDocumentationIncludesConditionalDeleteContract() throws Exception {
+        String body = mockMvc.perform(get("/v3/api-docs")).andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+        JsonNode operation = objectMapper.readTree(body)
+            .at("/paths/~1testing-support~1draft-casefiles~1{draft_casefile_id}/delete");
+        assertThat(operation.isObject()).isTrue();
+        assertThat(operation.get("responses").has("204")).isTrue();
+        assertThat(operation.get("security").isArray()).isTrue();
+        assertThat(operation.get("security").isEmpty()).isFalse();
+        JsonNode marker = null;
+        for (JsonNode parameter : operation.get("parameters")) {
+            if (parameter.path("name").asText().equals("Test-Run-Reference")) {
+                marker = parameter;
+            }
+        }
+        assertThat(marker).isNotNull();
+        assertThat(marker.path("required").asBoolean()).isTrue();
+        assertThat(marker.at("/schema/pattern").asText()).isEqualTo("^E2E-[0-9a-f]{16}$");
+    }
+
+    @Test
+    void simultaneousRepeatsBothSucceed() throws Exception {
+        long id = submit(RUN);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        CountDownLatch start = new CountDownLatch(1);
+        try {
+            Future<Integer> first = executor.submit(() -> concurrentCleanup(id, start));
+            Future<Integer> second = executor.submit(() -> concurrentCleanup(id, start));
+            start.countDown();
+            assertThat(first.get(10, TimeUnit.SECONDS)).isEqualTo(204);
+            assertThat(second.get(10, TimeUnit.SECONDS)).isEqualTo(204);
+            assertThat(repository.findById(id)).isEmpty();
+        } finally {
+            start.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void cleanupWaitsForLockedLifecycleUpdateAndRejectsCommittedState() throws Exception {
+        long id = submit(RUN);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        CountDownLatch locked = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        CountDownLatch cleanupLookup = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            if (Thread.currentThread().getName().equals("synthetic-cleanup-reader")) {
+                cleanupLookup.countDown();
+            }
+            return repositoryDelegate.answer(invocation);
+        }).when(repository).findForCleanupById(id);
+        try {
+            final Future<?> writer = executor.submit(() -> new TransactionTemplate(transactionManager)
+                .executeWithoutResult(transaction -> {
+                    DraftCasefileEntity draft = repository.findForCleanupById(id).orElseThrow();
+                    repository.saveAndFlush(draft.toBuilder().casefileStatus(DraftCasefileStatus.REJECTED).build());
+                    locked.countDown();
+                    await(release);
+                }));
+            assertThat(locked.await(5, TimeUnit.SECONDS)).isTrue();
+            final Future<Integer> reader = executor.submit(() -> {
+                Thread.currentThread().setName("synthetic-cleanup-reader");
+                return cleanup(id, RUN).andReturn().getResponse().getStatus();
+            });
+            assertThat(cleanupLookup.await(5, TimeUnit.SECONDS)).isTrue();
+            release.countDown();
+            writer.get(10, TimeUnit.SECONDS);
+            assertThat(reader.get(10, TimeUnit.SECONDS)).isEqualTo(409);
+            assertThat(repository.findById(id).orElseThrow().getCasefileStatus())
+                .isEqualTo(DraftCasefileStatus.REJECTED);
+        } finally {
+            release.countDown();
+            executor.shutdownNow();
+            doAnswer(repositoryDelegate).when(repository).findForCleanupById(id);
+        }
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            assertThat(latch.await(5, TimeUnit.SECONDS)).isTrue();
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Synthetic lock test interrupted", exception);
+        }
+    }
+
+    private int concurrentCleanup(long id, CountDownLatch start) throws Exception {
+        assertThat(start.await(5, TimeUnit.SECONDS)).isTrue();
+        return cleanup(id, RUN).andReturn().getResponse().getStatus();
+    }
+
+    private long submit(String marker) throws Exception {
+        return submit(marker, false);
+    }
+
+    private long submit(String marker, boolean withMinor) throws Exception {
+        ObjectNode request = (ObjectNode) objectMapper.readTree(DraftCasefileHttpFixture.requestBody());
+        ObjectNode account = (ObjectNode) request.at("/casefile/respondent_account");
+        account.put("remo_reference", marker);
+        account.put("account_comment", "Synthetic cleanup comment");
+        account.putObject("notes").put("note_text", "Synthetic cleanup note");
+        if (withMinor) {
+            ObjectNode casefile = (ObjectNode) request.get("casefile");
+            ObjectNode minor = ((ObjectNode) casefile.get("applicant")).deepCopy();
+            minor.put("creditor_sequence", 1);
+            casefile.putArray("minor_creditors").add(minor);
+            ObjectNode term = (ObjectNode) account.at("/order_details/order_terms/0");
+            term.put("creditor_type", "Minor Creditor");
+            term.put("minor_creditor_sequence", 1);
+        }
+        String response = mockMvc.perform(post("/draft-casefiles")
+                .with(authentication(DraftCasefileHttpFixture.token((short) 1)))
+                .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsBytes(request)))
+            .andExpect(status().isCreated()).andExpect(jsonPath("$.casefile_status").value("SUBMITTED"))
+            .andReturn().getResponse().getContentAsString();
+        return objectMapper.readTree(response).get("draft_casefile_id").longValue();
+    }
+
+    private ResultActions cleanup(long id, String marker) throws Exception {
+        return mockMvc.perform(delete(CLEANUP, id)
+            .with(authentication(DraftCasefileHttpFixture.token((short) 1))).header("Test-Run-Reference", marker));
+    }
+
+    private void assertUnchanged(DraftCasefileEntity before) {
+        DraftCasefileEntity after = repository.findById(before.getDraftCasefileId()).orElseThrow();
+        assertThat(after).usingRecursiveComparison().isEqualTo(before);
+    }
+}
