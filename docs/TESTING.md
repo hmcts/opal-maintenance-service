@@ -27,6 +27,55 @@ representative data for the behavior under test.
 
 Never put a bearer token in a tracked file or command-line argument.
 
+### Draft Casefile deployed API journeys (PO-10287)
+
+The `@PO10287` scenarios exercise the deployed Maintenance and User services in
+an agreed non-live environment. Set both `TEST_URL` (Maintenance Service) and
+`OPAL_USER_SERVICE_API_URL` (User Service) to the intended environment before
+running either command; their localhost defaults are not suitable for deployed
+verification. Do not put account passwords or bearer values in the command or
+tracked files.
+
+```bash
+./gradlew functionalOpal -Dcucumber.filter.tags='@PO10287' -Dcucumber.execution.dry-run=true
+./gradlew functionalOpal -Dcucumber.filter.tags='@PO10287'
+```
+
+The environment must already contain the authorised account
+`opal-test@dev.platform.hmcts.net`, the account without Draft Casefile create
+permission `opal-test-2@dev.platform.hmcts.net`, Business Unit 44, the
+authorised user's Business Unit User ID `L044JG`, and Create and Manage Draft
+Casefiles permission 21. The live reference set must include active Maintenance
+Application `AP00001`, active country CJS code `1`, and result `MAT`. The
+rejection cases use unknown application `ZZ99999`, inactive country CJS code
+`0`, and historical country CJS code `2`. The tests never provision users or
+reference data; missing or changed prerequisites are an environment-readiness
+failure, not a reason to substitute mocks or create shared records.
+
+Enable `TESTING_SUPPORT_ENDPOINTS_ENABLED=true` only in the agreed non-live
+environment. The scenarios use these authenticated support routes for narrow
+technical evidence and cleanup:
+
+- `GET /testing-support/draft-casefiles/{id}` inspects a created Draft Casefile.
+- `GET /testing-support/draft-casefiles/markers/{marker}` finds exact marker
+  matches and proves rejected or rolled-back requests left no row.
+- `DELETE /testing-support/draft-casefiles/{id}` removes a successfully created
+  scenario-owned Draft Casefile; a failed cleanup fails the scenario.
+
+Each scenario generates one `PO10287-` marker followed by a lowercase UUID v4
+and places it in the account comment. Support access requires an authenticated
+user with permission 21 in Business Unit 44. Inspection and deletion are
+restricted to records created by that user's Business Unit User ID and bearing
+a valid stored marker. Marker lookup requires the strict marker shape and
+matches the exact marker, Business Unit, and creator. Support responses contain
+only technical metadata or IDs, never the complete Casefile, snapshot, or
+timeline content. The controlled rollback scenario sends
+`X-Opal-Testing-Failure: after-save` on the create request; this value is
+request-scoped and available only while testing support is enabled. A successful
+create is deleted with the token captured for that create. The forbidden,
+invalid-reference, and rollback scenarios assert zero marker matches and do
+not delete unrelated data.
+
 ## Database migration validation
 
 Normal Docker Compose use is a persistent local-development workflow.

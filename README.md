@@ -47,6 +47,9 @@ export OPAL_TEST_USER_EMAIL='<test-account-email>'
 export OPAL_TEST_USER_PASSWORD='<test-account-password>'
 ```
 
+For the optional Draft Casefile functional tests, set the service URL
+environment variables described in [Testing](docs/TESTING.md#draft-casefile-deployed-api-journeys-po-10287).
+
 The shared-infrastructure Docker workflow can create its own ignored
 `.env.shared` file. From the `opal-shared-infrastructure` directory, run
 `./bin/create_env.sh`. Direct Gradle or IDE runs instead use values exported in

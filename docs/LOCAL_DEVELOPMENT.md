@@ -140,6 +140,14 @@ testing-support endpoints:
 TESTING_SUPPORT_ENDPOINTS_ENABLED=true
 ```
 
+The default is `false`. When enabled, the service exposes authenticated Draft
+Casefile inspection, exact-marker lookup, and single-record deletion under
+`/testing-support/draft-casefiles`, and accepts the request-scoped
+`X-Opal-Testing-Failure: after-save` value on Draft Casefile creation. The
+header is rejected while testing support is disabled. See the
+[Draft Casefile functional test prerequisites](TESTING.md#draft-casefile-deployed-api-journeys-po-10287)
+before running these routes against a suitable non-live environment.
+
 ## Common problems
 
 - **Port 4551 is already in use:** stop the Docker Maintenance Service container
