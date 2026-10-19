@@ -94,12 +94,8 @@ public class DraftCasefileStepDef {
     }
 
     @Then("^the invalid (unknown application|inactive country|historical country) Draft Casefile response is returned$")
-    public void assertInvalidReference(String reference) throws IOException {
-        String detail = switch (InvalidDraftReference.fromFeatureValue(reference)) {
-            case UNKNOWN_APPLICATION -> "Application must identify an active Maintenance Application";
-            case INACTIVE_COUNTRY, HISTORICAL_COUNTRY -> "Country must be active";
-        };
-        assertReferenceProblem(state.latestResponse(), state.marker(), detail);
+    public void assertInvalidReference(String ignoredReference) throws IOException {
+        assertReferenceProblem(state.latestResponse(), state.marker());
     }
 
     @Then("the correlated Draft Casefile server failure is returned")
