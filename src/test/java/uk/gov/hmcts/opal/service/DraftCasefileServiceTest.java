@@ -74,8 +74,10 @@ class DraftCasefileServiceTest {
     private final DraftCasefileService service = new DraftCasefileService(
         userService, validator, new DraftCasefileQueryValidator(),
         new uk.gov.hmcts.opal.validator.IfMatchValidator(), repository,
-        new DraftCasefileMapper(new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules(),
-            new DraftCasefileJsonMapper(JsonMapper.builder().build(),
+        new DraftCasefileMapper(new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules()),
+        new DraftCasefileUpdater(
+            new DraftCasefileMapper(new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules()),
+            new DraftCasefileJsonMapper(tools.jackson.databind.json.JsonMapper.builder().build(),
                 new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules())),
         new DraftCasefileAddResponseMapperImpl(new DraftCasefileJsonMapper(JsonMapper.builder().build(),
             new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules()),

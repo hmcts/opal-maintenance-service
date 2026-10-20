@@ -156,7 +156,7 @@ class DraftCasefileDecisionTransactionIntegrationTest extends BaseIntegrationTes
     }
 
     @Test
-    void mappingFailureAfterSimulatedSendRollsBackEveryColumnAndEmitsNoAudit() throws Exception {
+    void mappingFailureRollsBackEveryColumnWithoutPublishingOrAudit() throws Exception {
         long id = submittedDraft();
         final Map<String, Object> before = row(id);
         AtomicInteger flushes = new AtomicInteger();
@@ -172,8 +172,7 @@ class DraftCasefileDecisionTransactionIntegrationTest extends BaseIntegrationTes
             .andExpect(status().isInternalServerError());
         assertThat(flushes).hasValue(1);
         assertThat(row(id)).isEqualTo(before);
-        verify(publisher).publish(id);
-        verifyNoInteractions(logging);
+        verifyNoInteractions(publisher, logging);
     }
 
     @Test

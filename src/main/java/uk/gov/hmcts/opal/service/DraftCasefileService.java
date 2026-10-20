@@ -45,7 +45,6 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.EnumMap;
-import java.util.EnumSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -65,6 +64,7 @@ public class DraftCasefileService {
     private final IfMatchValidator ifMatchValidator;
     private final DraftCasefileRepository repository;
     private final DraftCasefileMapper mapper;
+    private final DraftCasefileUpdater updater;
     private final DraftCasefileAddResponseMapper addResponseMapper;
     private final DraftCasefileGetMapper getMapper;
     private final DraftCasefileSummaryMapper summaryMapper;
@@ -97,7 +97,7 @@ public class DraftCasefileService {
         final MaintenanceUser user = maintenanceUserService.requireAuthorisedUser(
             existing.getBusinessUnitId(), CREATE_MANAGE_DRAFT_CASEFILES);
         if (!existing.getBusinessUnitId().equals(request.getBusinessUnitId())) {
-            throw new ResourceConflictException("Business Unit must match the stored owner");
+            throw new ResourceConflictException("Business unit must match the draft casefile's business unit");
         }
         if (existing.getCasefileStatus() != DraftCasefileStatus.REJECTED) {
             throw new ResourceConflictException("Only a rejected Draft Casefile can be replaced");
@@ -112,7 +112,7 @@ public class DraftCasefileService {
             request.getCasefile());
         Instant resubmittedAt = clock.instant().truncatedTo(ChronoUnit.MICROS);
         DraftCasefileEntity saved = repository.saveAndFlush(
-            mapper.toResubmittedEntity(existing, request, user, resubmittedAt));
+            updater.applyResubmission(existing, request, user, resubmittedAt));
         DraftCasefileGetResponse response = getMapper.toResponse(saved);
         eventPublisher.publishEvent(new DraftCasefilePersonalDataEvent(Operation.RESUBMISSION,
             saved.getDraftCasefileId(), user.userId(), user.ipAddress(), resubmittedAt,
@@ -133,7 +133,7 @@ public class DraftCasefileService {
             throw new AccessDeniedException("A Draft Casefile must be checked by a different user");
         }
         if (!existing.getBusinessUnitId().equals(request.getBusinessUnitId())) {
-            throw new ResourceConflictException("Business Unit must match the stored owner");
+            throw new ResourceConflictException("Business unit must match the draft casefile's business unit");
         }
         if (existing.getCasefileStatus() != DraftCasefileStatus.SUBMITTED
             && existing.getCasefileStatus() != DraftCasefileStatus.RESUBMITTED) {
@@ -146,22 +146,23 @@ public class DraftCasefileService {
             throw new ObjectOptimisticLockingFailureException(DraftCasefileEntity.class, id);
         }
         Instant decidedAt = clock.instant().truncatedTo(ChronoUnit.MICROS);
-        DraftCasefileEntity saved = repository.saveAndFlush(mapper.toDecidedEntity(existing, request, user, decidedAt));
+        DraftCasefileEntity saved = repository.saveAndFlush(updater.applyDecision(existing, request, user, decidedAt));
+        DraftCasefileGetResponse response = getMapper.toResponse(saved);
         Operation operation = switch (request.getCasefileStatus()) {
             case PUBLISHING_PENDING -> Operation.APPROVAL;
             case REJECTED -> Operation.REJECTION;
             case DELETED -> Operation.DELETION;
         };
-        if (operation == Operation.APPROVAL) {
+        DraftCasefilePersonalDataEvent event = new DraftCasefilePersonalDataEvent(
+            operation, id, user.userId(), user.ipAddress(), decidedAt,
+            participantCategoryResolver.resolveDecision(response.getCasefile()));
+        VersionedResponse<DraftCasefileGetResponse> result =
+            new VersionedResponse<>(response, saved.getVersionNumber());
+        if (saved.getCasefileStatus() == DraftCasefileStatus.PUBLISHING_PENDING) {
             queuePublisher.publish(id);
         }
-        DraftCasefileGetResponse response = getMapper.toResponse(saved);
-        Set<ParticipantCategory> categories =
-            EnumSet.copyOf(participantCategoryResolver.resolve(response.getCasefile()));
-        categories.remove(ParticipantCategory.RELATED_PARTIES);
-        eventPublisher.publishEvent(new DraftCasefilePersonalDataEvent(operation, id, user.userId(), user.ipAddress(),
-            decidedAt, categories));
-        return new VersionedResponse<>(response, saved.getVersionNumber());
+        eventPublisher.publishEvent(event);
+        return result;
     }
 
     @Transactional(readOnly = true)
