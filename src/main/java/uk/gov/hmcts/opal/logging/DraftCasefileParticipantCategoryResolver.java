@@ -29,6 +29,12 @@ public class DraftCasefileParticipantCategoryResolver {
         return Set.copyOf(categories);
     }
 
+    public Set<ParticipantCategory> resolveDecision(JsonNode casefile) {
+        Set<ParticipantCategory> categories = EnumSet.copyOf(resolve(casefile));
+        categories.remove(ParticipantCategory.RELATED_PARTIES);
+        return Set.copyOf(categories);
+    }
+
     public Set<ParticipantCategory> resolveSummary(CasefileSnapshot snapshot) {
         Set<ParticipantCategory> categories = EnumSet.of(
             ParticipantCategory.RESPONDENT, ParticipantCategory.APPLICANT_BENEFICIARY);

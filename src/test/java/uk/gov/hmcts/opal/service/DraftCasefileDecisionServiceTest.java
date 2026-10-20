@@ -62,8 +62,11 @@ class DraftCasefileDecisionServiceTest {
     private final MaintenanceUser checker = new MaintenanceUser(123L, "BUU-2", "Synthetic Checker", "192.0.2.1");
     private final DraftCasefileService service = new DraftCasefileService(users, mock(DraftCasefileValidator.class),
         new DraftCasefileQueryValidator(), new IfMatchValidator(), repository,
-        new DraftCasefileMapper(new JacksonCompatibilityConfiguration().objectMapper(),
-            new DraftCasefileJsonMapper(JSON, new JacksonCompatibilityConfiguration().objectMapper())),
+        new DraftCasefileMapper(new JacksonCompatibilityConfiguration().objectMapper()),
+        new DraftCasefileUpdater(
+            new DraftCasefileMapper(new JacksonCompatibilityConfiguration().objectMapper()),
+            new DraftCasefileJsonMapper(tools.jackson.databind.json.JsonMapper.builder().build(),
+                new JacksonCompatibilityConfiguration().objectMapper())),
         mock(DraftCasefileAddResponseMapper.class), responses, mock(DraftCasefileSummaryMapper.class),
         new DraftCasefileParticipantCategoryResolver(), events, Clock.fixed(NOW, ZoneOffset.UTC), publisher);
 
@@ -160,6 +163,18 @@ class DraftCasefileDecisionServiceTest {
         var request = request(CasefileStatusEnum.DELETED).businessUnitId((short) 2);
         assertThatThrownBy(() -> service.updateDraftCasefile(42L, request, "\"4\""))
             .isInstanceOf(ResourceConflictException.class);
+        verifyNoInteractions(publisher, events);
+    }
+
+    @Test
+    void responseMappingFailureDoesNotPublishOrEmitAudit() {
+        when(responses.toResponse(any())).thenThrow(new IllegalStateException("Unable to map stored draft"));
+
+        var approval = request(CasefileStatusEnum.PUBLISHING_PENDING);
+        assertThatThrownBy(() -> service.updateDraftCasefile(42L, approval, "\"4\""))
+            .isInstanceOf(IllegalStateException.class).hasMessage("Unable to map stored draft");
+
+        verify(repository).saveAndFlush(any());
         verifyNoInteractions(publisher, events);
     }
 

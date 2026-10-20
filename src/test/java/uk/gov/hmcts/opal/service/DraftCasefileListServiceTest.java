@@ -58,6 +58,7 @@ class DraftCasefileListServiceTest {
         users, mock(DraftCasefileValidator.class), new DraftCasefileQueryValidator(),
         new uk.gov.hmcts.opal.validator.IfMatchValidator(), repository,
         mock(DraftCasefileMapper.class),
+        mock(DraftCasefileUpdater.class),
         mock(DraftCasefileAddResponseMapper.class), mock(DraftCasefileGetMapper.class), summaryMapper,
         new DraftCasefileParticipantCategoryResolver(),
         events, clock, mock(DraftCasefileQueuePublisher.class));
