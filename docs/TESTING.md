@@ -27,6 +27,64 @@ representative data for the behavior under test.
 
 Never put a bearer token in a tracked file or command-line argument.
 
+### RM User State Draft Casefile journeys (PO-10302)
+
+These three API scenarios call the real User Service at
+`OPAL_USER_SERVICE_API_URL` (default `http://localhost:4555`) through its
+`/v2/users/0/state` endpoint. The target needs normal authentication, V2 User
+State enabled and the existing token testing-support capability for the two
+authenticated scenarios. The tests read pre-existing assignments; they do not
+create users, change roles or permissions, or require database credentials.
+
+Reserve two different active, Azure-backed synthetic users and their distinct
+Maintenance Business Unit user assignments exclusively for this pack. Run the
+pack serially against that pair. The granted user's role must include Draft
+Casefile permission 21. The denied user's Maintenance roles must grant at
+least one other permission and no permission 21 in any Maintenance assignment.
+Both assignments must belong to the expected Business Unit. Verify these
+preconditions against the target before running the pack; missing or changed
+fixtures are failures, not reasons to skip. A disposable local environment
+may prepare the checker-only fixture by removing its creator role through the
+existing authenticated testing-support API. That is an optional, one-time
+environment setup action using an authorised synthetic actor, not an
+automated test mutation or a change to a shared account.
+
+Set these five environment variables privately for the authenticated
+scenarios; never put their values in a tracked file or command line:
+
+| Variable | Required value |
+| --- | --- |
+| `RM_USER_STATE_GRANTED_USER_EMAIL` | Granted synthetic Azure login |
+| `RM_USER_STATE_GRANTED_USER_ID` | Matching positive Opal user ID (`long`) |
+| `RM_USER_STATE_DENIED_USER_EMAIL` | Different denied synthetic Azure login |
+| `RM_USER_STATE_DENIED_USER_ID` | Matching different positive Opal user ID (`long`) |
+| `RM_USER_STATE_BUSINESS_UNIT_ID` | Expected positive Maintenance Business Unit ID (`short`) |
+
+The anonymous scenario needs only the User Service URL; it must also pass
+with all `RM_USER_STATE_*` variables absent. A normal full functional run
+includes this feature, so its authenticated journeys require these fixtures
+and variables in addition to the other suite prerequisites. Missing
+configuration must fail rather than silently remove the feature from coverage.
+
+Validate discovery, then run the three real API journeys together and in
+isolation:
+
+```bash
+./gradlew functionalOpal -Dcucumber.filter.tags=@JIRA-STORY:PO-10302 -Dcucumber.execution.dry-run=true
+./gradlew functionalOpal -Dcucumber.filter.tags=@JIRA-STORY:PO-10302
+./gradlew functionalOpal -Dcucumber.filter.tags=@PO10302Denied
+./gradlew functionalOpal -Dcucumber.filter.tags=@PO10302Granted
+./gradlew functionalOpal -Dcucumber.filter.tags=@PO10302Authentication
+```
+
+Expect three discovered scenarios in the dry run, three passing executed
+scenarios in the combined live run, and one passing scenario per isolated
+run. Dry-run discovery is not live acceptance evidence. Preserve only
+privacy-checked, non-sensitive report summaries before the next run clears
+generated reports. These API checks establish User State assignments,
+permission scope and unauthenticated non-disclosure; the RM portal's Draft
+Casefile guard needs separate frontend test evidence.
+
 ## Database migration validation
 
 Normal Docker Compose use is a persistent local-development workflow.

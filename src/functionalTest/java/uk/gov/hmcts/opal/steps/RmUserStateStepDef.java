@@ -31,7 +31,7 @@ public class RmUserStateStepDef extends BaseStepDef {
     private short expectedBuId;
     private Response latestResponse;
 
-    @Given("I have a {string} RM User State assignment")
+    @Given("I select the {string} RM User State assignment")
     public void selectAssignment(String outcome) {
         if (!"granted".equals(outcome) && !"denied".equals(outcome)) {
             throw new IllegalArgumentException("Assignment outcome must be granted or denied");
@@ -71,12 +71,12 @@ public class RmUserStateStepDef extends BaseStepDef {
             .contentType(MediaType.APPLICATION_JSON_VALUE);
     }
 
-    @Then("my granted RM User State assignment is returned")
+    @Then("my Maintenance Business Unit includes the Draft Casefile permission")
     public void assertGrantedAssignment() throws IOException {
         assertAuthenticatedResponse(true);
     }
 
-    @Then("my denied RM User State assignment is returned")
+    @Then("my Maintenance Business Unit does not grant the Draft Casefile permission")
     public void assertDeniedAssignment() throws IOException {
         assertAuthenticatedResponse(false);
     }
@@ -139,7 +139,7 @@ public class RmUserStateStepDef extends BaseStepDef {
         }
     }
 
-    @Then("the RM User State unauthorized problem is returned")
+    @Then("my Business Unit assignments and permissions are not disclosed")
     public void assertUnauthorizedUserState() throws IOException {
         Response response = latestResponse();
         assertEquals(401, response.statusCode(), "Expected unauthorized User State response");
