@@ -67,7 +67,7 @@ class RmUserStateStepDefTest {
         root.remove("domains");
         rejects(root.toString(), 101, 44, true);
         root = root(101, 44, 21);
-        root.with("domains").set("maintenance", MAPPER.createObjectNode());
+        ((ObjectNode) root.path("domains")).set("maintenance", MAPPER.createObjectNode());
         rejects(root.toString(), 101, 44, true);
     }
 
@@ -100,7 +100,7 @@ class RmUserStateStepDefTest {
     @Test
     void rejectsPermissionOnlyUnderFinesOrDifferentMaintenanceBu() throws IOException {
         ObjectNode fines = root(101, 44, 22);
-        fines.with("domains").set("fines", MAPPER.createObjectNode().set("business_unit_users",
+        ((ObjectNode) fines.path("domains")).set("fines", MAPPER.createObjectNode().set("business_unit_users",
             MAPPER.createArrayNode().add(assignment(99, 21, "fines"))));
         rejects(fines.toString(), 101, 44, true);
         ObjectNode anotherBu = root(101, 44, 22);
@@ -133,6 +133,9 @@ class RmUserStateStepDefTest {
             step.latestResponse(response(401, MediaType.APPLICATION_PROBLEM_JSON_VALUE, disclosed));
             assertThrows(AssertionError.class, step::assertUnauthorizedUserState);
         }
+        step.latestResponse(response(401, MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+            problem.replace("\"status\":401", "\"status\":4294967697")));
+        assertThrows(AssertionError.class, step::assertUnauthorizedUserState);
         step.latestResponse(response(200, MediaType.APPLICATION_JSON_VALUE, fixture(101, 44, 21)));
         assertThrows(AssertionError.class, step::assertUnauthorizedUserState);
     }

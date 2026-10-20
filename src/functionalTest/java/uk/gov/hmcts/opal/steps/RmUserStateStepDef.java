@@ -147,7 +147,8 @@ public class RmUserStateStepDef extends BaseStepDef {
         JsonNode problem = MAPPER.readTree(response.asString());
         assertTrue(problem != null && problem.isObject(), "Expected Problem JSON object");
         JsonNode status = problem.path("status");
-        assertTrue(status.isIntegralNumber() && status.intValue() == 401, "Invalid Problem status");
+        assertTrue(status.isIntegralNumber() && status.canConvertToInt() && status.intValue() == 401,
+            "Invalid Problem status");
         for (String key : new String[]{"type", "title", "detail"}) {
             JsonNode value = problem.path(key);
             assertTrue(value.isTextual() && !value.asText().isBlank(), "Invalid Problem " + key);
