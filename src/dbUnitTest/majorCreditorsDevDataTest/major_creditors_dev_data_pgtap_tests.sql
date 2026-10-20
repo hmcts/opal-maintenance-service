@@ -1,4 +1,21 @@
--- PO-10297 / V1_31: DEV reference data boundary contract.
+/**
+ * OPAL Program
+ *
+ * MODULE      : major_creditors_dev_data_pgtap_tests.sql
+ *
+ * DESCRIPTION : Verify DEV Major Creditor seed details, selection and atomic failures.
+ *
+ * CHANGE HISTORY:
+ *
+ * Date        Author          Ticket    Nature of Change
+ * ----------  --------------  --------  ---------------------------------------------
+ * 02/10/2026  Jonathan Duffy  PO-10297  Initial pgTAP test suite.
+ * 06/10/2026  Jonathan Duffy  PO-10297  Align seed migration reference with V1_17.
+ * 12/10/2026  Jonathan Duffy  PO-10297  Align seed migration reference with V1_31.
+ * 20/10/2026  Jonathan Duffy  PO-10297  Align unapplied seed reference with V1_33.
+ */
+
+-- PO-10297 / V1_33: DEV reference data boundary contract.
 -- Assertions apply to both fresh DB-01 and predecessor-to-candidate DB-03 paths.
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap;
@@ -73,7 +90,7 @@ BEGIN
         SELECT jsonb_agg(to_jsonb(m) ORDER BY major_creditor_id)
         INTO before_rows FROM public.major_creditors m;
         BEGIN
-            EXECUTE pg_read_file('/tmp/opal-db-migrations/data/dev/V1_31__insert_major_creditors_dev_data.sql');
+            EXECUTE pg_read_file('/tmp/opal-db-migrations/data/dev/V1_33__insert_major_creditors_dev_data.sql');
         EXCEPTION WHEN OTHERS THEN
             GET STACKED DIAGNOSTICS actual_state = RETURNED_SQLSTATE;
         END;
