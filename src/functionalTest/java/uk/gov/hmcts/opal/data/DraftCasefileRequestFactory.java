@@ -13,7 +13,7 @@ public final class DraftCasefileRequestFactory {
             ObjectNode root = (ObjectNode) OBJECT_MAPPER.readTree("""
                 {"business_unit_id":44,"casefile_type":"REMO In","casefile":{
                   "respondent_account":{"business_unit_id":44,"application_code":"AP00001",
-                    "casefile_type":"REMO In","account_comment":"MARKER",
+                    "casefile_type":"REMO In","remo_reference":"MARKER",
                     "respondent":{"party_details":{"organisation":false,
                       "individual_details":{"forenames":"Synthetic","surname":"Respondent"},
                       "address":{"address_line_1":"Synthetic address","cjs_code":1}}},
@@ -27,7 +27,7 @@ public final class DraftCasefileRequestFactory {
                     "address":{"address_line_1":"Synthetic address","cjs_code":1}},
                     "bank_account_details":{"bank_account_type":"None or not applicable"}}}}
                 """);
-            ((ObjectNode) root.at("/casefile/respondent_account")).put("account_comment", marker);
+            ((ObjectNode) root.at("/casefile/respondent_account")).put("remo_reference", marker);
             return OBJECT_MAPPER.writeValueAsString(root);
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("Unable to build the synthetic Draft Casefile request", exception);

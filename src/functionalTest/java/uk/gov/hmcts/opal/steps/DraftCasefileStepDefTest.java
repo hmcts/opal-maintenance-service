@@ -1,14 +1,5 @@
 package uk.gov.hmcts.opal.steps;
 
-import io.cucumber.java.Scenario;
-import io.restassured.builder.ResponseBuilder;
-import io.restassured.response.Response;
-import org.junit.jupiter.api.Test;
-import org.mockito.MockedStatic;
-import uk.gov.hmcts.opal.actions.DraftCasefileActions;
-import uk.gov.hmcts.opal.data.DraftCasefileRequestFactory;
-import uk.gov.hmcts.opal.data.DraftCasefileScenarioState;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -19,6 +10,15 @@ import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+
+import io.cucumber.java.Scenario;
+import io.restassured.builder.ResponseBuilder;
+import io.restassured.response.Response;
+import org.junit.jupiter.api.Test;
+import org.mockito.MockedStatic;
+import uk.gov.hmcts.opal.actions.DraftCasefileActions;
+import uk.gov.hmcts.opal.data.DraftCasefileRequestFactory;
+import uk.gov.hmcts.opal.data.DraftCasefileScenarioState;
 
 class DraftCasefileStepDefTest {
 
@@ -34,23 +34,20 @@ class DraftCasefileStepDefTest {
         steps.prepareValid();
         Response created = response(201, "{\"draft_casefile_id\":123}");
         when(actions.create(eq("creator-token"), anyString(), eq(null))).thenReturn(created);
-        when(actions.delete("creator-token", 123L)).thenReturn(response(204, ""));
-        when(actions.findByMarker(eq("creator-token"), anyString())).thenReturn(response(200,
-            "{\"count\":0,\"draft_casefile_ids\":[]}"));
+        when(actions.delete("creator-token", 123L, state.marker())).thenReturn(response(204, ""));
 
         try (MockedStatic<BearerTokenStepDef> bearer = mockStatic(BearerTokenStepDef.class)) {
             bearer.when(BearerTokenStepDef::getToken).thenReturn("creator-token", "later-token");
             steps.submit();
         }
 
-        assertThat(state.createdResponse()).isSameAs(created);
         assertThat(state.createdId()).isEqualTo(123L);
         assertThat(state.cleanupToken()).isEqualTo("creator-token");
+        assertThatThrownBy(steps::assertSubmitted).isInstanceOf(AssertionError.class);
+        when(scenario.isFailed()).thenReturn(true);
         steps.deleteCreatedDraft(scenario);
-        verify(actions).delete("creator-token", 123L);
-        verify(actions).findByMarker("creator-token", state.marker());
+        verify(actions).delete("creator-token", 123L, state.marker());
         assertThat(state.createdId()).isNull();
-        assertThat(state.createdResponse()).isNull();
         assertThat(state.cleanupToken()).isNull();
     }
 
@@ -67,21 +64,21 @@ class DraftCasefileStepDefTest {
         }
 
         assertThat(state.latestResponse()).isSameAs(rejected);
-        assertThat(state.createdResponse()).isNull();
         assertThat(state.createdId()).isNull();
         assertThat(state.cleanupToken()).isNull();
         steps.deleteCreatedDraft(scenario);
-        verify(actions, never()).delete(anyString(), anyLong());
+        verify(actions, never()).delete(anyString(), anyLong(), anyString());
     }
 
     @Test
     void failedCleanupFailsAnOtherwisePassingScenarioWithoutSensitiveAttachment() {
         prepareCreatedState();
-        when(actions.delete("creator-token", 123L)).thenReturn(response(500, "sensitive response body"));
+        when(actions.delete("creator-token", 123L, state.marker()))
+            .thenReturn(response(500, "sensitive response body"));
 
         assertThatThrownBy(() -> steps.deleteCreatedDraft(scenario))
             .isInstanceOf(AssertionError.class)
-            .hasMessage("Draft cleanup failed for ID 123 with status 500");
+            .hasMessage("Draft cleanup failed for ID 123 with marker " + state.marker() + " with status 500");
         verify(scenario, never()).attach(anyString(), anyString(), anyString());
         assertThat(state.createdId()).isNull();
     }
@@ -89,25 +86,13 @@ class DraftCasefileStepDefTest {
     @Test
     void cleanupRequestErrorFailsAnOtherwisePassingScenarioWithoutAttachment() {
         prepareCreatedState();
-        when(actions.delete("creator-token", 123L)).thenThrow(new IllegalStateException("sensitive cause"));
+        when(actions.delete("creator-token", 123L, state.marker()))
+            .thenThrow(new IllegalStateException("sensitive cause"));
 
         assertThatThrownBy(() -> steps.deleteCreatedDraft(scenario))
             .isInstanceOf(AssertionError.class)
-            .hasMessage("Draft cleanup failed for ID 123 with a request error");
+            .hasMessage("Draft cleanup failed for ID 123 with marker " + state.marker() + " with a request error");
         verify(scenario, never()).attach(anyString(), anyString(), anyString());
-        assertThat(state.createdId()).isNull();
-    }
-
-    @Test
-    void cleanupVerificationFailsWhenTheMarkerStillExists() {
-        prepareCreatedState();
-        when(actions.delete("creator-token", 123L)).thenReturn(response(204, ""));
-        when(actions.findByMarker(eq("creator-token"), anyString())).thenReturn(response(200,
-            "{\"count\":1,\"draft_casefile_ids\":[123]}"));
-
-        assertThatThrownBy(() -> steps.deleteCreatedDraft(scenario))
-            .isInstanceOf(AssertionError.class)
-            .hasMessage("Draft cleanup verification failed for ID 123");
         assertThat(state.createdId()).isNull();
     }
 
@@ -115,11 +100,13 @@ class DraftCasefileStepDefTest {
     void failedCleanupAttachesEvidenceButPreservesPrimaryFailure() {
         prepareCreatedState();
         when(scenario.isFailed()).thenReturn(true);
-        when(actions.delete("creator-token", 123L)).thenReturn(response(500, "sensitive response body"));
+        when(actions.delete("creator-token", 123L, state.marker()))
+            .thenReturn(response(500, "sensitive response body"));
 
         steps.deleteCreatedDraft(scenario);
 
-        verify(scenario).attach("Draft cleanup failed for ID 123 with status 500", "text/plain",
+        verify(scenario).attach("Draft cleanup failed for ID 123 with marker " + state.marker() + " with status 500",
+            "text/plain",
             "PO-10287 cleanup failure");
         assertThat(state.createdId()).isNull();
     }
@@ -128,11 +115,14 @@ class DraftCasefileStepDefTest {
     void cleanupRequestErrorDoesNotReplaceAnExistingFailure() {
         prepareCreatedState();
         when(scenario.isFailed()).thenReturn(true);
-        when(actions.delete("creator-token", 123L)).thenThrow(new IllegalStateException("sensitive cause"));
+        when(actions.delete("creator-token", 123L, state.marker()))
+            .thenThrow(new IllegalStateException("sensitive cause"));
 
         steps.deleteCreatedDraft(scenario);
 
-        verify(scenario).attach("Draft cleanup failed for ID 123 with a request error", "text/plain",
+        verify(scenario).attach("Draft cleanup failed for ID 123 with marker "
+            + state.marker() + " with a request error",
+            "text/plain",
             "PO-10287 cleanup failure");
         assertThat(state.createdId()).isNull();
     }

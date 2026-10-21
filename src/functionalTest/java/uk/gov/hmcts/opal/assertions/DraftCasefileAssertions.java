@@ -1,20 +1,19 @@
 package uk.gov.hmcts.opal.assertions;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import io.restassured.response.Response;
-import org.springframework.http.MediaType;
-
-import java.io.IOException;
-import java.time.OffsetDateTime;
-import java.time.format.DateTimeParseException;
-import java.util.Set;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static uk.gov.hmcts.opal.assertions.ProblemDetailAssertions.assertProblemDetail;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.restassured.response.Response;
+import java.io.IOException;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeParseException;
+import java.util.Set;
+import org.springframework.http.MediaType;
 
 public final class DraftCasefileAssertions {
 
@@ -22,11 +21,6 @@ public final class DraftCasefileAssertions {
     private static final Set<String> CREATED_FIELDS = Set.of(
         "draft_casefile_id", "business_unit_id", "created_date", "submitted_by", "submitted_by_name",
         "casefile_snapshot", "casefile_type", "casefile_status", "casefile_status_date", "timeline_data"
-    );
-    private static final Set<String> METADATA_FIELDS = Set.of(
-        "draft_casefile_id", "business_unit_id", "submitted_by", "created_date", "casefile_status",
-        "casefile_status_date", "version_number", "snapshot_present", "timeline_entry_count",
-        "timeline_statuses"
     );
     private static final String[] PRIVATE_VALUES = {
         "Synthetic address", "Synthetic", "Respondent", "Applicant", "100.00", "AP00001", "ZZ99999"
@@ -74,51 +68,6 @@ public final class DraftCasefileAssertions {
         return id;
     }
 
-    public static void assertTechnicalMetadata(Response response, Response createdResponse) throws IOException {
-        final long createdId = assertCreated(createdResponse);
-        final JsonNode created = OBJECT_MAPPER.readTree(createdResponse.asString());
-        assertEquals(200, response.statusCode());
-        assertJson(response);
-        JsonNode body = OBJECT_MAPPER.readTree(response.asString());
-        assertTrue(body.isObject(), "Metadata must be a JSON object");
-        assertEquals(METADATA_FIELDS, iterableFieldNames(body), "Metadata must contain only technical fields");
-        assertEquals(createdId, positiveId(body.path("draft_casefile_id")));
-        assertTrue(body.path("business_unit_id").isIntegralNumber(), "Business unit must be numeric");
-        assertEquals(44, body.path("business_unit_id").intValue());
-        assertEquals("L044JG", body.path("submitted_by").asText());
-        assertDate(body.path("created_date"));
-        assertEquals("SUBMITTED", body.path("casefile_status").asText());
-        assertDate(body.path("casefile_status_date"));
-        assertTrue(body.path("version_number").isIntegralNumber(), "Version must be numeric");
-        assertEquals(0, body.path("version_number").longValue());
-        assertTrue(body.path("snapshot_present").isBoolean() && body.path("snapshot_present").booleanValue(),
-            "Snapshot must be present");
-        assertTrue(body.path("timeline_entry_count").isIntegralNumber(), "Timeline count must be numeric");
-        assertEquals(1, body.path("timeline_entry_count").intValue());
-        JsonNode statuses = body.path("timeline_statuses");
-        assertTrue(statuses.isArray(), "Timeline statuses must be an array");
-        assertEquals(1, statuses.size());
-        assertEquals("Submitted", statuses.get(0).asText());
-
-        for (String field : new String[] {
-            "draft_casefile_id", "business_unit_id", "submitted_by", "created_date", "casefile_status",
-            "casefile_status_date"
-        }) {
-            assertEquals(created.path(field), body.path(field), "Metadata differs from created response: " + field);
-        }
-        assertEquals(Long.parseLong(createdResponse.getHeader("ETag").replace("\"", "")),
-            body.path("version_number").longValue(), "Metadata version differs from created ETag");
-        assertEquals(created.path("casefile_snapshot").isObject(), body.path("snapshot_present").booleanValue(),
-            "Metadata snapshot fact differs from created response");
-        JsonNode timeline = created.path("timeline_data");
-        assertEquals(timeline.size(), body.path("timeline_entry_count").intValue(),
-            "Metadata timeline count differs from created response");
-        for (int index = 0; index < timeline.size(); index++) {
-            assertEquals(timeline.get(index).path("status"), statuses.get(index),
-                "Metadata timeline status differs from created response");
-        }
-    }
-
     public static void assertPermissionProblem(Response response, String marker) throws IOException {
         assertSafeProblem(response, 403, "forbidden", "Forbidden",
             "You do not have permission to access this resource", marker);
@@ -132,17 +81,6 @@ public final class DraftCasefileAssertions {
     public static void assertFailureProblem(Response response, String marker) throws IOException {
         assertSafeProblem(response, 500, "internal-server-error", "Internal Server Error",
             "An unexpected error occurred while processing your request", marker);
-    }
-
-    public static void assertNoMarkerMatches(Response response) throws IOException {
-        assertEquals(200, response.statusCode());
-        assertJson(response);
-        JsonNode body = OBJECT_MAPPER.readTree(response.asString());
-        assertTrue(body.path("count").isIntegralNumber(), "Marker count must be numeric");
-        assertEquals(0, body.path("count").intValue());
-        JsonNode ids = body.path("draft_casefile_ids");
-        assertTrue(ids.isArray(), "Marker IDs must be an array");
-        assertTrue(ids.isEmpty(), "Marker lookup must contain no IDs");
     }
 
     public static void assertCleanup(Response response) {

@@ -1,5 +1,10 @@
 package uk.gov.hmcts.opal.steps;
 
+import static uk.gov.hmcts.opal.assertions.DraftCasefileAssertions.assertCreated;
+import static uk.gov.hmcts.opal.assertions.DraftCasefileAssertions.assertFailureProblem;
+import static uk.gov.hmcts.opal.assertions.DraftCasefileAssertions.assertPermissionProblem;
+import static uk.gov.hmcts.opal.assertions.DraftCasefileAssertions.assertReferenceProblem;
+
 import io.cucumber.java.After;
 import io.cucumber.java.Before;
 import io.cucumber.java.Scenario;
@@ -7,19 +12,11 @@ import io.cucumber.java.en.Given;
 import io.cucumber.java.en.Then;
 import io.cucumber.java.en.When;
 import io.restassured.response.Response;
+import java.io.IOException;
 import uk.gov.hmcts.opal.actions.DraftCasefileActions;
 import uk.gov.hmcts.opal.data.DraftCasefileRequestFactory;
 import uk.gov.hmcts.opal.data.DraftCasefileScenarioState;
 import uk.gov.hmcts.opal.data.InvalidDraftReference;
-
-import java.io.IOException;
-
-import static uk.gov.hmcts.opal.assertions.DraftCasefileAssertions.assertCreated;
-import static uk.gov.hmcts.opal.assertions.DraftCasefileAssertions.assertFailureProblem;
-import static uk.gov.hmcts.opal.assertions.DraftCasefileAssertions.assertNoMarkerMatches;
-import static uk.gov.hmcts.opal.assertions.DraftCasefileAssertions.assertPermissionProblem;
-import static uk.gov.hmcts.opal.assertions.DraftCasefileAssertions.assertReferenceProblem;
-import static uk.gov.hmcts.opal.assertions.DraftCasefileAssertions.assertTechnicalMetadata;
 
 public class DraftCasefileStepDef {
 
@@ -72,7 +69,6 @@ public class DraftCasefileStepDef {
         state.latestResponse(response);
         if (response.statusCode() == 201) {
             state.createdId(response.jsonPath().getLong("draft_casefile_id"));
-            state.createdResponse(response);
             state.cleanupToken(token);
         }
     }
@@ -80,12 +76,6 @@ public class DraftCasefileStepDef {
     @Then("the submitted Draft Casefile response is returned")
     public void assertSubmitted() throws IOException {
         assertCreated(state.latestResponse());
-    }
-
-    @Then("the stored Draft Casefile technical outcome is observable")
-    public void assertStoredTechnicalOutcome() throws IOException {
-        Response metadata = actions.inspect(BearerTokenStepDef.getToken(), state.createdId());
-        assertTechnicalMetadata(metadata, state.createdResponse());
     }
 
     @Then("the Draft Casefile permission failure is returned")
@@ -101,12 +91,6 @@ public class DraftCasefileStepDef {
     @Then("the correlated Draft Casefile server failure is returned")
     public void assertCorrelatedServerFailure() throws IOException {
         assertFailureProblem(state.latestResponse(), state.marker());
-    }
-
-    @Then("no Draft Casefile exists for the scenario marker")
-    public void assertNoDraftForMarker() throws IOException {
-        Response lookup = actions.findByMarker(BearerTokenStepDef.getToken(), state.marker());
-        assertNoMarkerMatches(lookup);
     }
 
     @After("@PO10287")
@@ -136,20 +120,15 @@ public class DraftCasefileStepDef {
     private String cleanupEvidence() {
         Response cleanup;
         try {
-            cleanup = actions.delete(state.cleanupToken(), state.createdId());
+            cleanup = actions.delete(state.cleanupToken(), state.createdId(), state.marker());
         } catch (RuntimeException exception) {
-            return "Draft cleanup failed for ID " + state.createdId() + " with a request error";
+            return "Draft cleanup failed for ID " + state.createdId() + " with marker "
+                + state.marker() + " with a request error";
         }
         if (cleanup.statusCode() != 204) {
-            return "Draft cleanup failed for ID " + state.createdId()
+            return "Draft cleanup failed for ID " + state.createdId() + " with marker " + state.marker()
                 + " with status " + cleanup.statusCode();
         }
-        try {
-            Response lookup = actions.findByMarker(state.cleanupToken(), state.marker());
-            assertNoMarkerMatches(lookup);
-            return null;
-        } catch (IOException | RuntimeException | AssertionError exception) {
-            return "Draft cleanup verification failed for ID " + state.createdId();
-        }
+        return null;
     }
 }

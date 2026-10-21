@@ -187,11 +187,6 @@ class AuthenticationIntegrationTest extends BaseIntegrationTest {
             .andExpect(status().isNotFound());
         mockMvc.perform(get("/testing-support/auth/check").with(syntheticUser))
             .andExpect(status().isNotFound());
-        mockMvc.perform(get("/testing-support/draft-casefiles/123").with(syntheticUser))
-            .andExpect(status().isNotFound());
-        mockMvc.perform(get("/testing-support/draft-casefiles/markers/PO10287-550e8400-e29b-41d4-a716-446655440000")
-                .with(syntheticUser))
-            .andExpect(status().isNotFound());
         mockMvc.perform(delete("/testing-support/draft-casefiles/123").with(syntheticUser))
             .andExpect(status().isNotFound());
     }

@@ -1,17 +1,17 @@
 package uk.gov.hmcts.opal.data;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.restassured.builder.ResponseBuilder;
 import org.junit.jupiter.api.Test;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 class DraftCasefileRequestFactoryTest {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private static final String MARKER = "PO10287-550e8400-e29b-41d4-a716-446655440000";
+    private static final String MARKER = "E2E-550e8400e29b41d4";
 
     private final DraftCasefileRequestFactory factory = new DraftCasefileRequestFactory();
 
@@ -27,7 +27,7 @@ class DraftCasefileRequestFactoryTest {
             .isEqualTo(1);
         assertThat(request.at("/casefile/respondent_account/order_details/order_terms/0/result_id").asText())
             .isEqualTo("MAT");
-        assertThat(request.at("/casefile/respondent_account/account_comment").asText()).isEqualTo(MARKER);
+        assertThat(request.at("/casefile/respondent_account/remo_reference").asText()).isEqualTo(MARKER);
         assertThat(body).contains("Synthetic", "Respondent", "Applicant")
             .doesNotContain("Example", "PRIVATE", "SYNTHETIC_PRIVATE_NAME");
     }
@@ -61,17 +61,14 @@ class DraftCasefileRequestFactoryTest {
         DraftCasefileScenarioState state = new DraftCasefileScenarioState();
         state.reset();
         String firstMarker = state.marker();
-        assertThat(firstMarker).matches("PO10287-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}"
-            + "-[0-9a-f]{12}");
+        assertThat(firstMarker).matches("E2E-[0-9a-f]{16}");
         state.latestResponse(new ResponseBuilder().setStatusCode(201).build());
-        state.createdResponse(state.latestResponse());
         state.createdId(123);
         state.cleanupToken("test-token-placeholder");
 
         state.clearAfterCleanup();
         assertThat(state.marker()).isEqualTo(firstMarker);
         assertThat(state.latestResponse()).isNull();
-        assertThat(state.createdResponse()).isNull();
         assertThat(state.createdId()).isNull();
         assertThat(state.cleanupToken()).isNull();
 

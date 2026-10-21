@@ -53,32 +53,40 @@ reference data; missing or changed prerequisites are an environment-readiness
 failure, not a reason to substitute mocks or create shared records.
 
 Enable `TESTING_SUPPORT_ENDPOINTS_ENABLED=true` only in the agreed non-live
-environment. The scenarios use these authenticated support routes for narrow
-technical evidence and cleanup:
+environment. A successful create is cleaned up with the merged
+`DELETE /testing-support/draft-casefiles/{id}` API. Each scenario generates an
+`E2E-` marker followed by 16 lowercase hexadecimal characters and sets
+`casefile.respondent_account.remo_reference` to that value. Cleanup sends the
+same marker in the required `Test-Run-Reference` header, accepts
+`application/problem+json` as declared by the generated cleanup route, and uses the bearer token
+captured when that draft was created. The ID is captured before response
+assertions, so the after hook still attempts cleanup when an assertion fails.
+An HTTP 204 confirms cleanup; a failed cleanup fails an otherwise passing scenario,
+or attaches the ID, marker and safe failure reason to an already failed scenario.
+No bearer values or response payloads are included in cleanup failure evidence.
+See the [cleanup guide](DRAFT_CASEFILE_TEST_CLEANUP.md) for ownership, lifecycle,
+enablement and retry requirements.
 
-- `GET /testing-support/draft-casefiles/{id}` inspects a created Draft Casefile.
-- `GET /testing-support/draft-casefiles/markers/{marker}` finds exact marker
-  matches and proves rejected or rolled-back requests left no row.
-- `DELETE /testing-support/draft-casefiles/{id}` removes a successfully created
-  scenario-owned Draft Casefile; a failed cleanup fails the scenario.
+The merged support API provides deletion only, with no inspection or marker-search
+route. Functional assertions check the real POST response, including snapshot,
+timeline, ETag and correlated errors. Persistence, rejected-request row absence
+and rollback are verified by `DraftCasefileDatabaseIntegrationTest` and
+`DraftCasefileAuthenticationIntegrationTest`; cleanup isolation and actual row
+removal are verified by `DraftCasefileCleanupIntegrationTest`. These database
+assertions are integration coverage, not deployed functional evidence.
 
-Each scenario generates one `PO10287-` marker followed by a lowercase UUID v4
-and places it in the account comment. Support access requires an authenticated
-user with permission 21 in Business Unit 44. Inspection and deletion are
-restricted to records created by that user's Business Unit User ID and bearing
-a valid stored marker. Marker lookup requires the strict marker shape and
-matches the exact marker, Business Unit, and creator. Support responses contain
-only technical metadata or IDs, never the complete Casefile, snapshot, or
-timeline content. The controlled rollback scenario sends
-`X-Opal-Testing-Failure: after-save` on the create request; this value is
-request-scoped and available only while testing support is enabled. A successful
-create is deleted with the token captured for that create, then an exact marker
-lookup confirms that cleanup removed the row. Invalid-reference and rollback
-scenarios assert zero marker matches and do not delete unrelated data. The
-forbidden scenario proves the deployed permission denial; its no-persistence
-guarantee is covered by `DraftCasefileAuthenticationIntegrationTest` because
-testing-support marker lookups are intentionally scoped to the authenticated
-creator.
+The controlled failure scenario sends `X-Opal-Testing-Failure: after-save` on the
+create request and checks the correlated server error. This branch's failure
+hook is request-scoped and rejected while testing support is disabled. The
+post-save rollback itself is asserted in the database integration suite.
+
+Run the functional helper regression tests without a Cucumber tag property.
+Cucumber also discovers its suite during filtered runs, so use dry-run mode to
+disable scenario actions while the JUnit helper tests execute normally:
+
+```bash
+./gradlew functionalOpal --tests 'uk.gov.hmcts.opal.*.DraftCasefile*Test' -Dcucumber.execution.dry-run=true
+```
 
 ## Database migration validation
 

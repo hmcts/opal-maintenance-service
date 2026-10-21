@@ -9,15 +9,7 @@ public final class DraftCasefileActions extends BaseStepDef {
         return postWithBearer("/draft-casefiles", token, requestBody, failureMode);
     }
 
-    public Response inspect(String token, long draftCasefileId) {
-        return getWithBearer("/testing-support/draft-casefiles/" + draftCasefileId, token);
-    }
-
-    public Response findByMarker(String token, String marker) {
-        return getWithBearer("/testing-support/draft-casefiles/markers/" + marker, token);
-    }
-
-    public Response delete(String token, long draftCasefileId) {
-        return deleteWithBearer("/testing-support/draft-casefiles/" + draftCasefileId, token);
+    public Response delete(String token, long draftCasefileId, String marker) {
+        return deleteWithBearer("/testing-support/draft-casefiles/" + draftCasefileId, token, marker);
     }
 }
