@@ -1,5 +1,35 @@
 # Major Creditor DEV seed boundary contract
 
+## Current non-live scope and verification boundary
+
+The requester expanded the synthetic T901/T902/T903 seed to every non-live
+environment on 21 October 2026, following the Fines common-NLE pattern.
+`data/nle/V1_34__insert_major_creditors_nle_data.sql` now supplies the same
+BU 44 records where the common NLE location is selected. The saved PO-10297
+ticket draft's original test-owned-data wording was superseded by the approved
+seeded-data, read-only functional approach; the expanded environment scope is
+an additional amendment to record in the PR. Neither amendment is a claim that
+Jira or a shared deployment has been updated. The DEV V1_33 migration and the
+historical evidence below remain intact.
+
+The normal `dbUnitTest` run now uses two fresh disposable PostgreSQL 17
+profiles: `non-live-dev` selects `ddl`, `allEnvs`, `nle`, `dev`, while
+`non-live` selects `ddl`, `allEnvs`, `nle` without DEV. Both discover the
+existing DEV boundary suite and the owning flat NLE pgTAP suite. The latter
+checks the empty-key insert, exact-set no-op, and partial/conflicting-set
+failure with atomicity and ID preservation. Fresh-profile success does not
+verify predecessor upgrade history, deployment or live HTTP behavior.
+
+For rollout, inspect the effective locations, deployed image and Flyway
+history by script name, including earlier V1_15, V1_17 and V1_31 seed names
+and V1_33. Apply V1_34 through normal Flyway deployment only after confirming
+the target's compatible history. An incompatible history requires a separate
+approved database-owner recovery decision, never automatic repair. Refresh
+affected BU 44 Major Creditor cache entries through the approved administration
+route using the actual cache prefix, then rerun live PO-10297 scenarios on an
+agreed non-live target. See `docs/TESTING.md` for environment settings and cache
+keys. Production excludes `data/nle`.
+
 PO-10297 adds `data/dev/V1_33__insert_major_creditors_dev_data.sql` after
 predecessor V1_32. This synthetic data belongs only to environments that
 explicitly select `data/dev`; it is not approved for production or staging.

@@ -517,14 +517,33 @@ result count. Malformed-filter and authentication scenarios remain covered.
 
 The DEV-only synthetic reference-data contract was approved by the requester
 on 2 October 2026; see `src/dbUnitTest/majorCreditorsDevDataTest/README.md`.
-The requester expanded the seed to every non-live environment on 21 October
-2026. `data/nle/V1_34__insert_major_creditors_nle_data.sql` supplies the same
-three records through the common NLE location, while V1_33 remains unchanged.
-DEV/PR select `ddl + allEnvs + nle + dev`; staging selects
-`ddl + allEnvs + nle`; production selects `ddl + allEnvs` and excludes the
-synthetic data. The NLE migration inserts three rows when no fixture key exists,
-does nothing for three exact matches, and raises on partial or conflicting data.
-It resolves the existing Czech Republic uniquely and preserves generated IDs.
+The saved PO-10297 ticket draft originally called for test-owned data. The
+subsequently approved strategy uses seeded reference data and read-only HTTP
+steps. On 21 October 2026 the requester expanded that strategy to every
+non-live environment, following the Fines common-NLE pattern. This is a scope
+amendment to record in the PR; it does not establish a Jira update or deployed
+approval. `data/nle/V1_34__insert_major_creditors_nle_data.sql` supplies the
+same three records through the common NLE location. Historical DEV V1_33 and
+its approval and verification evidence remain unchanged.
+
+The checked-in local application default and DEV Helm template select
+`ddl + allEnvs + nle + dev`; the staging Helm template selects
+`ddl + allEnvs + nle`. The production base Helm values select only
+`ddl + allEnvs`, excluding both synthetic-data locations. These files do not
+prove the effective settings of a running deployment. Separately managed
+`FLYWAY_LOCATIONS` overrides, the image contents and migration history must be
+checked per target. The repository has migration directories for demo, ITHC
+and performance, but no checked-in deployment overlay for those targets; if
+any is deployed, inventory its effective locations and include `data/nle` for
+this approved non-live scope before running positive scenarios. Do not infer
+coverage from an environment name or add an unconfigured overlay.
+
+V1_34 inserts exactly three rows when none of the BU 44 T901/T902/T903 keys
+exists. If all three rows exactly match the approved fields and Country, it
+makes no change, preserving DEV V1_33's generated IDs. A partial set or any
+conflicting field fails the migration atomically and needs investigation;
+neither case is silently repaired or skipped. The migration resolves the
+existing Czech Republic uniquely and leaves unrelated creditors intact.
 The owning flat pgTAP suite checks both fresh profiles, including direct rerun,
 all fields, rollback and failure atomicity. The existing DEV suite remains in
 the discovered suite set for both profiles and verifies the historical V1_33
@@ -534,9 +553,21 @@ or QA sign-off. Positive coverage requires both approved data and a passing
 live scenario; an empty response cannot satisfy the positive acceptance
 criterion. Apply the appropriate non-live migration locations before executing
 positive functional tests.
-When reference caching is enabled, refresh affected BU 44 Major Creditor cache
-entries during migration rollout so positive scenarios see the new data; this
-is a deployment action, not a test setup or cleanup hook.
+Before rollout, confirm the target's effective `FLYWAY_LOCATIONS`, deployed
+image and `flyway_schema_history` script names. Inspect the earlier seed names
+V1_15, V1_17 and V1_31 as well as V1_33; a version number alone may refer to
+another migration. Apply V1_34 through normal Flyway deployment after `ddl`
+and `allEnvs`. If history is incompatible, stop and obtain a separate approved
+database-owner recovery decision; never automatically repair history or edit an
+applied migration. After deployment, refresh affected BU 44
+`majorCreditorReferenceDataCache` entries through the approved administration
+route, using the actual environment/cache prefix. Include
+`44_noFilter_noFilter`, `44_false_true` and any other cached BU 44 filter
+combinations in use. Do not flush Redis globally. Redis TTL defaults to eight
+hours, and restarting a pod does not clear Redis. Then rerun the live positive,
+malformed-filter and authentication scenarios against an agreed compatible
+non-live Maintenance and User Service target. Cache refresh and migration are
+rollout actions, never functional-test setup or cleanup hooks.
 Targets that select `allEnvs` without `dev` require the approved `nle` location
 when non-live functional coverage runs. Do not enable DEV or NLE data in
 production. Tests make read-only HTTP requests and never insert, update or

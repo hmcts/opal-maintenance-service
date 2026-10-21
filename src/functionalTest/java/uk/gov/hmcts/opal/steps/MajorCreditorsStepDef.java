@@ -44,7 +44,7 @@ public class MajorCreditorsStepDef extends BaseStepDef {
             }
         }
         assertEquals(Set.of("T901", "T902", "T903"), found,
-            "Missing selection/comparison seed; apply approved DEV V1_33 before this scenario");
+            "Missing non-live selection/comparison seed; apply the approved NLE migration before this scenario");
     }
 
     @When("I request active non-Central Authority Major Creditors")
@@ -106,7 +106,8 @@ public class MajorCreditorsStepDef extends BaseStepDef {
         assertTrue(count.isIntegralNumber() && count.canConvertToInt(), "Invalid creditor count");
         assertTrue(creditors.isArray(), "Expected creditor reference data array");
         assertEquals(count.intValue(), creditors.size(), "Creditor count must match reference data");
-        assertFalse(creditors.isEmpty(), "DEV Major Creditor seed is missing; apply V1_33 before this scenario");
+        assertFalse(creditors.isEmpty(),
+            "Non-live Major Creditor seed is missing; apply the approved NLE migration before this scenario");
         Set<Long> ids = new HashSet<>();
         Set<String> codes = new HashSet<>();
         for (JsonNode creditor : creditors) {
@@ -130,7 +131,8 @@ public class MajorCreditorsStepDef extends BaseStepDef {
                 assertSeedDetails(creditor);
             }
         }
-        assertTrue(codes.contains("T901"), "DEV Major Creditor T901 is missing; apply V1_33 before this scenario");
+        assertTrue(codes.contains("T901"),
+            "Non-live Major Creditor T901 is missing; apply the approved NLE migration before this scenario");
     }
 
     private static void assertSeedDetails(JsonNode creditor) {
