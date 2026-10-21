@@ -9,8 +9,6 @@ import uk.gov.hmcts.opal.generated.http.api.DraftCasefileApi;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileAddRequest;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileAddResponse;
 import uk.gov.hmcts.opal.service.DraftCasefileService;
-import uk.gov.hmcts.opal.testing.DraftCasefileFailureMode;
-import uk.gov.hmcts.opal.testing.DraftCasefileTestingFailure;
 import uk.gov.hmcts.opal.validator.OpenApiRequest;
 
 @RestController
@@ -18,16 +16,11 @@ import uk.gov.hmcts.opal.validator.OpenApiRequest;
 public class DraftCasefileApiController implements DraftCasefileApi {
 
     private final DraftCasefileService service;
-    private final DraftCasefileTestingFailure testingFailure;
 
     @Override
     @OpenApiRequest("DraftCasefileAddRequest")
-    public ResponseEntity<DraftCasefileAddResponse> addDraftCasefile(
-        DraftCasefileAddRequest request,
-        String testingFailureHeader
-    ) {
-        DraftCasefileFailureMode failureMode = testingFailure.resolve(testingFailureHeader);
-        DraftCasefileSubmission submission = service.addDraftCasefile(request, failureMode);
+    public ResponseEntity<DraftCasefileAddResponse> addDraftCasefile(DraftCasefileAddRequest request) {
+        DraftCasefileSubmission submission = service.addDraftCasefile(request);
         return ResponseEntity.status(HttpStatus.CREATED)
             .eTag(Long.toString(submission.version()))
             .body(submission.response());

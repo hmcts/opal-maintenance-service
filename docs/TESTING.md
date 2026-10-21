@@ -48,8 +48,10 @@ Testing support must remain disabled in production deployments.
 
 ### Draft Casefile deployed API journeys (PO-10287)
 
-The `@PO10287` scenarios exercise the deployed Maintenance and User services in
-an agreed non-live environment. Set both `TEST_URL` (Maintenance Service) and
+The five `@PO10287` scenario examples cover authorised creation, permission
+denial, unknown application, inactive country and historical country. They
+exercise the deployed Maintenance and User services in an agreed non-live
+environment. Set both `TEST_URL` (Maintenance Service) and
 `OPAL_USER_SERVICE_API_URL` (User Service) to the intended environment before
 running either command; their localhost defaults are not suitable for deployed
 verification. Do not put account passwords or bearer values in the command or
@@ -88,16 +90,15 @@ enablement and retry requirements.
 
 The merged support API provides deletion only, with no inspection or marker-search
 route. Functional assertions check the real POST response, including snapshot,
-timeline, ETag and correlated errors. Persistence, rejected-request row absence
-and rollback are verified by `DraftCasefileDatabaseIntegrationTest` and
+timeline, ETag and correlated permission/reference errors. Persistence,
+rejected-request row absence and rollback are verified by `DraftCasefileDatabaseIntegrationTest` and
 `DraftCasefileAuthenticationIntegrationTest`; cleanup isolation and actual row
 removal are verified by `DraftCasefileCleanupIntegrationTest`. These database
 assertions are integration coverage, not deployed functional evidence.
 
-The controlled failure scenario sends `X-Opal-Testing-Failure: after-save` on the
-create request and checks the correlated server error. This branch's failure
-hook is request-scoped and rejected while testing support is disabled. The
-post-save rollback itself is asserted in the database integration suite.
+Server-error mapping and transaction rollback are verified by the controller and
+database integration suites using persistence failures. The deployed functional
+scenarios do not inject server failures or claim deployed rollback coverage.
 
 Run the functional helper regression tests without a Cucumber tag property.
 Cucumber also discovers its suite during filtered runs, so use dry-run mode to

@@ -1,7 +1,6 @@
 package uk.gov.hmcts.opal.steps;
 
 import static uk.gov.hmcts.opal.assertions.DraftCasefileAssertions.assertCreated;
-import static uk.gov.hmcts.opal.assertions.DraftCasefileAssertions.assertFailureProblem;
 import static uk.gov.hmcts.opal.assertions.DraftCasefileAssertions.assertPermissionProblem;
 import static uk.gov.hmcts.opal.assertions.DraftCasefileAssertions.assertReferenceProblem;
 
@@ -55,17 +54,8 @@ public class DraftCasefileStepDef {
 
     @When("I submit the Draft Casefile")
     public void submit() {
-        submitWithFailureMode(null);
-    }
-
-    @When("I submit the Draft Casefile with a post-save testing failure")
-    public void submitWithPostSaveFailure() {
-        submitWithFailureMode("after-save");
-    }
-
-    private void submitWithFailureMode(String failureMode) {
         String token = BearerTokenStepDef.getToken();
-        Response response = actions.create(token, requestBody, failureMode);
+        Response response = actions.create(token, requestBody);
         state.latestResponse(response);
         if (response.statusCode() == 201) {
             state.createdId(response.jsonPath().getLong("draft_casefile_id"));
@@ -86,11 +76,6 @@ public class DraftCasefileStepDef {
     @Then("^the invalid (unknown application|inactive country|historical country) Draft Casefile response is returned$")
     public void assertInvalidReference(String ignoredReference) throws IOException {
         assertReferenceProblem(state.latestResponse(), state.marker());
-    }
-
-    @Then("the correlated Draft Casefile server failure is returned")
-    public void assertCorrelatedServerFailure() throws IOException {
-        assertFailureProblem(state.latestResponse(), state.marker());
     }
 
     @After("@PO10287")

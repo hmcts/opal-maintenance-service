@@ -5,8 +5,8 @@ import uk.gov.hmcts.opal.steps.BaseStepDef;
 
 public final class DraftCasefileActions extends BaseStepDef {
 
-    public Response create(String token, String requestBody, String failureMode) {
-        return postWithBearer("/draft-casefiles", token, requestBody, failureMode);
+    public Response create(String token, String requestBody) {
+        return postWithBearer("/draft-casefiles", token, requestBody);
     }
 
     public Response delete(String token, long draftCasefileId, String marker) {

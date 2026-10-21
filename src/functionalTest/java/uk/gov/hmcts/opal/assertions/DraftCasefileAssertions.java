@@ -78,11 +78,6 @@ public final class DraftCasefileAssertions {
             "An error occurred while processing your request", marker);
     }
 
-    public static void assertFailureProblem(Response response, String marker) throws IOException {
-        assertSafeProblem(response, 500, "internal-server-error", "Internal Server Error",
-            "An unexpected error occurred while processing your request", marker);
-    }
-
     public static void assertCleanup(Response response) {
         assertEquals(204, response.statusCode());
     }

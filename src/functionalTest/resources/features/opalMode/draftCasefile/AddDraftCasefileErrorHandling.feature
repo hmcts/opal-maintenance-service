@@ -12,9 +12,3 @@ Feature: Draft Casefile creation failures
       | unknown application |
       | inactive country    |
       | historical country  |
-
-  Scenario: A post-save failure returns a correlated server error
-    Given I am testing as the "opal-test@dev.platform.hmcts.net" user
-    And I prepare a valid uniquely marked Draft Casefile
-    When I submit the Draft Casefile with a post-save testing failure
-    Then the correlated Draft Casefile server failure is returned

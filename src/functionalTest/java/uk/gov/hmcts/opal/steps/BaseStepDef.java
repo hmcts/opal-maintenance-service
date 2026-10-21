@@ -44,13 +44,12 @@ public abstract class BaseStepDef {
         return jsonRequest().when().get(withoutTrailingSlash(serviceUrl) + path);
     }
 
-    protected static Response postWithBearer(String path, String token, String body, String failureMode) {
-        RequestSpecification request = jsonRequest().header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
-            .body(body);
-        if (failureMode != null) {
-            request.header("X-Opal-Testing-Failure", failureMode);
-        }
-        return request.when().post(TEST_URL + path);
+    protected static Response postWithBearer(String path, String token, String body) {
+        return jsonRequest()
+            .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+            .body(body)
+            .when()
+            .post(TEST_URL + path);
     }
 
     protected static Response deleteWithBearer(String path, String token, String testRunReference) {

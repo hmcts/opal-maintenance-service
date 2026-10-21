@@ -14,8 +14,6 @@ import uk.gov.hmcts.opal.generated.model.DraftCasefileAddResponse;
 import uk.gov.hmcts.opal.logging.DraftCasefileParticipantCategoryResolver;
 import uk.gov.hmcts.opal.mapper.DraftCasefileMapper;
 import uk.gov.hmcts.opal.repository.DraftCasefileRepository;
-import uk.gov.hmcts.opal.testing.DraftCasefileFailureMode;
-import uk.gov.hmcts.opal.testing.DraftCasefileTestingFailure;
 import uk.gov.hmcts.opal.validator.DraftCasefileValidator;
 
 import java.time.Clock;
@@ -35,22 +33,14 @@ public class DraftCasefileService {
     private final DraftCasefileParticipantCategoryResolver participantCategoryResolver;
     private final ApplicationEventPublisher eventPublisher;
     private final Clock clock;
-    private final DraftCasefileTestingFailure testingFailure;
 
     @Transactional
-    public DraftCasefileSubmission addDraftCasefile(
-        DraftCasefileAddRequest request,
-        DraftCasefileFailureMode failureMode
-    ) {
+    public DraftCasefileSubmission addDraftCasefile(DraftCasefileAddRequest request) {
         MaintenanceUser user = maintenanceUserService.requireAuthorisedUser(
             request.getBusinessUnitId(), CREATE_MANAGE_DRAFT_CASEFILES);
         validator.validate(request);
         Instant submittedAt = clock.instant().truncatedTo(ChronoUnit.MICROS);
         DraftCasefileEntity entity = repository.save(mapper.toEntity(request, user, submittedAt));
-        if (failureMode == DraftCasefileFailureMode.AFTER_SAVE) {
-            repository.flush();
-        }
-        testingFailure.afterSave(failureMode);
         DraftCasefileAddResponse response = mapper.toResponse(entity);
         eventPublisher.publishEvent(new DraftCasefileSubmittedEvent(
             entity.getDraftCasefileId(), user.userId(), user.ipAddress(), submittedAt,

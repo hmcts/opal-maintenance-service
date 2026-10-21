@@ -161,9 +161,7 @@ configuration, following Fines. Gradle/IntelliJ do not automatically load
 `.env.shared`; set the shared enablement flag in your shell/private run configuration.
 See the [cleanup guide](DRAFT_CASEFILE_TEST_CLEANUP.md) for the full contract.
 
-The Draft Casefile functional tests also use the request-scoped
-`X-Opal-Testing-Failure: after-save` header on creation; it is rejected while
-testing support is disabled. See the
+See the Draft Casefile
 [functional prerequisites](TESTING.md#draft-casefile-deployed-api-journeys-po-10287)
 for the required users, reference data, marker and cleanup header.
 

@@ -26,19 +26,6 @@ paths:
       security:
         - DraftCasefileBearerAuth: []
       operationId: addDraftCasefile
-      parameters:
-        - in: header
-          name: X-Opal-Testing-Failure
-          required: false
-          description: >-
-            Non-production testing-support trigger. When testing support is enabled, after-save flushes the new
-            Draft Casefile and raises a controlled failure before commit and event publication. Any supplied value
-            is rejected when testing support is disabled.
-          schema:
-            type: string
-            minLength: 1
-            maxLength: 32
-          example: after-save
       requestBody:
         required: true
         content:

@@ -51,7 +51,6 @@ import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.context.jdbc.Sql.ExecutionPhase.AFTER_TEST_METHOD;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -62,7 +61,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
     "spring.flyway.locations=classpath:db/migration/ddl",
     "opal.redis.enabled=false",
     "management.health.redis.enabled=false",
-    "opal.testing-support-endpoints.enabled=true",
     "spring.jpa.open-in-view=false"
 })
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
@@ -225,22 +223,6 @@ class DraftCasefileDatabaseIntegrationTest extends BaseIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON).content(validBody))
             .andExpect(status().is(unavailable ? 503 : 500));
         assertNoDraftOrLog();
-    }
-
-    @Test
-    void headerTriggeredFailureRollsBackFlushedRowWithoutLogging() throws Exception {
-        String response = mockMvc.perform(post("/draft-casefiles")
-                .with(authentication(DraftCasefileHttpFixture.token((short) 1)))
-                .header("X-Opal-Testing-Failure", "after-save")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(validBody))
-            .andExpect(status().isInternalServerError())
-            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
-            .andExpect(jsonPath("$.operation_id").isNotEmpty())
-            .andReturn().getResponse().getContentAsString();
-        assertThat(response).doesNotContain("Controlled Draft Casefile failure after save");
-        assertThat(repository.count()).isZero();
-        verifyNoInteractions(logging);
     }
 
     @Test

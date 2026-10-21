@@ -33,7 +33,7 @@ class DraftCasefileStepDefTest {
         steps.resetScenario();
         steps.prepareValid();
         Response created = response(201, "{\"draft_casefile_id\":123}");
-        when(actions.create(eq("creator-token"), anyString(), eq(null))).thenReturn(created);
+        when(actions.create(eq("creator-token"), anyString())).thenReturn(created);
         when(actions.delete("creator-token", 123L, state.marker())).thenReturn(response(204, ""));
 
         try (MockedStatic<BearerTokenStepDef> bearer = mockStatic(BearerTokenStepDef.class)) {
@@ -56,7 +56,7 @@ class DraftCasefileStepDefTest {
         steps.resetScenario();
         steps.prepareValid();
         Response rejected = response(403, "{}");
-        when(actions.create(eq("denied-token"), anyString(), eq(null))).thenReturn(rejected);
+        when(actions.create(eq("denied-token"), anyString())).thenReturn(rejected);
 
         try (MockedStatic<BearerTokenStepDef> bearer = mockStatic(BearerTokenStepDef.class)) {
             bearer.when(BearerTokenStepDef::getToken).thenReturn("denied-token");
