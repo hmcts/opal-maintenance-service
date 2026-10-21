@@ -186,6 +186,42 @@ PMD is not configured in the current build. For documentation-only or similarly
 non-executable changes, run checks appropriate to the changed artefacts and
 record why the baseline build was not run.
 
+## Synthetic Draft Casefile cleanup
+
+The [cleanup guide](DRAFT_CASEFILE_TEST_CLEANUP.md) defines shared enablement,
+the HTTP contract and future Cypress capture/ledger handling. Service checks use
+synthetic data in disposable PostgreSQL 17 and signed JWT/local WireMock fixtures;
+no shared service or real account is required for these automated checks.
+
+```bash
+./gradlew test --tests '*DraftCasefileCleanup*'
+./gradlew integration --tests '*DraftCasefileCleanup*' --tests '*DisabledDraftCasefileCleanup*'
+./gradlew bundleOpenApi generateOpenApiValidationSchema
+./gradlew openApiGenerate compileJava --no-daemon
+./gradlew build --no-daemon
+./gradlew jacocoTestReport
+```
+
+The integration suites prove real POST-ID-to-DELETE behavior, caller/BU/run scope,
+lifecycle/publication rejection, embedded-data deletion, sibling/reference retention,
+rollback after a real flush, safe repeats and actual PostgreSQL locking-SELECT
+contention. Signed JWT cases verify bearer validation, User Service permission 21
+and submitter ownership, including another user cleaning their own draft. Disabled
+HTTP/runtime-doc tests distinguish authenticated 404 from anonymous 401. Missing IDs return 204 to authenticated callers.
+Unit tests cover enabled/disabled/default-off shared-flag behaviour and
+caller-derived ownership without additional environment or owner configuration. These are endpoint/application
+tests, rather than direct database schema assertions.
+
+No migration-specific boundary assertions required: cleanup adds no schema,
+routine or persistent SQL contract. Existing `draft_casefiles_pgtap_tests.sql` and
+`draft_casefiles_publication_link_pgtap_tests.sql` remain unchanged schema coverage;
+they do not prove endpoint deletion or rollback. Run the full build's `dbUnitTest`
+baseline and inspect its timings, PostgreSQL version and cleanup confirmation in
+`build/reports/dbUnitTest`. Do not infer execution from compilation or task presence.
+Functional/smoke suites require a separately running service; document any omitted
+external check, its setup and expected result. Do not enable cleanup or run it
+against shared data as part of routine local verification.
+
 ## Test design
 
 Mirror production packages, use `*Test`, and assert observable behaviour. Cover validation, error, empty, and configuration paths affected by a change. Keep Testcontainers and network boundaries explicit; do not make unit tests depend on them.
@@ -417,10 +453,100 @@ Central Authority checks require a nonempty result and verify the seeded
 record's casefile details; they do not assume generated identifiers or
 exactly ten records.
 
-The current seed contains only active Central Authorities. PO-10297 checks
-the empty result for active non-Central Authority creditors, malformed
-active-filter rejection and authentication. Its positive creditor retrieval
-acceptance criterion remains uncovered until approved non-Central Authority
-data exists. The seed also lacks inactive comparison rows, so these tests
-cannot prove exclusion using those rows. See the feature comment before
-the PO-10297 scenarios. Do not modify shared data to make these checks pass.
+PO-10297 positive coverage requires the DEV-only
+`data/dev/V1_33__insert_major_creditors_dev_data.sql`, applied through normal
+Flyway migration with `ddl`, `data/allEnvs` and `data/dev` selected. It adds
+three synthetic BU 44 records: active non-Central Authority `T901`, inactive
+non-Central Authority `T902`, and active Central Authority `T903`. The positive
+scenario requires T901's exact casefile details, excludes T902/T903, and allows
+additional qualifying creditors without assuming generated IDs or an exact
+result count. Malformed-filter and authentication scenarios remain covered.
+
+The DEV-only synthetic reference-data contract was approved by the requester
+on 2 October 2026; see `src/dbUnitTest/majorCreditorsDevDataTest/README.md`.
+Local disposable verification does not establish shared-environment deployment
+or QA sign-off. Positive coverage requires both approved data and a passing
+live scenario; an empty response cannot satisfy the positive acceptance
+criterion. Apply the forward DEV migration before executing
+positive functional tests.
+When reference caching is enabled, refresh affected BU 44 Major Creditor cache
+entries during migration rollout so positive scenarios see the new data; this
+is a deployment action, not a test setup or cleanup hook.
+Targets that select `allEnvs` without `dev` need approved equivalent seed data;
+do not enable DEV data in production or staging to make a test pass. Tests make
+read-only HTTP requests and never insert, update or clean up reference data.
+The migration resolves the existing Czech Republic Country uniquely and fails
+on missing/ambiguous Country data or colliding creditor keys. Flyway applies it
+once; direct reruns fail safely rather than overwriting existing records.
+See `src/dbUnitTest/majorCreditorsDevDataTest/README.md` for fresh/upgrade scope
+and database-boundary assertions.
+
+
+## Results reference-data functional prerequisites
+
+PO-10298 follows the Fines seeded-data pattern: all four scenarios use normal
+TEST_URL and the existing OPAL_USER_SERVICE_API_URL. The all-environment Results
+baseline contains MAT / Matrimonial Order for Adult, MCHILD / Maintenance Order
+for child(ren), and MLUMP / Lump sum order as the three active Order Terms.
+There are no inactive Order Terms. Normal service startup applies the configured
+Flyway locations; functional tests do not insert, delete or alter reference data.
+
+The empty live scenario requests order_term=true&active=false and asserts count
+0 with refData []. It is named for that inactive precondition. The original
+no-active-Order-Term condition is covered in ResultsDatabaseIntegrationTest with
+owned per-test rows and the exact order_term=true&active=true request. These are
+separate coverage statements. No special Results target URL or fixture database
+is required. Incompatible baseline data is a test failure, not a skip.
+
+Run the live parent scenarios:
+
+    ./gradlew functionalOpal -Dcucumber.filter.tags=@JIRA-STORY:PO-10298
+
+Validate discovery separately:
+
+    ./gradlew functionalOpal -Dcucumber.filter.tags=@JIRA-STORY:PO-10298 -Dcucumber.execution.dry-run=true
+
+Run assertion checks without a Cucumber tag property:
+
+    ./gradlew functionalOpal --tests 'uk.gov.hmcts.opal.steps.ResultsStepDefTest'
+
+Preserve scenario names, test/failure/error/skipped counts, exact command,
+elapsed time and non-sensitive setup notes before the next functionalOpal run
+clears reports. Discovery and HTTP mocks are not live API evidence. Review raw
+reports before sharing; never archive bearer headers, tokens or reusable
+connection credentials. A normal full functional/smoke run also needs the other
+journeys' documented data and compatible authentication service.
+
+## Result detail functional coverage
+
+PO-10301 uses the same normal TEST_URL and OPAL_USER_SERVICE_API_URL as the list
+scenarios. MLUMP / Lump sum order is supplied by the maintained all-environment
+baseline; ZZZZZZ is an explicitly unallocated identifier. Functional requests
+are read-only and need no synthetic inserts, fixture database or special detail
+URL. Existing authentication remains enabled.
+
+The three live scenarios verify selected seeded details and meaningful Amount
+metadata, correlated 404 for an absent identifier, and 401 without Result data
+for an unauthenticated request. MLUMP's Amount uses decimal-2dp, prompt “Amount
+of order”, mandatory true, minimum 0 and maximum 9999999999.99.
+
+Inactive retrieval (200), unfamiliar metadata passthrough (200), explicit SQL
+null and encoded [] are covered in ResultDatabaseIntegrationTest using owned
+per-test data and cache reset. The original active-empty list condition is
+separately covered in ResultsDatabaseIntegrationTest. These integration cases
+are not counted as live functional scenarios; this is the requester-approved
+coverage/data-strategy amendment to the original ticket requirements.
+
+Validate discovery:
+
+    ./gradlew functionalOpal '-Dcucumber.filter.tags=@JIRA-STORY:PO-10298 or @JIRA-STORY:PO-10301' -Dcucumber.execution.dry-run=true
+
+Run both stories live against the normal seeded service:
+
+    ./gradlew functionalOpal '-Dcucumber.filter.tags=@JIRA-STORY:PO-10298 or @JIRA-STORY:PO-10301'
+
+Expect seven Results scenarios: four list and three detail. Missing baseline
+records, an allocated absent identifier or incompatible authentication is a
+setup/test failure, never a skip or a reason to mutate reference data. Preserve
+non-sensitive reports before later invocations clear them. The full functional
+suite also needs all other documented reference-data prerequisites.

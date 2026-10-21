@@ -39,7 +39,8 @@ export LAUNCH_DARKLY_SDK_KEY='<sdk-key-from-approved-secret-store>'
 ```
 
 The test user is needed only for optional authenticated diagnostic flows. Those
-flows must also explicitly enable the testing-support endpoints:
+flows require testing support. Standalone Compose enables it by default; for
+Gradle/IDE runs, enable it explicitly:
 
 ```bash / zsh
 export TESTING_SUPPORT_ENDPOINTS_ENABLED=true
@@ -232,6 +233,18 @@ Functional and smoke tests require a suitable running service and use `TEST_URL`
 
 The [Bruno collection](bruno) contains requests for the service. See the
 [collection guide](bruno/README.md) for setup and use.
+
+### Synthetic Draft Casefile cleanup
+
+The opt-in test cleanup API removes eligible caller-owned `SUBMITTED` drafts
+using the ID returned by the real POST journey. Its application default is disabled;
+local Docker and dev/staging overlays enable testing support. Cleanup requires
+normal bearer authentication, permission 21 in the stored draft's BU and a matching
+submitter. It uses the shared testing-support flag with no per-endpoint identity
+settings. See [Synthetic Draft Casefile test cleanup](docs/DRAFT_CASEFILE_TEST_CLEANUP.md)
+for the request contract, operator configuration, ownership restrictions and
+Cypress capture/cleanup handoff, and [Testing](docs/TESTING.md#synthetic-draft-casefile-cleanup)
+for service verification. GET retrieval and frontend changes are separate work.
 
 ## Database migrations
 

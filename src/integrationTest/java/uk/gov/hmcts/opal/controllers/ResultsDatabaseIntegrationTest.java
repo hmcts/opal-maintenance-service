@@ -167,6 +167,18 @@ class ResultsDatabaseIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    void returnsNoActiveOrderTermsWhileExcludedResultsRemain() throws Exception {
+        jdbcTemplate.update("DELETE FROM public.results WHERE result_id IN ('OTAT01', 'OTAT02')");
+        assertThat(jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM public.results WHERE active = TRUE AND order_term = FALSE", Integer.class))
+            .isEqualTo(2);
+        assertThat(jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM public.results WHERE active = FALSE AND order_term = TRUE", Integer.class))
+            .isEqualTo(2);
+        assertEmptyResponse(performRequest(true, true));
+    }
+
+    @Test
     void returnsEmptyResponseWhenResultsTableIsEmpty() throws Exception {
         jdbcTemplate.update("""
             DELETE FROM public.results

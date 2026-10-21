@@ -27,7 +27,9 @@ public final class DraftCasefileHttpFixture {
     }
 
     public static OpalJwtAuthenticationToken token(short businessUnitId) {
-        return token(businessUnitId, "BUU-1", true);
+        return token(businessUnitId, 123L, "BUU-1", Set.of(new Permission(
+            MaintenancePermission.CREATE_MANAGE_DRAFT_CASEFILES.getId(),
+            MaintenancePermission.CREATE_MANAGE_DRAFT_CASEFILES.getDescription())));
     }
 
     public static OpalJwtAuthenticationToken token(
@@ -37,7 +39,12 @@ public final class DraftCasefileHttpFixture {
             ? Set.of(new Permission(MaintenancePermission.CREATE_MANAGE_DRAFT_CASEFILES.getId(),
                 MaintenancePermission.CREATE_MANAGE_DRAFT_CASEFILES.getDescription()))
             : Set.of();
-        UserStateV2 state = UserStateV2.builder().userId(123L).name("Synthetic Submitter")
+        return token(businessUnitId, 123L, businessUnitUserId, permissions);
+    }
+
+    public static OpalJwtAuthenticationToken token(short businessUnitId, long userId, String businessUnitUserId,
+                                                   Set<Permission> permissions) {
+        UserStateV2 state = UserStateV2.builder().userId(userId).name("Synthetic Submitter")
             .domains(Map.of(Domain.MAINTENANCE, new DomainBusinessUnitUsers(List.of(
                 new BusinessUnitUser(businessUnitUserId, businessUnitId, permissions))))).build();
         Jwt jwt = Jwt.withTokenValue("synthetic-test-token").header("alg", "none").claim("sub", "synthetic-user")

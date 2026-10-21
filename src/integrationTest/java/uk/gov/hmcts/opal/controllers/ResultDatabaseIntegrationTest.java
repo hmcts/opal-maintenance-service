@@ -78,7 +78,7 @@ class ResultDatabaseIntegrationTest extends BaseIntegrationTest {
 
     @Test
     void includesExplicitSqlNullMetadata() throws Exception {
-        JsonNode json = getResult("NOAT01");
+        JsonNode json = getResult("OTAT02");
         assertThat(json.has("result_parameters")).isTrue();
         assertThat(json.get("result_parameters").isNull()).isTrue();
         assertThat(json.size()).isEqualTo(3);
@@ -89,8 +89,20 @@ class ResultDatabaseIntegrationTest extends BaseIntegrationTest {
         "{ \"spaced\": [1, 2], \"escaped\": \"a\\n\" }"})
     void returnsJsonAsAnUnchangedString(String metadata) throws Exception {
         jdbcTemplate.update("UPDATE public.results SET result_parameters = ?::json WHERE result_id = ?",
-            metadata, "NOAF01");
-        JsonNode json = getResult("NOAF01");
+            metadata, "OTAF01");
+        JsonNode json = getResult("OTAF01");
+        assertThat(json.path("result_parameters").isTextual()).isTrue();
+        assertThat(json.path("result_parameters").asText()).isEqualTo(metadata);
+    }
+
+    @Test
+    void returnsUnfamiliarOrderTermMetadataUnchanged() throws Exception {
+        String metadata = "[{\"name\":\"Custom\",\"type\":\"synthetic-unfamiliar\",\"mandatory\":false}]";
+        jdbcTemplate.update("UPDATE public.results SET result_parameters = ?::json WHERE result_id = ?",
+            metadata, "OTAF01");
+        JsonNode json = getResult("OTAF01");
+        assertThat(json.path("result_id").asText()).isEqualTo("OTAF01");
+        assertThat(json.path("result_title").asText()).isEqualTo("Alpha Order Inactive");
         assertThat(json.path("result_parameters").isTextual()).isTrue();
         assertThat(json.path("result_parameters").asText()).isEqualTo(metadata);
     }

@@ -1,5 +1,7 @@
 package uk.gov.hmcts.opal.controllers.advice;
 
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -18,6 +20,7 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import uk.gov.hmcts.common.exceptions.standard.UnauthorizedException;
@@ -60,6 +63,22 @@ class MaintenanceGlobalExceptionHandlerIntegrationTest extends BaseIntegrationTe
             .andExpect(jsonPath("$.instance").isNotEmpty())
             .andExpect(jsonPath("$.operation_id").isNotEmpty())
             .andExpect(jsonPath("$.retriable").value(false));
+    }
+
+    @Test
+    void returnsSafeBadRequestWhenRequiredHeaderIsMissing() throws Exception {
+        mockMvc.perform(get("/test-support/header-validation")
+                .header("Unrelated-Header", "synthetic-header-value")
+                .with(user("test-user")))
+            .andExpect(status().isBadRequest())
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+            .andExpect(jsonPath("$.type").value("https://hmcts.gov.uk/problems/missing-header"))
+            .andExpect(jsonPath("$.title").value("Missing Required Header"))
+            .andExpect(jsonPath("$.detail").value("Required request header \"Test-Run-Reference\" is missing"))
+            .andExpect(jsonPath("$.status").value(400))
+            .andExpect(jsonPath("$.operation_id").isNotEmpty())
+            .andExpect(jsonPath("$.retriable").value(false))
+            .andExpect(content().string(not(containsString("synthetic-header-value"))));
     }
 
     @Test
@@ -121,6 +140,11 @@ class MaintenanceGlobalExceptionHandlerIntegrationTest extends BaseIntegrationTe
         @GetMapping("/test-support/request-validation")
         String validate(@RequestParam(name = "value") @Min(1) Integer value) {
             return value.toString();
+        }
+
+        @GetMapping("/test-support/header-validation")
+        String validateHeader(@RequestHeader("Test-Run-Reference") String testRunReference) {
+            return testRunReference;
         }
 
         @GetMapping("/test-support/internal-constraint")
