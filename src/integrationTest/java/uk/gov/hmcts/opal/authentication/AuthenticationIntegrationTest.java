@@ -182,7 +182,7 @@ class AuthenticationIntegrationTest extends BaseIntegrationTest {
 
     @Test
     void leavesDisabledTestingSupportEndpointsAbsent() throws Exception {
-        var syntheticUser = authentication(DraftCasefileHttpFixture.token((short) 44, "L044JG", true));
+        var syntheticUser = authentication(DraftCasefileHttpFixture.token((short) 1));
         mockMvc.perform(get("/testing-support/ping").with(syntheticUser))
             .andExpect(status().isNotFound());
         mockMvc.perform(get("/testing-support/auth/check").with(syntheticUser))

@@ -73,6 +73,9 @@ rejection cases use unknown application `ZZ99999`, inactive country CJS code
 reference data; missing or changed prerequisites are an environment-readiness
 failure, not a reason to substitute mocks or create shared records.
 
+The historical country example uses an inactive retired record, matching the
+current active-flag validation.
+
 Enable `TESTING_SUPPORT_ENDPOINTS_ENABLED=true` only in the agreed non-live
 environment. A successful create is cleaned up with the merged
 `DELETE /testing-support/draft-casefiles/{id}` API. Each scenario generates an
@@ -99,6 +102,20 @@ assertions are integration coverage, not deployed functional evidence.
 Server-error mapping and transaction rollback are verified by the controller and
 database integration suites using persistence failures. The deployed functional
 scenarios do not inject server failures or claim deployed rollback coverage.
+
+The ticket's acceptance criteria are covered as follows:
+
+| Acceptance criterion | Deployed functional coverage | Supporting integration coverage |
+| --- | --- | --- |
+| Create a submitted Draft Casefile with backend identity, submitter, snapshot and timeline | Authorised create example checks the POST response | `createsCommittedDraftWithUnchangedJsonDerivedDataAndAfterCommitLogs` verifies the committed row and derived JSON |
+| Reject creation without Business Unit permission | Permission-denied example | `DraftCasefileAuthenticationIntegrationTest` verifies denied creation leaves no row |
+| Reject unknown, inactive or out-of-date references | Unknown application, inactive country and historical country examples | `rejectsBadReferenceWithoutRowOrLog` verifies rejected validation leaves no row; validator tests cover reference rules |
+| Return a correlated failure without retaining a partial Draft Casefile, snapshot or timeline | No deployed failure injection | `rollsBackSavedRowWhenPersistenceFails` verifies correlated 500/503 problems, absent success fields, row rollback and no publication in the same request |
+
+Snapshot and timeline data are stored in the draft row, so verifying that no draft
+row remains also verifies that no partial snapshot or timeline was retained.
+The failure criterion is integration evidence, not a sixth deployed functional
+example.
 
 Run the functional helper regression tests without a Cucumber tag property.
 Cucumber also discovers its suite during filtered runs, so use dry-run mode to

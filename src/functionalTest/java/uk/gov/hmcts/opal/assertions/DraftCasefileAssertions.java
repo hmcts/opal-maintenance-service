@@ -78,10 +78,6 @@ public final class DraftCasefileAssertions {
             "An error occurred while processing your request", marker);
     }
 
-    public static void assertCleanup(Response response) {
-        assertEquals(204, response.statusCode());
-    }
-
     private static void assertSafeProblem(Response response, int status, String type, String title, String detail,
                                           String marker) throws IOException {
         JsonNode body = OBJECT_MAPPER.readTree(response.asString());

@@ -32,16 +32,6 @@ public final class DraftCasefileHttpFixture {
             MaintenancePermission.CREATE_MANAGE_DRAFT_CASEFILES.getDescription())));
     }
 
-    public static OpalJwtAuthenticationToken token(
-        short businessUnitId, String businessUnitUserId, boolean permitted
-    ) {
-        Set<Permission> permissions = permitted
-            ? Set.of(new Permission(MaintenancePermission.CREATE_MANAGE_DRAFT_CASEFILES.getId(),
-                MaintenancePermission.CREATE_MANAGE_DRAFT_CASEFILES.getDescription()))
-            : Set.of();
-        return token(businessUnitId, 123L, businessUnitUserId, permissions);
-    }
-
     public static OpalJwtAuthenticationToken token(short businessUnitId, long userId, String businessUnitUserId,
                                                    Set<Permission> permissions) {
         UserStateV2 state = UserStateV2.builder().userId(userId).name("Synthetic Submitter")

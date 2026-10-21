@@ -52,13 +52,6 @@ class DraftCasefileAssertionsTest {
         assertSafeProblem(400, DraftCasefileAssertions::assertReferenceProblem);
     }
 
-    @Test
-    void acceptsSuccessfulCleanupAndRejectsFailure() {
-        DraftCasefileAssertions.assertCleanup(response(204, null, "", null, null));
-        assertThrows(AssertionError.class, () -> DraftCasefileAssertions.assertCleanup(
-            response(500, "application/problem+json", "{}", null, null)));
-    }
-
     private void assertSafeProblem(int status, ProblemCheck check) throws Exception {
         String detail = status == 403 ? "You do not have permission to access this resource"
             : "An error occurred while processing your request";

@@ -13,7 +13,6 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.InvalidDataAccessResourceUsageException;
 import org.springframework.http.MediaType;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.TestPropertySource;
@@ -51,6 +50,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.context.jdbc.Sql.ExecutionPhase.AFTER_TEST_METHOD;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -76,8 +76,6 @@ class DraftCasefileDatabaseIntegrationTest extends BaseIntegrationTest {
     private EntityManager entityManager;
     @Autowired
     private PlatformTransactionManager transactionManager;
-    @Autowired
-    private JdbcTemplate jdbc;
     @MockitoSpyBean
     private DraftCasefileRepository repository;
     @MockitoSpyBean
@@ -211,17 +209,29 @@ class DraftCasefileDatabaseIntegrationTest extends BaseIntegrationTest {
     void rollsBackSavedRowWhenPersistenceFails(boolean unavailable) throws Exception {
         doAnswer(invocation -> {
             repository.saveAndFlush(invocation.getArgument(0));
-            assertThat(jdbc.queryForObject(
-                "SELECT count(*) FROM draft_casefiles WHERE business_unit_id=1", Integer.class))
-                .isEqualTo(1);
+            assertThat(repository.count()).isEqualTo(1);
             if (unavailable) {
                 throw new DataAccessResourceFailureException("Synthetic unavailable database");
             }
             throw new InvalidDataAccessResourceUsageException("Synthetic persistence failure");
         }).when(repository).save(any());
-        mockMvc.perform(post("/draft-casefiles").with(authentication(DraftCasefileHttpFixture.token((short) 1)))
+        int expectedStatus = unavailable ? 503 : 500;
+        String response = mockMvc.perform(post("/draft-casefiles")
+                .with(authentication(DraftCasefileHttpFixture.token((short) 1)))
                 .contentType(MediaType.APPLICATION_JSON).content(validBody))
-            .andExpect(status().is(unavailable ? 503 : 500));
+            .andExpect(status().is(expectedStatus))
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+            .andExpect(jsonPath("$.status").value(expectedStatus))
+            .andExpect(jsonPath("$.operation_id").isNotEmpty())
+            .andExpect(jsonPath("$.draft_casefile_id").doesNotExist())
+            .andExpect(jsonPath("$.casefile_snapshot").doesNotExist())
+            .andExpect(jsonPath("$.timeline_data").doesNotExist())
+            .andReturn().getResponse().getContentAsString();
+        JsonNode problem = JSON.readTree(response);
+        assertThat(problem.path("operation_id").stringValue()).isNotBlank();
+        assertThat(problem.path("instance").stringValue()).isEqualTo(
+            "https://hmcts.gov.uk/problems/instance/" + problem.path("operation_id").stringValue());
+        assertThat(response).doesNotContain("Synthetic unavailable database", "Synthetic persistence failure");
         assertNoDraftOrLog();
     }
 
