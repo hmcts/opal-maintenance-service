@@ -79,6 +79,8 @@ class DraftCasefilePersonalDataLoggingTransactionIntegrationTest extends BaseInt
     private DraftCasefileMapper mapper;
     @Autowired
     private JdbcTemplate jdbc;
+    @Autowired
+    private DraftCasefileParticipantCategoryResolver categoryResolver;
     @MockitoBean
     private LoggingService logging;
     private Long savedId;
@@ -145,6 +147,40 @@ class DraftCasefilePersonalDataLoggingTransactionIntegrationTest extends BaseInt
         assertThat(details.getAllValues()).allSatisfy(entry -> {
             assertThat(entry.getCategory()).isEqualTo(PersonalDataProcessingCategory.CONSULTATION);
             assertThat(entry.getCreatedAt().toInstant()).isEqualTo(SUBMITTED);
+        });
+    }
+
+    @Test
+    void viewWithMultipleIndividualsPerCategoryLogsDraftIdentifierOnceAfterCommit() {
+        var casefile = JsonMapper.builder().build().readTree("""
+            {"minor_creditors":[
+              {"party_details":{"individual_details":{"surname":"Synthetic One"}},
+               "bank_account_details":{"uk_bank_details":{"account_name":"Synthetic Bank One"}}},
+              {"party_details":{"individual_details":{"surname":"Synthetic Two"}},
+               "bank_account_details":{"uk_bank_details":{"account_name":"Synthetic Bank Two"}}}
+            ]}
+            """);
+        when(logging.personalDataAccessLogAsync(any())).thenReturn(true);
+        TransactionTemplate readOnly = new TransactionTemplate(transactionManager);
+        readOnly.setReadOnly(true);
+        readOnly.executeWithoutResult(transaction -> {
+            events.publishEvent(new DraftCasefilePersonalDataEvent(Operation.VIEW, 123L, 99L,
+                "192.0.2.1", SUBMITTED, categoryResolver.resolve(casefile)));
+            verifyNoInteractions(logging);
+        });
+
+        var captured = ArgumentCaptor.forClass(PersonalDataProcessingLogDetails.class);
+        verify(logging, times(4)).personalDataAccessLogAsync(captured.capture());
+        assertThat(captured.getAllValues()).extracting(PersonalDataProcessingLogDetails::getBusinessIdentifier)
+            .containsExactlyInAnyOrder("View Draft Casefile - Respondent",
+                "View Draft Casefile - Applicant / Beneficiary", "View Draft Casefile - Related parties",
+                "View Draft Casefile - Minor Creditor");
+        assertThat(captured.getAllValues()).allSatisfy(details -> {
+            assertThat(details.getCategory()).isEqualTo(PersonalDataProcessingCategory.CONSULTATION);
+            assertThat(details.getIndividuals()).singleElement().satisfies(identifier -> {
+                assertThat(identifier.getIdentifier()).isEqualTo("123");
+                assertThat(identifier.getType().getType()).isEqualTo("DRAFT_CASEFILE");
+            });
         });
     }
 
