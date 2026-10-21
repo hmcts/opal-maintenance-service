@@ -27,24 +27,24 @@ representative data for the behavior under test.
 
 Never put a bearer token in a tracked file or command-line argument.
 
-### PR User Service access
+### User Service access
 
-Jenkins uses the same direct HTTPS access pattern as Fines. Without an
-`enable_opal_user_service` label, `OPAL_USER_SERVICE_API_URL` points to the shared
-staging User Service. With that label, Jenkins enables the PR User Service and
-uses `https://opal-maintenance-service-pr-<PR-number>-user-service.dev.platform.hmcts.net`,
-matching its dev Helm ingress. The `enable_opal_user_service:pr-<number>` variant
-also selects a specific User Service PR image; the plain label uses `latest`.
+Draft Casefile functional tests use existing test users and their assigned
+Maintenance permissions. Jenkins defaults `OPAL_USER_SERVICE_API_URL` to the
+shared staging User Service. These tests do not require an
+`enable_opal_user_service` label, a separate User Service deployment, user or role
+provisioning, or changes to User Service configuration.
 
-The test token helper calls `/testing-support/token/user` on the selected URL.
-The labelled PR User Service exposes its enabled testing-support routes through
-that dev ingress. Its existing test-data and legacy-gateway configuration supplies
-the authentication prerequisites. Local runs continue to use
-`OPAL_USER_SERVICE_API_URL`, defaulting to `http://localhost:4555`.
+The token helper calls `/testing-support/token/user` on the configured User
+Service. The authorised scenario submits a synthetic casefile, captures its ID,
+asserts the response and deletes it through Maintenance testing support using
+the same user and run marker. Rejection scenarios use existing users and
+reference data; the prerequisites below must already be satisfied.
 
-The PR pipeline must verify token acquisition and the functional scenarios through
-the deployed ingress. A passing local run does not prove Jenkins-to-ingress
-connectivity. Testing support must remain disabled in production deployments.
+Local runs continue to use `OPAL_USER_SERVICE_API_URL`, defaulting to
+`http://localhost:4555`. A passing local run does not verify the shared staging
+users, permissions or Jenkins connectivity; CI must exercise those prerequisites.
+Testing support must remain disabled in production deployments.
 
 ### Draft Casefile deployed API journeys (PO-10287)
 
