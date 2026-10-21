@@ -161,7 +161,7 @@ class DraftCasefileAuthenticationIntegrationTest extends BaseIntegrationTest {
         stubUserState(1, "[{\"permission_id\":%d,\"permission_name\":\"Synthetic permission\"}]".formatted(permission));
         String response = mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
                 .get("/draft-casefiles/{id}", id)
-                .header(HttpHeaders.AUTHORIZATION, "Bearer " + signedToken(Instant.now().plusSeconds(300))))
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + AUTH.signedToken(Instant.now().plusSeconds(300))))
             .andExpect(status().isOk()).andExpect(header().string("ETag", "\"0\""))
             .andExpect(jsonPath("$.casefile_status").value("SUBMITTED"))
             .andExpect(jsonPath("$.casefile.respondent_account.respondent.party_details.individual_details.surname")
@@ -190,7 +190,7 @@ class DraftCasefileAuthenticationIntegrationTest extends BaseIntegrationTest {
         }
         String response = mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
                 .get("/draft-casefiles/{id}", id)
-                .header(HttpHeaders.AUTHORIZATION, "Bearer " + signedToken(Instant.now().plusSeconds(300))))
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + AUTH.signedToken(Instant.now().plusSeconds(300))))
             .andExpect(status().isForbidden()).andExpect(jsonPath("$.operation_id").isNotEmpty())
             .andReturn().getResponse().getContentAsString();
         assertThat(response).doesNotContain("Synthetic address", "Example");
@@ -203,7 +203,7 @@ class DraftCasefileAuthenticationIntegrationTest extends BaseIntegrationTest {
     @ValueSource(booleans = {false, true})
     void invalidOrExpiredJwtCannotRetrieveBeforeUserLookup(boolean expired) throws Exception {
         long id = submitDraft();
-        String token = expired ? signedToken(Instant.now().minusSeconds(120)) : "not-a-jwt";
+        String token = expired ? AUTH.signedToken(Instant.now().minusSeconds(120)) : "not-a-jwt";
         String response = mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
                 .get("/draft-casefiles/{id}", id).header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
             .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.operation_id").isNotEmpty())
@@ -221,7 +221,7 @@ class DraftCasefileAuthenticationIntegrationTest extends BaseIntegrationTest {
             .withBody("SYNTHETIC_PRIVATE_USER_SERVICE_VALUE")));
         HttpRequest request = HttpRequest.newBuilder()
             .uri(URI.create("http://localhost:" + serverPort + "/draft-casefiles/" + id))
-            .header(HttpHeaders.AUTHORIZATION, "Bearer " + signedToken(Instant.now().plusSeconds(300)))
+            .header(HttpHeaders.AUTHORIZATION, "Bearer " + AUTH.signedToken(Instant.now().plusSeconds(300)))
             .GET().build();
         HttpResponse<String> response = HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
         assertThat(response.statusCode()).isEqualTo(500);
@@ -235,7 +235,7 @@ class DraftCasefileAuthenticationIntegrationTest extends BaseIntegrationTest {
     private long submitDraft() throws Exception {
         stubUserState(1);
         String response = mockMvc.perform(post("/draft-casefiles")
-                .header(HttpHeaders.AUTHORIZATION, "Bearer " + signedToken(Instant.now().plusSeconds(300)))
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + AUTH.signedToken(Instant.now().plusSeconds(300)))
                 .contentType(MediaType.APPLICATION_JSON).content(DraftCasefileHttpFixture.requestBody()))
             .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
         clearInvocations(logging);
