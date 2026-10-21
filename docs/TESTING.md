@@ -27,6 +27,104 @@ representative data for the behavior under test.
 
 Never put a bearer token in a tracked file or command-line argument.
 
+### User Service access
+
+Draft Casefile functional tests use existing test users and their assigned
+Maintenance permissions. Jenkins defaults `OPAL_USER_SERVICE_API_URL` to the
+shared staging User Service. These tests do not require an
+`enable_opal_user_service` label, a separate User Service deployment, user or role
+provisioning, or changes to User Service configuration.
+
+The token helper calls `/testing-support/token/user` on the configured User
+Service. The authorised scenario submits a synthetic casefile, captures its ID,
+asserts the response and deletes it through Maintenance testing support using
+the same user and run marker. Rejection scenarios use existing users and
+reference data; the prerequisites below must already be satisfied.
+
+Local runs continue to use `OPAL_USER_SERVICE_API_URL`, defaulting to
+`http://localhost:4555`. A passing local run does not verify the shared staging
+users, permissions or Jenkins connectivity; CI must exercise those prerequisites.
+Testing support must remain disabled in production deployments.
+
+### Draft Casefile deployed API journeys (PO-10287)
+
+The five `@PO10287` scenario examples cover authorised creation, permission
+denial, unknown application, inactive country and historical country. They
+exercise the deployed Maintenance and User services in an agreed non-live
+environment. Set both `TEST_URL` (Maintenance Service) and
+`OPAL_USER_SERVICE_API_URL` (User Service) to the intended environment before
+running either command; their localhost defaults are not suitable for deployed
+verification. Do not put account passwords or bearer values in the command or
+tracked files.
+
+```bash
+./gradlew functionalOpal -Dcucumber.filter.tags='@PO10287' -Dcucumber.execution.dry-run=true
+./gradlew functionalOpal -Dcucumber.filter.tags='@PO10287'
+```
+
+The environment must already contain the authorised account
+`opal-test@dev.platform.hmcts.net`, the account without Draft Casefile create
+permission `opal-test-2@dev.platform.hmcts.net`, Business Unit 44, the
+authorised user's Business Unit User ID `L044JG`, and Create and Manage Draft
+Casefiles permission 21. The live reference set must include active Maintenance
+Application `AP00001`, active country CJS code `1`, and result `MAT`. The
+rejection cases use unknown application `ZZ99999`, inactive country CJS code
+`0`, and historical country CJS code `2`. The tests never provision users or
+reference data; missing or changed prerequisites are an environment-readiness
+failure, not a reason to substitute mocks or create shared records.
+
+The historical country example uses an inactive retired record, matching the
+current active-flag validation.
+
+Enable `TESTING_SUPPORT_ENDPOINTS_ENABLED=true` only in the agreed non-live
+environment. A successful create is cleaned up with the merged
+`DELETE /testing-support/draft-casefiles/{id}` API. Each scenario generates an
+`E2E-` marker followed by 16 lowercase hexadecimal characters and sets
+`casefile.respondent_account.remo_reference` to that value. Cleanup sends the
+same marker in the required `Test-Run-Reference` header, accepts
+`application/problem+json` as declared by the generated cleanup route, and uses the bearer token
+captured when that draft was created. The ID is captured before response
+assertions, so the after hook still attempts cleanup when an assertion fails.
+An HTTP 204 confirms cleanup; a failed cleanup fails an otherwise passing scenario,
+or attaches the ID, marker and safe failure reason to an already failed scenario.
+No bearer values or response payloads are included in cleanup failure evidence.
+See the [cleanup guide](DRAFT_CASEFILE_TEST_CLEANUP.md) for ownership, lifecycle,
+enablement and retry requirements.
+
+The merged support API provides deletion only, with no inspection or marker-search
+route. Functional assertions check the real POST response, including snapshot,
+timeline, ETag and correlated permission/reference errors. Persistence,
+rejected-request row absence and rollback are verified by `DraftCasefileDatabaseIntegrationTest` and
+`DraftCasefileAuthenticationIntegrationTest`; cleanup isolation and actual row
+removal are verified by `DraftCasefileCleanupIntegrationTest`. These database
+assertions are integration coverage, not deployed functional evidence.
+
+Server-error mapping and transaction rollback are verified by the controller and
+database integration suites using persistence failures. The deployed functional
+scenarios do not inject server failures or claim deployed rollback coverage.
+
+The ticket's acceptance criteria are covered as follows:
+
+| Acceptance criterion | Deployed functional coverage | Supporting integration coverage |
+| --- | --- | --- |
+| Create a submitted Draft Casefile with backend identity, submitter, snapshot and timeline | Authorised create example checks the POST response | `createsCommittedDraftWithUnchangedJsonDerivedDataAndAfterCommitLogs` verifies the committed row and derived JSON |
+| Reject creation without Business Unit permission | Permission-denied example | `DraftCasefileAuthenticationIntegrationTest` verifies denied creation leaves no row |
+| Reject unknown, inactive or out-of-date references | Unknown application, inactive country and historical country examples | `rejectsBadReferenceWithoutRowOrLog` verifies rejected validation leaves no row; validator tests cover reference rules |
+| Return a correlated failure without retaining a partial Draft Casefile, snapshot or timeline | No deployed failure injection | `rollsBackSavedRowWhenPersistenceFails` verifies correlated 500/503 problems, absent success fields, row rollback and no publication in the same request |
+
+Snapshot and timeline data are stored in the draft row, so verifying that no draft
+row remains also verifies that no partial snapshot or timeline was retained.
+The failure criterion is integration evidence, not a sixth deployed functional
+example.
+
+Run the functional helper regression tests without a Cucumber tag property.
+Cucumber also discovers its suite during filtered runs, so use dry-run mode to
+disable scenario actions while the JUnit helper tests execute normally:
+
+```bash
+./gradlew functionalOpal --tests 'uk.gov.hmcts.opal.*.DraftCasefile*Test' -Dcucumber.execution.dry-run=true
+```
+
 ## Database migration validation
 
 Normal Docker Compose use is a persistent local-development workflow.

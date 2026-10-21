@@ -5,11 +5,10 @@ import io.restassured.config.LogConfig;
 import io.restassured.config.RestAssuredConfig;
 import io.restassured.response.Response;
 import io.restassured.specification.RequestSpecification;
+import java.time.Duration;
 import net.serenitybdd.rest.SerenityRest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-
-import java.time.Duration;
 
 public abstract class BaseStepDef {
 
@@ -43,6 +42,23 @@ public abstract class BaseStepDef {
 
     protected static Response getWithoutBearer(String serviceUrl, String path) {
         return jsonRequest().when().get(withoutTrailingSlash(serviceUrl) + path);
+    }
+
+    protected static Response postWithBearer(String path, String token, String body) {
+        return jsonRequest()
+            .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+            .body(body)
+            .when()
+            .post(TEST_URL + path);
+    }
+
+    protected static Response deleteWithBearer(String path, String token, String testRunReference) {
+        return jsonRequest()
+            .accept(MediaType.APPLICATION_PROBLEM_JSON_VALUE)
+            .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+            .header("Test-Run-Reference", testRunReference)
+            .when()
+            .delete(TEST_URL + path);
     }
 
     protected static String userServiceUrl() {

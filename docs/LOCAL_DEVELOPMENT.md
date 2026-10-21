@@ -161,6 +161,10 @@ configuration, following Fines. Gradle/IntelliJ do not automatically load
 `.env.shared`; set the shared enablement flag in your shell/private run configuration.
 See the [cleanup guide](DRAFT_CASEFILE_TEST_CLEANUP.md) for the full contract.
 
+See the Draft Casefile
+[functional prerequisites](TESTING.md#draft-casefile-deployed-api-journeys-po-10287)
+for the required users, reference data, marker and cleanup header.
+
 ## Common problems
 
 - **Port 4551 is already in use:** stop the Docker Maintenance Service container
