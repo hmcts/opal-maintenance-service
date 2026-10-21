@@ -13,9 +13,11 @@ import uk.gov.hmcts.opal.common.user.authorisation.model.UserStateV2;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 public final class DraftCasefileHttpFixture {
 
@@ -27,9 +29,14 @@ public final class DraftCasefileHttpFixture {
     }
 
     public static OpalJwtAuthenticationToken token(short businessUnitId) {
-        return token(businessUnitId, 123L, "BUU-1", Set.of(new Permission(
-            MaintenancePermission.CREATE_MANAGE_DRAFT_CASEFILES.getId(),
-            MaintenancePermission.CREATE_MANAGE_DRAFT_CASEFILES.getDescription())));
+        return token(businessUnitId, MaintenancePermission.CREATE_MANAGE_DRAFT_CASEFILES);
+    }
+
+    public static OpalJwtAuthenticationToken token(short businessUnitId, MaintenancePermission... permissions) {
+        Set<Permission> granted = Arrays.stream(permissions)
+            .map(permission -> new Permission(permission.getId(), permission.getDescription()))
+            .collect(Collectors.toSet());
+        return token(businessUnitId, 123L, "BUU-1", granted);
     }
 
     public static OpalJwtAuthenticationToken token(short businessUnitId, long userId, String businessUnitUserId,
