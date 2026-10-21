@@ -76,8 +76,7 @@ opal-user-service:
   java:
     releaseNameOverride: '{{ .Release.Name }}-user-service'
     image: 'hmctsprod.azurecr.io/opal/user-service:${DEV_OPAL_USER_SERVICE_IMAGE_SUFFIX}'
-    # Testing-support token minting must not be exposed outside the cluster.
-    ingressHost: ""
+    ingressHost: "opal-maintenance-service-pr-${CHANGE_ID}-user-service.dev.platform.hmcts.net"
     keyVaults:
       opal:
         secrets:

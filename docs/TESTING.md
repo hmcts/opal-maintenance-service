@@ -27,6 +27,25 @@ representative data for the behavior under test.
 
 Never put a bearer token in a tracked file or command-line argument.
 
+### PR User Service access
+
+Jenkins uses the same direct HTTPS access pattern as Fines. Without an
+`enable_opal_user_service` label, `OPAL_USER_SERVICE_API_URL` points to the shared
+staging User Service. With that label, Jenkins enables the PR User Service and
+uses `https://opal-maintenance-service-pr-<PR-number>-user-service.dev.platform.hmcts.net`,
+matching its dev Helm ingress. The `enable_opal_user_service:pr-<number>` variant
+also selects a specific User Service PR image; the plain label uses `latest`.
+
+The test token helper calls `/testing-support/token/user` on the selected URL.
+The labelled PR User Service exposes its enabled testing-support routes through
+that dev ingress. Its existing test-data and legacy-gateway configuration supplies
+the authentication prerequisites. Local runs continue to use
+`OPAL_USER_SERVICE_API_URL`, defaulting to `http://localhost:4555`.
+
+The PR pipeline must verify token acquisition and the functional scenarios through
+the deployed ingress. A passing local run does not prove Jenkins-to-ingress
+connectivity. Testing support must remain disabled in production deployments.
+
 ### Draft Casefile deployed API journeys (PO-10287)
 
 The `@PO10287` scenarios exercise the deployed Maintenance and User services in

@@ -1,6 +1,5 @@
 #!groovy
 import uk.gov.hmcts.contino.GithubAPI
-import uk.gov.hmcts.contino.Kubectl
 
 @Library("Infrastructure@2.12.2")
 
@@ -8,7 +7,7 @@ def type = "java"
 def product = "opal"
 def component = "maintenance-service"
 
-def configurePrUserService(String namespace) {
+def configurePrUserService() {
   env.DEV_ENABLE_OPAL_USER_SERVICE = false
   env.DEV_OPAL_USER_SERVICE_IMAGE_SUFFIX = 'latest'
   env.OPAL_USER_SERVICE_API_URL = 'https://opal-user-service.staging.platform.hmcts.net'
@@ -21,9 +20,8 @@ def configurePrUserService(String namespace) {
   for (label in githubApi.getLabelsbyPattern(env.BRANCH_NAME, 'enable_opal_')) {
     if (label ==~ /enable_opal_user_service.*/) {
       env.DEV_ENABLE_OPAL_USER_SERVICE = true
-      // The labelled User Service enables token-minting test support, so use only cluster DNS.
       env.OPAL_USER_SERVICE_API_URL =
-        "http://opal-maintenance-service-pr-${env.CHANGE_ID}-user-service.${namespace}.svc.cluster.local"
+        "https://opal-maintenance-service-pr-${env.CHANGE_ID}-user-service.dev.platform.hmcts.net"
 
       if (label ==~ /enable_opal_user_service:pr-.*/) {
         env.DEV_OPAL_USER_SERVICE_IMAGE_SUFFIX =
@@ -40,33 +38,7 @@ withPipeline(type, product, component) {
 
   before('akschartsinstall') {
     onPR {
-      configurePrUserService(product)
-    }
-  }
-
-  before('functionalTest:dev') {
-    onPR {
-      if (env.DEV_ENABLE_OPAL_USER_SERVICE == 'true') {
-        withAksClient('dev', 'dev', product) {
-          def kubectl = new Kubectl(this, 'dev', product)
-          kubectl.login()
-          String userService = "opal-maintenance-service-pr-${env.CHANGE_ID}-user-service"
-          String port = steps.sh(
-            script: "bash src/functionalTest/resources/user-service/port-forward.sh start "
-              + "'${product}' '${userService}'",
-            returnStdout: true
-          ).trim()
-          env.OPAL_USER_SERVICE_API_URL = "http://127.0.0.1:${port}"
-        }
-      }
-    }
-  }
-
-  afterAlways('functionalTest:dev') {
-    onPR {
-      if (env.DEV_ENABLE_OPAL_USER_SERVICE == 'true') {
-        steps.sh 'bash src/functionalTest/resources/user-service/port-forward.sh stop'
-      }
+      configurePrUserService()
     }
   }
 }
