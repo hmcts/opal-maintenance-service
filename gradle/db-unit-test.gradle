@@ -3,11 +3,15 @@ import org.gradle.api.GradleException
 import org.gradle.api.tasks.PathSensitivity
 
 def dbUnitTestDockerfile = file("${rootDir}/docker/postgres-pgtap.Dockerfile")
-def dbUnitTestMigrationDirectories = [
-  file("${rootDir}/src/main/resources/db/migration/ddl"),
-  file("${rootDir}/src/main/resources/db/migration/data/allEnvs"),
-  file("${rootDir}/src/main/resources/db/migration/data/dev")
+def dbUnitTestProfiles = [
+  [name: 'non-live-dev', locations: ['ddl', 'data/allEnvs', 'data/nle', 'data/dev']],
+  [name: 'non-live', locations: ['ddl', 'data/allEnvs', 'data/nle']]
 ]
+def dbUnitTestMigrationDirectories = dbUnitTestProfiles.collectMany { profile ->
+  profile.locations.collect { location ->
+    file("${rootDir}/src/main/resources/db/migration/${location}")
+  }
+}.unique()
 def dbUnitTestSqlFiles = fileTree("${rootDir}/src/dbUnitTest") {
   include '**/*_pgtap_tests.sql'
   include '**/*_unit_tests.sql'
@@ -43,6 +47,8 @@ def requireSuccessfulDbUnitTestCommand = { String description, List<String> comm
   result
 }
 
+def runFreshDbUnitTestProfile
+
 tasks.register('dbUnitTest') {
   description = 'Runs database-owned pgTAP tests against disposable PostgreSQL'
   group = 'Verification'
@@ -56,16 +62,63 @@ tasks.register('dbUnitTest') {
   outputs.upToDateWhen { false }
 
   doLast {
+    def rootReportDirectory = layout.buildDirectory.dir('reports/dbUnitTest').get().asFile
+    rootReportDirectory.mkdirs()
+    ['pg-prove.log', 'framework-self-test.log'].each { staleName ->
+      new File(rootReportDirectory, staleName).delete()
+    }
+    def aggregateReport = new File(rootReportDirectory, 'summary.txt')
+    aggregateReport.text = 'Result: RUNNING\n'
+    def profileFailures = []
+    def profileOutcomes = []
+    dbUnitTestProfiles.each { profile ->
+      def profileReportDirectory = new File(rootReportDirectory, profile.name)
+      profileReportDirectory.mkdirs()
+      new File(profileReportDirectory, 'summary.txt').text =
+        'Result: RUNNING' + System.lineSeparator()
+      try {
+        runFreshDbUnitTestProfile(profile)
+        profileOutcomes.add("${profile.name}: PASS")
+      } catch (Throwable failure) {
+        profileFailures.add("${profile.name}: ${failure.message}")
+        profileOutcomes.add("${profile.name}: FAILED - ${failure.message}")
+        def profileSummary = new File(profileReportDirectory, 'summary.txt')
+        if (profileSummary.text.startsWith('Result: RUNNING')) {
+          profileSummary.text = "Result: FAILED - ${failure.message}" + System.lineSeparator()
+            + 'Cleanup confirmed: not started' + System.lineSeparator()
+        }
+      }
+    }
+    aggregateReport.text = ([
+      "Result: ${profileFailures.isEmpty() ? 'PASS' : 'FAILED'}",
+      'Profiles: ' + dbUnitTestProfiles.collect { it.name }.join(', ')
+    ] + profileOutcomes + dbUnitTestProfiles.collect { profile ->
+      def summary = new File(rootReportDirectory, "${profile.name}/summary.txt")
+      def cleanupLine = summary.isFile()
+        ? summary.readLines().find { it.startsWith('Cleanup confirmed:') }
+        : null
+      "${profile.name} ${cleanupLine ?: 'Cleanup confirmed: not recorded'}"
+    }).join(System.lineSeparator()) + System.lineSeparator()
+    if (!profileFailures.isEmpty()) {
+      throw new GradleException('Database unit-test profile failures:\n' + profileFailures.join('\n'))
+    }
+  }
+}
+
+runFreshDbUnitTestProfile = { profile ->
+    def migrationDirectories = profile.locations.collect { location ->
+      file("${rootDir}/src/main/resources/db/migration/${location}")
+    }
     def sqlFiles = dbUnitTestSqlFiles.files.findAll { it.isFile() }.sort { it.path }
     if (sqlFiles.isEmpty()) {
       throw new GradleException('No pgTAP test files found beneath src/dbUnitTest')
     }
-    dbUnitTestMigrationDirectories.each { migrationDirectory ->
+    migrationDirectories.each { migrationDirectory ->
       if (!migrationDirectory.isDirectory()) {
         throw new GradleException("Required migration directory does not exist: ${migrationDirectory}")
       }
     }
-    def expectedMigrationScripts = dbUnitTestMigrationDirectories.collectMany { migrationDirectory ->
+    def expectedMigrationScripts = migrationDirectories.collectMany { migrationDirectory ->
       fileTree(migrationDirectory) {
         include 'V*__*.sql'
       }.files.collect { migrationFile -> migrationFile.name }
@@ -74,7 +127,7 @@ tasks.register('dbUnitTest') {
       throw new GradleException('No Flyway migrations found in the dbUnitTest locations')
     }
 
-    def reportDirectory = layout.buildDirectory.dir('reports/dbUnitTest').get().asFile
+    def reportDirectory = layout.buildDirectory.dir("reports/dbUnitTest/${profile.name}").get().asFile
     reportDirectory.mkdirs()
     def pgProveReport = new File(reportDirectory, 'pg-prove.log')
     def frameworkSelfTestReport = new File(reportDirectory, 'framework-self-test.log')
@@ -173,11 +226,13 @@ tasks.register('dbUnitTest') {
         )
       }
 
-      def flywayMounts = [
-        [dbUnitTestMigrationDirectories[0], '/flyway/sql/ddl'],
-        [dbUnitTestMigrationDirectories[1], '/flyway/sql/allEnvs'],
-        [dbUnitTestMigrationDirectories[2], '/flyway/sql/dev']
-      ]
+      def flywayMounts = profile.locations.collect { location ->
+        [file("${rootDir}/src/main/resources/db/migration/${location}"),
+         "/flyway/sql/${location}"]
+      }
+      def locationsArgument = '-locations=' + profile.locations.collect { location ->
+        "filesystem:/flyway/sql/${location}"
+      }.join(',')
       def flywayBaseCommand = [
         'docker', 'run', '--rm',
         '--network', "container:${containerName}"
@@ -189,7 +244,7 @@ tasks.register('dbUnitTest') {
         flywayImageName,
         '-url=jdbc:postgresql://localhost:5432/' + databaseName,
         '-user=postgres',
-        '-locations=filesystem:/flyway/sql/ddl,filesystem:/flyway/sql/allEnvs,filesystem:/flyway/sql/dev',
+        locationsArgument,
         '-baselineOnMigrate=false',
         '-cleanDisabled=true'
       ])
@@ -207,7 +262,7 @@ tasks.register('dbUnitTest') {
           '-c', 'SELECT script FROM public.flyway_schema_history WHERE success IS TRUE ORDER BY installed_rank'
         ]
       ).stdout.readLines().collect { it.trim() }.findAll { !it.isEmpty() }
-      if (appliedMigrationScripts.sort() != expectedMigrationScripts) {
+      if (appliedMigrationScripts.toSorted() != expectedMigrationScripts) {
         throw new GradleException(
           'Flyway applied an unexpected migration set. Expected '
             + expectedMigrationScripts.join(', ')
@@ -232,7 +287,7 @@ tasks.register('dbUnitTest') {
           '-U', 'postgres', '-d', databaseName,
           '-c', 'SELECT script FROM public.flyway_schema_history WHERE success IS TRUE ORDER BY installed_rank'
         ]
-      ).stdout.readLines().collect { it.trim() }.findAll { !it.isEmpty() }.sort()
+      ).stdout.readLines().collect { it.trim() }.findAll { !it.isEmpty() }
       if (secondMigrationScripts != appliedMigrationScripts) {
         throw new GradleException(
           'Flyway migration set changed on the second run: '
@@ -304,7 +359,8 @@ tasks.register('dbUnitTest') {
       ).stdout.trim()
       evidence.add("PostgreSQL: ${postgresVersion}")
       evidence.add("Flyway image: ${flywayImageName}")
-      evidence.add('Migration locations: ddl, allEnvs, dev')
+      evidence.add("Profile: ${profile.name}")
+      evidence.add("Migration locations: ${profile.locations.join(', ')}")
       evidence.add("Migrations applied: ${appliedMigrationScripts.join(', ')}")
       evidence.add('Second Flyway migrate: no changes')
       evidence.add('Fail-closed pgTAP framework self-test: passed')
@@ -355,7 +411,6 @@ tasks.register('dbUnitTest') {
         }
       }
     }
-  }
 }
 
 tasks.register('dbUnitTestFrameworkTest') {

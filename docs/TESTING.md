@@ -336,13 +336,18 @@ Introduced or changed routines use the owning suite and framework-gap rules in
 [Routine suites and framework gaps](#routine-suites-and-framework-gaps).
 Discovered suites are part of Gradle and the normal `check` lifecycle.
 
-The task starts a fresh PostgreSQL 17 container with pgTAP, confirms the empty
-start state, and applies the explicit `ddl`, `data/allEnvs`, and `data/dev`
-locations through the version-matched Flyway container. It validates Flyway,
-confirms a second migration is a no-op, runs the pgTAP contracts, and confirms
-container cleanup. It fails closed when application or external Flyway target
-settings are present, so it cannot fall back to a developer-owned or shared
-database. Failure output lists setting names only and never their values.
+The task runs two fixed fresh PostgreSQL 17 profiles with pgTAP. `non-live-dev`
+applies `ddl`, `data/allEnvs`, `data/nle`, and `data/dev`; `non-live` applies
+`ddl`, `data/allEnvs`, and `data/nle`, proving the common NLE seed without DEV.
+Each profile has its own empty disposable database, Flyway validation and
+no-op second migration, the complete discovered pgTAP suite set, report, and
+verified container cleanup. Both profiles run even if one fails; either failure
+fails `dbUnitTest`. Normal `./gradlew dbUnitTest` and `./gradlew build` run both
+profiles. Staging currently adds no SQL under `data/stg`; this common NLE check
+does not claim validation of future staging-specific migrations. The task fails
+closed when application or external Flyway target settings are present, so it
+cannot fall back to a developer-owned or shared database. Failure output lists
+setting names only and never their values.
 
 Each pgTAP suite must start a transaction, create the `pgtap` extension if
 required, declare an exact `plan`, call `finish()`, and end with `ROLLBACK`.
@@ -357,7 +362,10 @@ Run the database unit-test suite with:
 ```
 
 Raw TAP diagnostics and a non-sensitive execution summary are written under
-`build/reports/dbUnitTest`. The current Countries contract is
+`build/reports/dbUnitTest/non-live-dev` and `build/reports/dbUnitTest/non-live`.
+`build/reports/dbUnitTest/summary.txt` records the current aggregate result
+and each profile's cleanup outcome.
+The current Countries contract is
 `src/dbUnitTest/countriesTest/countries_pgtap_tests.sql`.
 
 ### pgTAP file headers
@@ -498,7 +506,7 @@ Central Authority checks require a nonempty result and verify the seeded
 record's casefile details; they do not assume generated identifiers or
 exactly ten records.
 
-PO-10297 positive coverage requires the DEV-only
+PO-10297 positive coverage originally required the DEV-only
 `data/dev/V1_33__insert_major_creditors_dev_data.sql`, applied through normal
 Flyway migration with `ddl`, `data/allEnvs` and `data/dev` selected. It adds
 three synthetic BU 44 records: active non-Central Authority `T901`, inactive
@@ -509,22 +517,65 @@ result count. Malformed-filter and authentication scenarios remain covered.
 
 The DEV-only synthetic reference-data contract was approved by the requester
 on 2 October 2026; see `src/dbUnitTest/majorCreditorsDevDataTest/README.md`.
+The saved PO-10297 ticket draft originally called for test-owned data. The
+subsequently approved strategy uses seeded reference data and read-only HTTP
+steps. On 21 October 2026 the requester expanded that strategy to every
+non-live environment, following the Fines common-NLE pattern. This is a scope
+amendment to record in the PR; it does not establish a Jira update or deployed
+approval. `data/nle/V1_34__insert_major_creditors_nle_data.sql` supplies the
+same three records through the common NLE location. Historical DEV V1_33 and
+its approval and verification evidence remain unchanged.
+
+The checked-in local application default and DEV Helm template select
+`ddl + allEnvs + nle + dev`; the staging Helm template selects
+`ddl + allEnvs + nle`. The production base Helm values select only
+`ddl + allEnvs`, excluding both synthetic-data locations. These files do not
+prove the effective settings of a running deployment. Separately managed
+`FLYWAY_LOCATIONS` overrides, the image contents and migration history must be
+checked per target. The repository has migration directories for demo, ITHC
+and performance, but no checked-in deployment overlay for those targets; if
+any is deployed, inventory its effective locations and include `data/nle` for
+this approved non-live scope before running positive scenarios. Do not infer
+coverage from an environment name or add an unconfigured overlay.
+
+V1_34 inserts exactly three rows when none of the BU 44 T901/T902/T903 keys
+exists. If all three rows exactly match the approved fields and Country, it
+makes no change, preserving DEV V1_33's generated IDs. A partial set or any
+conflicting field fails the migration atomically and needs investigation;
+neither case is silently repaired or skipped. The migration resolves the
+existing Czech Republic uniquely and leaves unrelated creditors intact.
+The owning flat pgTAP suite checks both fresh profiles, including direct rerun,
+all fields, rollback and failure atomicity. The existing DEV suite remains in
+the discovered suite set for both profiles and verifies the historical V1_33
+contract without requiring that migration in common NLE Flyway history.
 Local disposable verification does not establish shared-environment deployment
 or QA sign-off. Positive coverage requires both approved data and a passing
 live scenario; an empty response cannot satisfy the positive acceptance
-criterion. Apply the forward DEV migration before executing
+criterion. Apply the appropriate non-live migration locations before executing
 positive functional tests.
-When reference caching is enabled, refresh affected BU 44 Major Creditor cache
-entries during migration rollout so positive scenarios see the new data; this
-is a deployment action, not a test setup or cleanup hook.
-Targets that select `allEnvs` without `dev` need approved equivalent seed data;
-do not enable DEV data in production or staging to make a test pass. Tests make
-read-only HTTP requests and never insert, update or clean up reference data.
-The migration resolves the existing Czech Republic Country uniquely and fails
-on missing/ambiguous Country data or colliding creditor keys. Flyway applies it
-once; direct reruns fail safely rather than overwriting existing records.
+Before rollout, confirm the target's effective `FLYWAY_LOCATIONS`, deployed
+image and `flyway_schema_history` script names. Inspect the earlier seed names
+V1_15, V1_17 and V1_31 as well as V1_33; a version number alone may refer to
+another migration. Apply V1_34 through normal Flyway deployment after `ddl`
+and `allEnvs`. If history is incompatible, stop and obtain a separate approved
+database-owner recovery decision; never automatically repair history or edit an
+applied migration. After deployment, refresh affected BU 44
+`majorCreditorReferenceDataCache` entries through the approved administration
+route, using the actual environment/cache prefix. Include
+`44_noFilter_noFilter`, `44_false_true` and any other cached BU 44 filter
+combinations in use. Do not flush Redis globally. Redis TTL defaults to eight
+hours, and restarting a pod does not clear Redis. Then rerun the live positive,
+malformed-filter and authentication scenarios against an agreed compatible
+non-live Maintenance and User Service target. Cache refresh and migration are
+rollout actions, never functional-test setup or cleanup hooks.
+Targets that select `allEnvs` without `dev` require the approved `nle` location
+when non-live functional coverage runs. Do not enable DEV or NLE data in
+production. Tests make read-only HTTP requests and never insert, update or
+clean up reference data. V1_33 remains historically one-shot, while V1_34
+accepts an exact direct rerun and rejects partial or mismatching data.
 See `src/dbUnitTest/majorCreditorsDevDataTest/README.md` for fresh/upgrade scope
-and database-boundary assertions.
+and historical database-boundary assertions. Fresh checks do not establish
+deployment, positive functional execution, or predecessor upgrade readiness.
 
 
 ## Results reference-data functional prerequisites

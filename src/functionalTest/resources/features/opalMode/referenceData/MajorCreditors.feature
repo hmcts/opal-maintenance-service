@@ -18,9 +18,9 @@ Feature: Major Creditor reference data
     When I request Central Authorities without authentication
     Then authentication is required without exposing Central Authority data
 
-  # DEV-only V1_33 supplies T901 plus inactive T902 and Central Authority T903.
-  # Targets using allEnvs without dev need approved equivalent reference data
-  # before running this positive scenario. Functional steps never write data.
+  # Non-live Flyway data supplies T901 plus inactive T902 and Central Authority T903.
+  # Run after the target's ddl, allEnvs and nle migrations have completed.
+  # Functional steps only read reference data; missing or conflicting seed is a failure.
 
   @JIRA-STORY:PO-10297 @JIRA-EPIC:PO-6506
   Scenario: Retrieve active non-Central Authority Major Creditors

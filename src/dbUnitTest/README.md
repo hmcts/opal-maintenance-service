@@ -1,3 +1,37 @@
+# Fresh database profiles and PO-10297 non-live seed
+
+`./gradlew dbUnitTest --no-daemon` and the normal `./gradlew build` lifecycle run
+two repository-owned disposable PostgreSQL 17 profiles:
+
+| Profile | Flyway locations | Major Creditor outcome |
+| --- | --- | --- |
+| `non-live-dev` | `ddl`, `data/allEnvs`, `data/nle`, `data/dev` | Historical V1_33 supplies T901/T902/T903; V1_34 verifies the exact existing set without rewriting rows or consuming IDs. |
+| `non-live` | `ddl`, `data/allEnvs`, `data/nle` | V1_34 inserts the same three synthetic BU 44 rows without DEV SQL. |
+
+Both profiles discover and run the full existing SQL suite set, including the
+historical V1_33 suite and the new flat
+`major_creditors_nle_data_pgtap_tests.sql`. The new suite has 23 assertions:
+the exact fourteen non-ID fields and generated IDs, selection, no-op rerun,
+empty-set insertion and rollback, partial/mismatching data, missing or
+ambiguous Country, Business Unit scope and mid-insert atomicity. It reads the
+actual V1_34 migration in rolled-back test-only subtransactions. Expected
+values are independently specified in the suite, and sequence gaps from failed
+inserts are permitted. Reports and verified cleanup outcomes are written per
+profile under `build/reports/dbUnitTest/<profile>/`.
+The root `build/reports/dbUnitTest/summary.txt` gives the aggregate result and
+cleanup status for both profiles.
+
+The 21 October 2026 approval expands the earlier DEV-only PO-10297 seed to all
+non-live environments. The old V1_33 migration and its historical documentation
+remain unchanged. Production excludes `data/nle`; staging selects NLE without
+DEV, and currently has no additional SQL in `data/stg`. These fresh checks do
+not prove predecessor upgrade, shared-environment rollout, or the live read-only
+functional scenario. On rollout, resolve exactly one existing Czech Republic,
+confirm BU 44 and the three fixture keys, and refresh affected Major Creditor
+reference cache entries when caching is enabled. A partial or conflicting key
+set fails migration and needs a reviewed data correction or forward-fix plan;
+do not repair Flyway history or modify applied migrations.
+
 # PO-10642 account-number contracts
 
 The two self-contained SQL suites live directly under `src/dbUnitTest` and are
