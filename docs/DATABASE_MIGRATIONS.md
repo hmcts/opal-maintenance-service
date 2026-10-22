@@ -445,9 +445,34 @@ profile's selected Flyway migration locations at the implementation baseline.
 The predecessor is the greatest selected version below the candidate, using
 Flyway's numerical version ordering across those locations. Do not infer it from lexical filename
 order, the preceding DDL file, or the candidate number minus one. A candidate
-can therefore have different predecessors in the two profiles. Comparison refs
-select affected registrations; this framework does not provide an actual
-Git-parent inventory plus incoming-batch transition task.
+can therefore have different predecessors in the two profiles. Normal comparison
+refs select affected registrations. The additional
+[actual-parent task](TESTING.md#actual-comparison-parent-batch-verification)
+retains each profile's independently derived comparison inventory and applies
+its complete incoming batch on the same target:
+`./gradlew dbUnitTestParentTransitionTest --no-daemon -PdbUnitTestComparisonRef=<exact-full-SHA>`.
+The comparison must equal tested HEAD or its sole immediate parent; this task
+has no comparison/base fallback. HEAD equal to comparison may itself be a merge;
+a different candidate HEAD must have exactly that one parent. Working overlays
+are labelled as working-candidate evidence. Verify the clean committed child
+separately to claim a committed parent transition.
+
+The parent task keeps global adoption, registration and immutable-history
+validation, both fixed profiles and the resolved native runtime contract. Equal
+inventories and empty deltas still execute complete history, native validation,
+exact row/catalogue/ACL/routine/enum/sequence preservation, final application
+owners and zero-applied repeat/history checks. Only the three fixed framework
+self-suites requiring absent observations are excluded from retained owners;
+all 32 fresh suites remain required. Only explicitly bounded routine,
+Aliases-name and Order-Term-response changes are allowed. Unsupported incoming
+data or structural changes fail closed; `observe` grants no batch exemption.
+Historical seeds are not incoming additions. No business preparation or
+synthetic-data approval is borrowed from registered replay. Shared committed
+observation cleanup, distinct-backend absence, an independent no-other-client-
+sessions probe on the test-owned target and independent owned container/volume
+absence remain mandatory after every outcome. Retain separate
+`parent-transition` profile/aggregate and `parent-framework` reports without
+replacing fresh/full registered evidence.
 
 For a candidate migration with an immediate predecessor, use this
 Flyway-native sequence:
