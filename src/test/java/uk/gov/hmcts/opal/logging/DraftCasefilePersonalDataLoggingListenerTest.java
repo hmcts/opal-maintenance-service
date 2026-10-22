@@ -60,7 +60,7 @@ class DraftCasefilePersonalDataLoggingListenerTest {
             assertThat(payload.getRecipient()).isNull();
             assertThat(payload.getIndividuals()).singleElement().satisfies(individual -> {
                 assertThat(individual.getIdentifier()).isEqualTo("123");
-                assertThat(individual.getType().getType()).isEqualTo("DRAFT_CASEFILE");
+                assertThat(individual.getType().getType()).isEqualTo("RM_DRAFT_CASEFILE");
             });
         });
     }
@@ -86,7 +86,7 @@ class DraftCasefilePersonalDataLoggingListenerTest {
             assertThat(entry.getIpAddress()).isEqualTo("192.0.2.1");
             assertThat(entry.getIndividuals()).singleElement().satisfies(identifier -> {
                 assertThat(identifier.getIdentifier()).isEqualTo("123");
-                assertThat(identifier.getType().getType()).isEqualTo("DRAFT_CASEFILE");
+                assertThat(identifier.getType().getType()).isEqualTo("RM_DRAFT_CASEFILE");
             });
             assertThat(entry.getRecipient()).isNull();
         });
@@ -165,7 +165,7 @@ class DraftCasefilePersonalDataLoggingListenerTest {
             assertThat(details.getIpAddress()).isEqualTo("192.0.2.1");
             assertThat(details.getRecipient()).isNull();
             assertThat(details.getIndividuals()).allSatisfy(id ->
-                assertThat(id.getType().getType()).isEqualTo("DRAFT_CASEFILE"));
+                assertThat(id.getType().getType()).isEqualTo("RM_DRAFT_CASEFILE"));
         });
     }
 

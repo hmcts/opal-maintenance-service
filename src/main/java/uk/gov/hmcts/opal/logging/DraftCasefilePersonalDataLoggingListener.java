@@ -59,7 +59,7 @@ public class DraftCasefilePersonalDataLoggingListener {
             .createdBy(new ParticipantIdentifier(userId.toString(), DraftIdentifierType.OPAL_USER_ID))
             .ipAddress(ipAddress)
             .individuals(draftIds.stream()
-                .map(id -> new ParticipantIdentifier(id.toString(), DraftIdentifierType.DRAFT_CASEFILE)).toList())
+                .map(id -> new ParticipantIdentifier(id.toString(), DraftIdentifierType.RM_DRAFT_CASEFILE)).toList())
             .build();
         try {
             if (!loggingService.personalDataAccessLogAsync(details)) {
@@ -98,7 +98,7 @@ public class DraftCasefilePersonalDataLoggingListener {
 
     private enum DraftIdentifierType implements IdentifierType {
         OPAL_USER_ID,
-        DRAFT_CASEFILE;
+        RM_DRAFT_CASEFILE;
 
         @Override
         public String getType() {
