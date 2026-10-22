@@ -172,6 +172,12 @@ Draft Casefile PDPO logs use `RM_DRAFT_CASEFILE` as the individual identifier
 type. The logging-service database must include this value in
 `t_pdpo_identifier_individual_type_enum` before it can persist these logs.
 
+Approved drafts can be published asynchronously with
+`SERVICEBUS_RM_PUBLISH_DRAFT_CASEFILE_CONSUMER_ENABLED=true` (default `false`).
+Deploy the publication procedures and logging enum first. See
+[Draft Casefile publication](docs/DRAFT_CASEFILE_PUBLICATION.md) for the message
+contract, dependency order, recovery and verification requirements.
+
 First ensure all repositories are downloaded in the same parent directory.
 To do this automatically you can run the following command from the opal-shared-infrastructure directory:
 ```bash / zsh
