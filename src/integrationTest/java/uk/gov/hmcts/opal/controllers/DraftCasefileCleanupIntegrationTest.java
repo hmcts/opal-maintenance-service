@@ -7,7 +7,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.mockito.stubbing.Answer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -39,6 +41,7 @@ import uk.gov.hmcts.opal.support.DraftCasefileHttpFixture;
 
 import java.sql.PreparedStatement;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -46,6 +49,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -56,6 +60,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.context.jdbc.Sql.ExecutionPhase.AFTER_TEST_METHOD;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -102,9 +107,11 @@ class DraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
         repositoryDelegate = mockingDetails(repository).getMockCreationSettings().getDefaultAnswer();
     }
 
-    @Test
-    void realSubmissionIsDeletedWithEmbeddedDataAndRepeatSucceeds() throws Exception {
-        long id = submit(RUN);
+    @ParameterizedTest
+    @EnumSource(value = DraftCasefileStatus.class,
+        names = {"SUBMITTED", "REJECTED", "RESUBMITTED", "DELETED", "PUBLISHING_FAILED"})
+    void realSubmissionIsDeletedWithEmbeddedDataAndRepeatSucceeds(DraftCasefileStatus lifecycle) throws Exception {
+        long id = lifecycleDraft(lifecycle);
         long otherId = submit("E2E-fedcba9876543210");
         DraftCasefileEntity before = repository.findById(id).orElseThrow();
         assertThat(before.getCasefile()).contains("Synthetic cleanup note", "Synthetic cleanup comment");
@@ -131,10 +138,14 @@ class DraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
         assertThat(repository.findById(id)).isEmpty();
     }
 
-    @Test
-    void postFlushFailureRestoresWholeDraftAndAllowsRetry() throws Exception {
-        long id = submit(RUN);
+    @ParameterizedTest
+    @EnumSource(value = DraftCasefileStatus.class,
+        names = {"SUBMITTED", "REJECTED", "RESUBMITTED", "DELETED", "PUBLISHING_FAILED"})
+    void postFlushFailureRestoresWholeDraftAndAllowsRetry(DraftCasefileStatus lifecycle) throws Exception {
+        long id = lifecycleDraft(lifecycle);
         DraftCasefileEntity before = repository.findById(id).orElseThrow();
+        submit("E2E-fedcba9876543210");
+        List<DraftCasefileEntity> beforeRows = repository.findAll();
         doAnswer(invocation -> {
             repositoryDelegate.answer(invocation);
             throw new DataAccessResourceFailureException("Synthetic failure");
@@ -142,6 +153,7 @@ class DraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
         try {
             cleanup(id, RUN).andExpect(status().isServiceUnavailable());
             assertUnchanged(before);
+            assertRowsUnchanged(beforeRows);
         } finally {
             doAnswer(repositoryDelegate).when(repository).flush();
         }
@@ -178,10 +190,15 @@ class DraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
         assertUnchanged(before);
     }
 
-    @Test
-    void rejectsDifferentRunWithoutChangingDraft() throws Exception {
-        DraftCasefileEntity before = repository.findById(submit(RUN)).orElseThrow();
+    @ParameterizedTest
+    @EnumSource(value = DraftCasefileStatus.class,
+        names = {"SUBMITTED", "REJECTED", "RESUBMITTED", "DELETED", "PUBLISHING_FAILED"})
+    void rejectsDifferentRunWithoutChangingDraft(DraftCasefileStatus lifecycle) throws Exception {
+        DraftCasefileEntity before = repository.findById(lifecycleDraft(lifecycle)).orElseThrow();
+        submit("E2E-fedcba9876543210");
+        List<DraftCasefileEntity> beforeRows = repository.findAll();
         cleanup(before.getDraftCasefileId(), "E2E-fedcba9876543210").andExpect(status().isForbidden());
+        assertRowsUnchanged(beforeRows);
         assertUnchanged(before);
     }
 
@@ -237,21 +254,27 @@ class DraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
             .businessUnitId((short) (variant.equals("bu") ? 2 : 1))
             .submittedBy(variant.equals("submitter") ? "BUU-OTHER" : "BUU-1")
             .casefile(variant.equals("scalar") ? "\"synthetic\"" : objectMapper.writeValueAsString(payload)).build());
+        submit("E2E-fedcba9876543210");
+        List<DraftCasefileEntity> beforeRows = repository.findAll();
         cleanup(before.getDraftCasefileId(), RUN).andExpect(status().isForbidden());
+        assertRowsUnchanged(beforeRows);
         assertUnchanged(before);
     }
 
     @ParameterizedTest
-    @EnumSource(value = DraftCasefileStatus.class, names = "SUBMITTED", mode = EnumSource.Mode.EXCLUDE)
-    void rejectsEveryAdvancedLifecycle(DraftCasefileStatus lifecycle) throws Exception {
+    @EnumSource(value = DraftCasefileStatus.class, names = {"PUBLISHING_PENDING", "PUBLISHED"})
+    void rejectsPublicationLifecycle(DraftCasefileStatus lifecycle) throws Exception {
         DraftCasefileEntity original = repository.findById(submit(RUN)).orElseThrow();
         DraftCasefileEntity before = repository.saveAndFlush(original.toBuilder().casefileStatus(lifecycle).build());
+        submit("E2E-fedcba9876543210");
+        List<DraftCasefileEntity> beforeRows = repository.findAll();
         cleanup(before.getDraftCasefileId(), RUN).andExpect(status().isConflict());
+        assertRowsUnchanged(beforeRows);
         assertUnchanged(before);
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"validated-date", "validated-by", "validated-name", "account-number"})
+    @ValueSource(strings = {"validated-date", "validated-by", "validated-name"})
     void rejectsValidationOrPublicationMetadata(String variant) throws Exception {
         DraftCasefileEntity original = repository.findById(submit(RUN)).orElseThrow();
         var builder = original.toBuilder();
@@ -259,23 +282,61 @@ class DraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
             case "validated-date" -> builder.validatedDate(LocalDateTime.of(2026, 10, 1, 12, 0));
             case "validated-by" -> builder.validatedBy("BUU-1");
             case "validated-name" -> builder.validatedByName("Synthetic validator");
-            case "account-number" -> builder.accountNumber("SYNTHETIC-1");
             default -> throw new IllegalArgumentException(variant);
         }
         DraftCasefileEntity before = repository.saveAndFlush(builder.build());
+        submit("E2E-fedcba9876543210");
+        List<DraftCasefileEntity> beforeRows = repository.findAll();
         cleanup(before.getDraftCasefileId(), RUN).andExpect(status().isConflict());
+        assertRowsUnchanged(beforeRows);
         assertUnchanged(before);
     }
 
-    @Test
+    @ParameterizedTest
+    @EnumSource(value = DraftCasefileStatus.class,
+        names = {"SUBMITTED", "REJECTED", "RESUBMITTED", "DELETED", "PUBLISHING_FAILED"})
     @SqlMergeMode(SqlMergeMode.MergeMode.MERGE)
     @Sql("/draft-casefile/cleanup-account-link-fixture.sql")
-    void rejectsPublishedAccountIdAndPreservesLinkedAccount() throws Exception {
-        DraftCasefileEntity original = repository.findById(submit(RUN)).orElseThrow();
+    void rejectsPublishedAccountIdAndPreservesLinkedAccount(DraftCasefileStatus lifecycle) throws Exception {
+        DraftCasefileEntity original = repository.findById(lifecycleDraft(lifecycle)).orElseThrow();
         DraftCasefileEntity before = repository.saveAndFlush(original.toBuilder().accountId(9000000301L).build());
+        submit("E2E-fedcba9876543210");
+        List<DraftCasefileEntity> beforeRows = repository.findAll();
         cleanup(before.getDraftCasefileId(), RUN).andExpect(status().isConflict());
+        assertRowsUnchanged(beforeRows);
         assertUnchanged(before);
         assertThat(linkedAccountCount()).isEqualTo(1);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = DraftCasefileStatus.class,
+        names = {"SUBMITTED", "REJECTED", "RESUBMITTED", "DELETED", "PUBLISHING_FAILED"})
+    void rejectsRowAccountNumber(DraftCasefileStatus lifecycle) throws Exception {
+        DraftCasefileEntity original = repository.findById(lifecycleDraft(lifecycle)).orElseThrow();
+        DraftCasefileEntity before = repository.saveAndFlush(original.toBuilder().accountNumber("SYNTHETIC-1").build());
+        submit("E2E-fedcba9876543210");
+        List<DraftCasefileEntity> beforeRows = repository.findAll();
+        cleanup(before.getDraftCasefileId(), RUN).andExpect(status().isConflict());
+        assertRowsUnchanged(beforeRows);
+        assertUnchanged(before);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"REJECTED", "DELETED"})
+    void actualCheckerDecisionCanBeCleanedWithoutChangingSibling(String decision) throws Exception {
+        long id = submit(RUN);
+        DraftCasefileEntity sibling = repository.findById(submit("E2E-fedcba9876543210")).orElseThrow();
+        Long version = repository.findById(id).orElseThrow().getVersionNumber();
+        var checker = DraftCasefileHttpFixture.token((short) 1, 124L, "BUU-CHECKER",
+            Set.of(new Permission(22L, "Check and validate draft Casefiles")));
+        mockMvc.perform(patch("/draft-casefiles/{id}", id).with(authentication(checker))
+                .header("If-Match", "\"" + version + "\"").contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.createObjectNode().put("business_unit_id", 1)
+                    .put("casefile_status", decision).put("status_message", "Synthetic cleanup decision").toString()))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.casefile_status").value(decision));
+        cleanup(id, RUN).andExpect(status().isNoContent());
+        assertThat(repository.findById(id)).isEmpty();
+        assertUnchanged(sibling);
     }
 
     // No account repository exists; this bounded query verifies the database-facing fixture is untouched.
@@ -285,9 +346,10 @@ class DraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"respondent_account", "applicant_account", "minor_creditor_accounts"})
-    void rejectsEverySnapshotAccountLink(String path) throws Exception {
+    @MethodSource("snapshotLinkCases")
+    void rejectsEverySnapshotAccountLink(DraftCasefileStatus lifecycle, String path) throws Exception {
         long id = submit(RUN, true);
+        setLifecycle(id, lifecycle);
         for (String field : new String[] {"account_id", "account_number"}) {
             DraftCasefileEntity original = repository.findById(id).orElseThrow();
             ObjectNode snapshot = (ObjectNode) objectMapper.readTree(original.getCasefileSnapshot());
@@ -301,7 +363,10 @@ class DraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
             }
             DraftCasefileEntity before = repository.saveAndFlush(original.toBuilder()
                 .casefileSnapshot(objectMapper.writeValueAsString(snapshot)).build());
+            submit("E2E-fedcba9876543210");
+            List<DraftCasefileEntity> beforeRows = repository.findAll();
             cleanup(id, RUN).andExpect(status().isConflict());
+            assertRowsUnchanged(beforeRows);
             assertUnchanged(before);
         }
     }
@@ -311,7 +376,10 @@ class DraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
     void rejectsMalformedSnapshot(String snapshot) throws Exception {
         DraftCasefileEntity original = repository.findById(submit(RUN)).orElseThrow();
         DraftCasefileEntity before = repository.saveAndFlush(original.toBuilder().casefileSnapshot(snapshot).build());
+        submit("E2E-fedcba9876543210");
+        List<DraftCasefileEntity> beforeRows = repository.findAll();
         cleanup(before.getDraftCasefileId(), RUN).andExpect(status().isConflict());
+        assertRowsUnchanged(beforeRows);
         assertUnchanged(before);
     }
 
@@ -367,8 +435,9 @@ class DraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
         }
     }
 
-    @Test
-    void cleanupWaitsForLockedLifecycleUpdateAndRejectsCommittedState() throws Exception {
+    @ParameterizedTest
+    @EnumSource(value = DraftCasefileStatus.class, names = {"PUBLISHING_PENDING", "PUBLISHED"})
+    void cleanupWaitsForLockedLifecycleUpdateAndRejectsCommittedState(DraftCasefileStatus lifecycle) throws Exception {
         long id = submit(RUN);
         ExecutorService executor = Executors.newFixedThreadPool(2);
         CountDownLatch locked = new CountDownLatch(1);
@@ -388,7 +457,7 @@ class DraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
                 .executeWithoutResult(transaction -> {
                     writerPid.set(transactionBackendPid());
                     DraftCasefileEntity draft = repository.findForCleanupById(id).orElseThrow();
-                    repository.saveAndFlush(draft.toBuilder().casefileStatus(DraftCasefileStatus.REJECTED).build());
+                    repository.saveAndFlush(draft.toBuilder().casefileStatus(lifecycle).build());
                     locked.countDown();
                     await(release);
                 }));
@@ -403,7 +472,7 @@ class DraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
             writer.get(10, TimeUnit.SECONDS);
             assertThat(reader.get(10, TimeUnit.SECONDS)).isEqualTo(409);
             assertThat(repository.findById(id).orElseThrow().getCasefileStatus())
-                .isEqualTo(DraftCasefileStatus.REJECTED);
+                .isEqualTo(lifecycle);
         } finally {
             release.countDown();
             executor.shutdown();
@@ -484,6 +553,29 @@ class DraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
         return cleanup(id, RUN).andReturn().getResponse().getStatus();
     }
 
+    private static Stream<Arguments> snapshotLinkCases() {
+        return Stream.of(DraftCasefileStatus.SUBMITTED, DraftCasefileStatus.REJECTED,
+            DraftCasefileStatus.RESUBMITTED, DraftCasefileStatus.DELETED, DraftCasefileStatus.PUBLISHING_FAILED)
+            .flatMap(lifecycle -> Stream.of("respondent_account", "applicant_account", "minor_creditor_accounts")
+                .map(path -> Arguments.of(lifecycle, path)));
+    }
+
+    private long lifecycleDraft(DraftCasefileStatus lifecycle) throws Exception {
+        long id = submit(RUN);
+        setLifecycle(id, lifecycle);
+        return id;
+    }
+
+    private void setLifecycle(long id, DraftCasefileStatus lifecycle) {
+        DraftCasefileEntity original = repository.findById(id).orElseThrow();
+        var builder = original.toBuilder().casefileStatus(lifecycle);
+        if (lifecycle != DraftCasefileStatus.SUBMITTED) {
+            builder.validatedBy("BUU-CHECKER").validatedByName("Synthetic Checker")
+                .validatedDate(LocalDateTime.of(2026, 10, 22, 10, 0));
+        }
+        repository.saveAndFlush(builder.build());
+    }
+
     private long submit(String marker) throws Exception {
         return submit(marker, false);
     }
@@ -514,6 +606,11 @@ class DraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
     private ResultActions cleanup(long id, String marker) throws Exception {
         return mockMvc.perform(delete(CLEANUP, id)
             .with(authentication(DraftCasefileHttpFixture.token((short) 1))).header("Test-Run-Reference", marker));
+    }
+
+    private void assertRowsUnchanged(List<DraftCasefileEntity> before) {
+        assertThat(repository.findAll()).usingRecursiveFieldByFieldElementComparator()
+            .containsExactlyInAnyOrderElementsOf(before);
     }
 
     private void assertUnchanged(DraftCasefileEntity before) {

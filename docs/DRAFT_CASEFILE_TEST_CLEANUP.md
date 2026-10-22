@@ -82,11 +82,27 @@ and its `respondent_account.remo_reference` must equal the supplied marker exact
 The marker never permits deleting a different owner's row. Older unmarked drafts
 are not retroactively eligible.
 
-Only unvalidated `SUBMITTED` drafts qualify. `account_id`, `account_number`,
-`validated_date`, `validated_by` and `validated_by_name` must be null. Respondent,
-applicant and minor-creditor snapshot account IDs/numbers must also be null;
-malformed or inconsistent snapshot metadata is rejected. Published accounts and
-reference data are retained. External personal-data processing logs are retained.
+The intermediate cleanup lifecycle matrix is:
+
+| Stored lifecycle | Eligible when owned, marked and unlinked | Validation metadata |
+| --- | --- | --- |
+| `SUBMITTED` | Yes | `validated_date`, `validated_by` and `validated_by_name` must all be null |
+| `REJECTED`, `RESUBMITTED`, `DELETED`, `PUBLISHING_FAILED` | Yes | Checker metadata may remain |
+| `PUBLISHING_PENDING`, `PUBLISHED` | No | Always rejected with 409 |
+
+Every eligible state requires null row `account_id` and `account_number`, and null
+respondent, applicant and minor-creditor snapshot account IDs/numbers. Malformed or
+inconsistent snapshot metadata is rejected. A validation timestamp alone neither
+proves publication nor makes a draft eligible for cleanup. The pending/published
+restriction remains outstanding for any later publication cleanup design.
+Published accounts and reference data are retained. External personal-data
+processing logs are retained.
+
+A real `PUT /draft-casefiles/{id}` resubmission changes the persisted submitter to
+the latest inputter. Cleanup then requires that latest owner's bearer identity;
+an earlier submitter with a different identity receives 403. The marker is read from the replacement
+payload: retaining it permits the latest owner to clean with that marker, while
+changing it makes the old marker fail with 403 even for the latest owner.
 
 The service locks the explicitly addressed row and checks/deletes/flushes inside
 one transaction. Failure rolls back; a retry of an already deleted ID returns 204

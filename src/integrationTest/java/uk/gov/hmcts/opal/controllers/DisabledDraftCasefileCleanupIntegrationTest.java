@@ -5,10 +5,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.ApplicationContext;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import uk.gov.hmcts.opal.BaseIntegrationTest;
+import uk.gov.hmcts.opal.service.DraftCasefileTestScope;
 import uk.gov.hmcts.opal.support.DraftCasefileHttpFixture;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -27,12 +29,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class DisabledDraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
 
     @Autowired
+    private ApplicationContext context;
+    @Autowired
     private MockMvc mockMvc;
     @Autowired
     private ObjectMapper objectMapper;
 
     @Test
     void authenticatedCleanupIsUnavailable() throws Exception {
+        assertThat(context.getBeansOfType(DraftCasefileTestScope.class)).isEmpty();
         mockMvc.perform(delete("/testing-support/draft-casefiles/1")
                 .with(authentication(DraftCasefileHttpFixture.token((short) 1)))
                 .header("Test-Run-Reference", "E2E-0123456789abcdef"))

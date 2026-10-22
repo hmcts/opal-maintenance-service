@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -42,7 +43,7 @@ class DraftCasefileCleanupServiceTest {
     private final MaintenanceUserService users = mock(MaintenanceUserService.class);
     private final DraftCasefileRepository repository = mock(DraftCasefileRepository.class);
     private final DraftCasefileCleanupService service = new DraftCasefileCleanupService(
-        users, repository, new ObjectMapper());
+        new DraftCasefileTestScope(users, new ObjectMapper()), repository, new ObjectMapper());
 
     @BeforeEach
     void authoriseAutomation() {
@@ -60,6 +61,20 @@ class DraftCasefileCleanupServiceTest {
         ordered.verify(users).requireAuthorisedUser((short) 1, CREATE_MANAGE_DRAFT_CASEFILES);
         ordered.verify(repository).delete(draft);
         ordered.verify(repository).flush();
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = DraftCasefileStatus.class,
+        names = {"REJECTED", "RESUBMITTED", "DELETED", "PUBLISHING_FAILED"})
+    void cleansOwnedUnlinkedLifecycle(DraftCasefileStatus status) {
+        DraftCasefileEntity draft = ownedDraft().toBuilder()
+            .casefileStatus(status).validatedBy("BUU-CHECKER")
+            .validatedByName("Synthetic Checker")
+            .validatedDate(LocalDateTime.of(2026, 10, 22, 10, 0)).build();
+        found(draft);
+        service.cleanup(41L, RUN);
+        verify(repository).delete(draft);
+        verify(repository).flush();
     }
 
     @Test
@@ -122,7 +137,7 @@ class DraftCasefileCleanupServiceTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = DraftCasefileStatus.class, names = "SUBMITTED", mode = EnumSource.Mode.EXCLUDE)
+    @EnumSource(value = DraftCasefileStatus.class, names = {"PUBLISHING_PENDING", "PUBLISHED"})
     void rejectsOtherLifecycleStates(DraftCasefileStatus status) {
         found(ownedDraft().toBuilder().casefileStatus(status).build());
         assertConflict();
@@ -142,9 +157,9 @@ class DraftCasefileCleanupServiceTest {
     }
 
     @ParameterizedTest
-    @MethodSource("unsafeSnapshots")
-    void rejectsLinkedAccountsOrInvalidSnapshotStructure(String snapshot) {
-        found(ownedDraft().toBuilder().casefileSnapshot(snapshot).build());
+    @MethodSource("unsafeLifecycleSnapshots")
+    void rejectsLinkedAccountsOrInvalidSnapshotStructure(DraftCasefileStatus status, String snapshot) {
+        found(ownedDraft().toBuilder().casefileStatus(status).casefileSnapshot(snapshot).build());
         assertConflict();
     }
 
@@ -204,12 +219,22 @@ class DraftCasefileCleanupServiceTest {
     }
 
     private static Stream<DraftCasefileEntity> publicationFields() {
-        return Stream.of(
-            ownedDraft().toBuilder().accountId(10L).build(),
-            ownedDraft().toBuilder().accountNumber("SYNTHETIC").build(),
+        Stream<DraftCasefileEntity> linked = eligibleStates().flatMap(status -> Stream.of(
+            ownedDraft().toBuilder().casefileStatus(status).accountId(10L).build(),
+            ownedDraft().toBuilder().casefileStatus(status).accountNumber("SYNTHETIC").build()));
+        return Stream.concat(linked, Stream.of(
             ownedDraft().toBuilder().validatedDate(LocalDateTime.of(2026, 10, 1, 12, 0)).build(),
             ownedDraft().toBuilder().validatedBy("BUU-1").build(),
-            ownedDraft().toBuilder().validatedByName("Synthetic Automation").build());
+            ownedDraft().toBuilder().validatedByName("Synthetic Automation").build()));
+    }
+
+    private static Stream<DraftCasefileStatus> eligibleStates() {
+        return Stream.of(DraftCasefileStatus.SUBMITTED, DraftCasefileStatus.REJECTED,
+            DraftCasefileStatus.RESUBMITTED, DraftCasefileStatus.DELETED, DraftCasefileStatus.PUBLISHING_FAILED);
+    }
+
+    private static Stream<Arguments> unsafeLifecycleSnapshots() {
+        return eligibleStates().flatMap(status -> unsafeSnapshots().map(snapshot -> Arguments.of(status, snapshot)));
     }
 
     private static Stream<String> unsafeSnapshots() {
