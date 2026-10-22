@@ -47,6 +47,10 @@ public class DraftCasefileQueueProcessingService {
             return Outcome.NO_OP;
         }
         messages.validateAuditContext(message);
+        if (draft.getValidatedDate() == null
+            || !draft.getValidatedDate().toInstant(ZoneOffset.UTC).toString().equals(message.approvalTimestamp())) {
+            throw new IllegalArgumentException("Publication message does not match saved approval");
+        }
         Attempt attempt = new Attempt(draft.getDraftCasefileId(), draft.getVersionNumber(), draft.getValidatedBy(),
             draft.getValidatedDate());
         try {

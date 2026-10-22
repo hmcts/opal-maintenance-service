@@ -170,6 +170,8 @@ logging:
     opal.UserStateClientService: ERROR
     # Library 0.0.14 exposes payload identifiers and raw JMS errors; the listener logs safe final failures.
     uk.gov.hmcts.opal.logging.integration.service.PdpoAsyncPublisherImpl: "OFF"
+    # Hibernate otherwise logs PostgreSQL failing-row details before consumer exception handling.
+    org.hibernate.orm.jdbc.error: "OFF"
     org:
       hibernate:
         stat: INFO

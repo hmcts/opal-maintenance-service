@@ -128,7 +128,8 @@ class DraftCasefileDecisionServiceTest {
         if (approved) {
             var order = inOrder(repository, publisher, events);
             order.verify(repository).saveAndFlush(any());
-            order.verify(publisher).publish(new DraftCasefileQueueMessage(42L, checker.userId(), checker.ipAddress()));
+            order.verify(publisher).publish(new DraftCasefileQueueMessage(42L, checker.userId(), checker.ipAddress(),
+                "2026-10-19T10:00:00.123456Z"));
             order.verify(events).publishEvent(any(DraftCasefilePersonalDataEvent.class));
         } else {
             verifyNoInteractions(publisher);

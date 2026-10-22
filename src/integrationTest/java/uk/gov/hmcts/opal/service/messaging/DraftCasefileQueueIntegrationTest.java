@@ -100,7 +100,7 @@ class DraftCasefileQueueIntegrationTest extends BaseIntegrationTest {
 
     @Test
     void publishesPersistentApprovalMessageToConfiguredQueue() throws Exception {
-        publisher.publish(new DraftCasefileQueueMessage(900001L, 123L, "192.0.2.1"));
+        publisher.publish(new DraftCasefileQueueMessage(900001L, 123L, "192.0.2.1", "2024-01-02T00:00:00Z"));
         assertMessage(900001L);
     }
 
@@ -141,7 +141,8 @@ class DraftCasefileQueueIntegrationTest extends BaseIntegrationTest {
                 + "?jms.connectTimeout=500&jms.requestTimeout=500&jms.sendTimeout=500");
             var failed = new DraftCasefileQueuePublisherImpl(new JmsTemplate(factory), JSON, queue,
                 new DraftCasefileQueueMessageValidator());
-            assertThatThrownBy(() -> failed.publish(new DraftCasefileQueueMessage(900002L, 123L, "192.0.2.1")))
+            assertThatThrownBy(() -> failed.publish(new DraftCasefileQueueMessage(900002L, 123L, "192.0.2.1",
+                "2024-01-02T00:00:00Z")))
                 .isInstanceOf(JmsException.class);
         }
     }

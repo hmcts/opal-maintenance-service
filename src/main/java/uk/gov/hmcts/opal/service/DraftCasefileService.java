@@ -160,7 +160,8 @@ public class DraftCasefileService {
         VersionedResponse<DraftCasefileGetResponse> result =
             new VersionedResponse<>(response, saved.getVersionNumber());
         if (saved.getCasefileStatus() == DraftCasefileStatus.PUBLISHING_PENDING) {
-            queuePublisher.publish(new DraftCasefileQueueMessage(id, user.userId(), user.ipAddress()));
+            queuePublisher.publish(new DraftCasefileQueueMessage(id, user.userId(), user.ipAddress(),
+                decidedAt.toString()));
         }
         eventPublisher.publishEvent(event);
         return result;

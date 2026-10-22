@@ -2,6 +2,9 @@ package uk.gov.hmcts.opal.service.messaging;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,6 +36,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.context.jdbc.Sql.ExecutionPhase.AFTER_TEST_METHOD;
 
+@ExtendWith(OutputCaptureExtension.class)
 @TestPropertySource(properties = {"opal.redis.enabled=false", "management.health.redis.enabled=false",
     "spring.jpa.open-in-view=false"})
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
@@ -44,6 +48,8 @@ class DraftCasefileQueueProcessingIntegrationTest extends BaseIntegrationTest {
     @Autowired
     private JdbcTemplate jdbc;
     @Autowired
+    private DraftCasefileQueueConsumerService consumer;
+    @Autowired
     private PlatformTransactionManager transactionManager;
     @MockitoSpyBean
     private DraftCasefilePublicationRepository publication;
@@ -53,11 +59,33 @@ class DraftCasefileQueueProcessingIntegrationTest extends BaseIntegrationTest {
     private DraftCasefileRepository drafts;
     @MockitoBean
     private LoggingService logging;
-    private final DraftCasefileQueueMessage message = new DraftCasefileQueueMessage(1062901L, 123L, "192.0.2.1");
+    private final DraftCasefileQueueMessage message = new DraftCasefileQueueMessage(1062901L, 123L, "192.0.2.1",
+        "2024-01-02T00:00:00Z");
 
     @BeforeEach
     void setUp() {
         when(logging.personalDataAccessLogAsync(any())).thenReturn(true);
+    }
+
+    @Test
+    void delayedRolledBackApprovalCannotPublishLaterApproval() {
+        // The old delivery survives rollback; a later approval reuses the same row version.
+        jdbc.update("UPDATE draft_casefiles SET validated_date=TIMESTAMP '2024-01-03'"
+            + " WHERE draft_casefile_id=1062901");
+        assertThatThrownBy(() -> processing.processPendingDraft(message))
+            .isInstanceOf(IllegalArgumentException.class);
+        assertThat(status()).isEqualTo("PUBLISHING_PENDING");
+        verifyNoInteractions(publication, logging);
+        when(logging.personalDataAccessLogAsync(any())).thenAnswer(invocation -> {
+            uk.gov.hmcts.opal.logging.integration.dto.PersonalDataProcessingLogDetails details =
+                invocation.getArgument(0);
+            assertThat(details.getCreatedBy().getIdentifier()).isEqualTo("456");
+            return true;
+        });
+        assertThat(processing.processPendingDraft(new DraftCasefileQueueMessage(1062901L, 456L,
+            "192.0.2.2", "2024-01-03T00:00:00Z")))
+            .isEqualTo(DraftCasefileQueueProcessingService.Outcome.PUBLISHED);
+        verify(logging, times(3)).personalDataAccessLogAsync(any());
     }
 
     @Test
@@ -120,7 +148,8 @@ class DraftCasefileQueueProcessingIntegrationTest extends BaseIntegrationTest {
 
     @Test
     void legacyPendingMessageCannotPublishWithoutAuditContext() {
-        assertThatThrownBy(() -> processing.processPendingDraft(new DraftCasefileQueueMessage(1062901L, null, null)))
+        assertThatThrownBy(() -> processing.processPendingDraft(
+            new DraftCasefileQueueMessage(1062901L, null, null, null)))
             .isInstanceOf(IllegalArgumentException.class);
         assertRolledBack();
     }
@@ -138,6 +167,21 @@ class DraftCasefileQueueProcessingIntegrationTest extends BaseIntegrationTest {
             .isInstanceOf(DraftCasefilePublicationException.class);
         verify(publication, never()).publish(any());
         assertRolledBack();
+    }
+
+    @Test
+    void completionConstraintFailureDoesNotExposeSavedData(CapturedOutput output) {
+        jdbc.execute("ALTER TABLE draft_casefiles ADD CONSTRAINT publication_test_failure "
+            + "CHECK (casefile_status <> 'PUBLISHED')");
+        try {
+            consumer.consume("{\"draft_casefile_id\":1062901,\"checker_user_id\":123,"
+                + "\"originating_ip_address\":\"192.0.2.1\",\"approval_timestamp\":\"2024-01-02T00:00:00Z\"}");
+            assertThat(status()).isEqualTo("PUBLISHING_FAILED");
+            assertThat(output.getAll()).doesNotContain("Synthetic Respondent", "Synthetic Applicant",
+                "Synthetic saved submitter", "Synthetic saved approver", "192.0.2.1");
+        } finally {
+            jdbc.execute("ALTER TABLE draft_casefiles DROP CONSTRAINT publication_test_failure");
+        }
     }
 
     private void assertRolledBack() {

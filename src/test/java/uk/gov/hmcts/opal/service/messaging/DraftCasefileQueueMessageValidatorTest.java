@@ -36,15 +36,32 @@ class DraftCasefileQueueMessageValidatorTest {
     @ValueSource(strings = {"192.0.2.1", "2001:db8::1", "::ffff:192.0.2.1"})
     void acceptsLiteralAddresses(String ip) {
         var message = validator.parse("{\"draft_casefile_id\":42,\"checker_user_id\":123,"
-            + "\"originating_ip_address\":\"" + ip + "\"}");
+            + "\"originating_ip_address\":\"" + ip + "\",\"approval_timestamp\":\"2024-01-02T00:00:00Z\"}");
         validator.validateAuditContext(message);
         assertThat(message.originatingIpAddress()).isEqualTo(ip);
     }
 
     @ParameterizedTest
+    @ValueSource(strings = {"not-a-time", "2024-01-02", "2024-01-02T00:00:00.000000001Z"})
+    void rejectsInvalidApprovalTimestampWithoutLeakingValue(String timestamp) {
+        assertThatThrownBy(() -> validator.validateAuditContext(
+            new DraftCasefileQueueMessage(42L, 123L, "192.0.2.1", timestamp)))
+            .isInstanceOf(IllegalArgumentException.class).hasMessage("Invalid publication message").hasNoCause();
+    }
+
+    @Test
+    void legacyAuditMessageCannotPublishWithoutApprovalCorrelation() {
+        var message = validator.parse("""
+            {"draft_casefile_id":42,"checker_user_id":123,"originating_ip_address":"192.0.2.1"}
+            """);
+        assertThatThrownBy(() -> validator.validateAuditContext(message)).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @ParameterizedTest
     @ValueSource(strings = {"localhost", "example.invalid", "", "192.0.2.999", "192.0.2.1,192.0.2.2"})
     void rejectsIpHostnamesWithoutDnsLookup(String ip) {
-        assertThatThrownBy(() -> validator.validateAuditContext(new DraftCasefileQueueMessage(42L, 123L, ip)))
+        assertThatThrownBy(() -> validator.validateAuditContext(new DraftCasefileQueueMessage(42L, 123L, ip,
+            "2024-01-02T00:00:00Z")))
             .isInstanceOf(IllegalArgumentException.class).hasNoCause();
     }
 }

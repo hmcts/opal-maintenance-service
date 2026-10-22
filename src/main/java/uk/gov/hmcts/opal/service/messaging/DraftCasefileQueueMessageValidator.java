@@ -8,6 +8,9 @@ import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.time.Instant;
+import java.time.format.DateTimeParseException;
+
 @Component
 public class DraftCasefileQueueMessageValidator {
     private static final JsonMapper JSON = JsonMapper.builder()
@@ -33,8 +36,31 @@ public class DraftCasefileQueueMessageValidator {
                 }
                 ip = address.asString();
             }
-            return new DraftCasefileQueueMessage(id, checker, ip);
+            String approvedAt = null;
+            if (body.has("approval_timestamp")) {
+                JsonNode timestamp = body.get("approval_timestamp");
+                if (!timestamp.isString()) {
+                    throw invalid();
+                }
+                approvedAt = timestamp.asString();
+                validateTimestamp(approvedAt);
+            }
+            return new DraftCasefileQueueMessage(id, checker, ip, approvedAt);
         } catch (JacksonException exception) {
+            throw invalid();
+        }
+    }
+
+    private static void validateTimestamp(String value) {
+        if (value == null) {
+            throw invalid();
+        }
+        try {
+            Instant timestamp = Instant.parse(value);
+            if (timestamp.getNano() % 1000 != 0 || !timestamp.toString().equals(value)) {
+                throw invalid();
+            }
+        } catch (DateTimeParseException exception) {
             throw invalid();
         }
     }
@@ -46,6 +72,7 @@ public class DraftCasefileQueueMessageValidator {
             || !InetAddresses.isInetAddress(message.originatingIpAddress())) {
             throw invalid();
         }
+        validateTimestamp(message.approvalTimestamp());
     }
 
     private static Long identifier(JsonNode value) {
