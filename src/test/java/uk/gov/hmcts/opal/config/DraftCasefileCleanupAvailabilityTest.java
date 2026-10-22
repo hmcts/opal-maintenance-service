@@ -14,6 +14,7 @@ import uk.gov.hmcts.opal.authorisation.MaintenanceUserService;
 import uk.gov.hmcts.opal.controllers.TestingSupportDraftCasefileController;
 import uk.gov.hmcts.opal.repository.DraftCasefileRepository;
 import uk.gov.hmcts.opal.service.DraftCasefileCleanupService;
+import uk.gov.hmcts.opal.service.DraftCasefileTestScope;
 
 class DraftCasefileCleanupAvailabilityTest {
 
@@ -32,6 +33,7 @@ class DraftCasefileCleanupAvailabilityTest {
                 assertThat(context.getBeansOfType(TestingSupportDraftCasefileController.class))
                     .hasSize(enabled ? 1 : 0);
                 assertThat(context.getBeansOfType(DraftCasefileCleanupService.class)).hasSize(enabled ? 1 : 0);
+                assertThat(context.getBeansOfType(DraftCasefileTestScope.class)).hasSize(enabled ? 1 : 0);
             });
     }
 
@@ -41,11 +43,12 @@ class DraftCasefileCleanupAvailabilityTest {
             assertThat(context).hasNotFailed();
             assertThat(context).doesNotHaveBean(TestingSupportDraftCasefileController.class);
             assertThat(context).doesNotHaveBean(DraftCasefileCleanupService.class);
+            assertThat(context).doesNotHaveBean(DraftCasefileTestScope.class);
         });
     }
 
     @Configuration(proxyBeanMethods = false)
-    @Import({TestingSupportDraftCasefileController.class, DraftCasefileCleanupService.class})
+    @Import({TestingSupportDraftCasefileController.class, DraftCasefileCleanupService.class, DraftCasefileTestScope.class})
     static class TestConfiguration {
     }
 }

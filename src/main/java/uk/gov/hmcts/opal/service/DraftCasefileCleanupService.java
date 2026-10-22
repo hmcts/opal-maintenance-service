@@ -5,11 +5,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import uk.gov.hmcts.opal.authorisation.MaintenanceUser;
-import uk.gov.hmcts.opal.authorisation.MaintenanceUserService;
 import uk.gov.hmcts.opal.common.exception.OpalApiException;
 import uk.gov.hmcts.opal.entity.DraftCasefileEntity;
 import uk.gov.hmcts.opal.entity.DraftCasefileStatus;
@@ -18,15 +15,13 @@ import uk.gov.hmcts.opal.repository.DraftCasefileRepository;
 
 import java.util.Optional;
 
-import static uk.gov.hmcts.opal.authorisation.MaintenancePermission.CREATE_MANAGE_DRAFT_CASEFILES;
-
 @Service
 @RequiredArgsConstructor
 @ConditionalOnProperty(prefix = "opal.testing-support-endpoints",
     name = "enabled", havingValue = "true")
 public class DraftCasefileCleanupService {
 
-    private final MaintenanceUserService users;
+    private final DraftCasefileTestScope scope;
     private final DraftCasefileRepository repository;
     private final ObjectMapper objectMapper;
 
@@ -37,34 +32,25 @@ public class DraftCasefileCleanupService {
             return;
         }
         DraftCasefileEntity draft = found.orElseThrow();
-        MaintenanceUser caller = users.requireAuthorisedUser(
-            draft.getBusinessUnitId(), CREATE_MANAGE_DRAFT_CASEFILES);
-        if (!caller.businessUnitUserId().equals(draft.getSubmittedBy())) {
-            throw denied();
-        }
-        requireMatchingRun(draft.getCasefile(), testRunReference);
+        scope.requireOwnedRun(draft, testRunReference);
         requireUnpublished(draft);
         repository.delete(draft);
         repository.flush();
     }
 
-    private void requireMatchingRun(String storedCasefile, String reference) {
-        try {
-            JsonNode root = objectMapper.readTree(storedCasefile);
-            JsonNode marker = root == null ? null : root.at("/respondent_account/remo_reference");
-            if (marker == null || !marker.isTextual() || !reference.equals(marker.textValue())) {
-                throw denied();
-            }
-        } catch (JsonProcessingException exception) {
-            throw denied();
-        }
-    }
-
     private void requireUnpublished(DraftCasefileEntity draft) {
-        if (draft.getCasefileStatus() != DraftCasefileStatus.SUBMITTED
-            || draft.getAccountId() != null || draft.getAccountNumber() != null
-            || draft.getValidatedDate() != null || draft.getValidatedBy() != null
-            || draft.getValidatedByName() != null) {
+        if (draft.getCasefileStatus() == null) {
+            throw conflict();
+        }
+        boolean unlinkedLifecycle = switch (draft.getCasefileStatus()) {
+            case SUBMITTED, REJECTED, RESUBMITTED, DELETED, PUBLISHING_FAILED -> true;
+            case PUBLISHING_PENDING, PUBLISHED -> false;
+        };
+        boolean submittedWithValidation = draft.getCasefileStatus() == DraftCasefileStatus.SUBMITTED
+            && (draft.getValidatedDate() != null || draft.getValidatedBy() != null
+                || draft.getValidatedByName() != null);
+        if (!unlinkedLifecycle || submittedWithValidation
+            || draft.getAccountId() != null || draft.getAccountNumber() != null) {
             throw conflict();
         }
         try {
@@ -91,10 +77,6 @@ public class DraftCasefileCleanupService {
             || !account.has("account_number") || !account.get("account_number").isNull()) {
             throw conflict();
         }
-    }
-
-    private static AccessDeniedException denied() {
-        return new AccessDeniedException("Draft Casefile test cleanup is not permitted");
     }
 
     private static OpalApiException conflict() {
