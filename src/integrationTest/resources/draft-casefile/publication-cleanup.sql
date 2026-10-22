@@ -1,0 +1,2 @@
+-- Tests own a disposable PostgreSQL container and roll back each fixture transaction.
+-- No shared database cleanup or deletion is permitted.
