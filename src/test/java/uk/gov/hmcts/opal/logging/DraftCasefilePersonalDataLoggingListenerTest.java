@@ -87,7 +87,7 @@ class DraftCasefilePersonalDataLoggingListenerTest {
             assertThat(payload.getRecipient()).isNull();
             assertThat(payload.getIndividuals()).singleElement().satisfies(individual -> {
                 assertThat(individual.getIdentifier()).isEqualTo("123");
-                assertThat(individual.getType().getType()).isEqualTo("DRAFT_CASEFILE");
+                assertThat(individual.getType().getType()).isEqualTo("RM_DRAFT_CASEFILE");
             });
         });
     }
