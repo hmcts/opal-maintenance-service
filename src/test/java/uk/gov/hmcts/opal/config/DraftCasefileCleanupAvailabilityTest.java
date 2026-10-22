@@ -48,7 +48,8 @@ class DraftCasefileCleanupAvailabilityTest {
     }
 
     @Configuration(proxyBeanMethods = false)
-    @Import({TestingSupportDraftCasefileController.class, DraftCasefileCleanupService.class, DraftCasefileTestScope.class})
+    @Import({TestingSupportDraftCasefileController.class, DraftCasefileCleanupService.class,
+        DraftCasefileTestScope.class})
     static class TestConfiguration {
     }
 }
