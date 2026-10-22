@@ -600,7 +600,7 @@ cleanup checks.
 Only `db_upgrade_contract_pgtap_tests.sql`,
 `db_upgrade_framework_pgtap_tests.sql` and `db_upgrade_lifecycle_pgtap_tests.sql`
 are excluded from retained owners because they require absent observation state.
-All application owners remain selected. Ordinary fresh execution retains all 41
+All application owners remain selected. Ordinary fresh execution retains all 42
 suites in both profiles, including these three fixed framework self-suites.
 
 The bounded delta allows registered routine creation/replacement and explicitly
