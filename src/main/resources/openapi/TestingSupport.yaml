@@ -8,12 +8,16 @@ paths:
     delete:
       tags: [Testing Support]
       operationId: cleanupDraftCasefile
-      summary: Deletes the authenticated submitter's synthetic submitted Draft Casefile
+      summary: Deletes the authenticated submitter's synthetic unlinked Draft Casefile
       description: >-
         Registered when testing-support is enabled. Deployments must disable testing-support in production.
-        Requires permission 21 in the stored draft's Maintenance Business Unit and a matching authenticated submitter.
+        Requires permission 21 in the stored draft's Maintenance Business Unit and the latest authenticated submitter.
         Existing rows must match the exact run reference in respondent_account.remo_reference.
-        Only unvalidated SUBMITTED rows without published account links can be deleted.
+        Unlinked SUBMITTED, REJECTED, RESUBMITTED, DELETED and PUBLISHING_FAILED rows can be deleted.
+        SUBMITTED rows must have no validation metadata; the other eligible states may retain checker metadata.
+        Every eligible state must have null row and snapshot account IDs and numbers and a consistent snapshot structure.
+        PUBLISHING_PENDING and PUBLISHED remain ineligible.
+        After PUT resubmission only the latest submitter and the exact marker in the replacement payload can clean the draft.
         Already-absent IDs succeed after authentication; no draft remains for an ownership or BU permission check. No GET request or If-Match header is required.
       security:
         - TestingSupportBearerAuth: []
