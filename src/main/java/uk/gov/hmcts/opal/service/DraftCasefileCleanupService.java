@@ -1,8 +1,5 @@
 package uk.gov.hmcts.opal.service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
@@ -12,6 +9,7 @@ import uk.gov.hmcts.opal.entity.DraftCasefileEntity;
 import uk.gov.hmcts.opal.entity.DraftCasefileStatus;
 import uk.gov.hmcts.opal.exception.DraftCasefileError;
 import uk.gov.hmcts.opal.repository.DraftCasefileRepository;
+import uk.gov.hmcts.opal.repository.PublicationEvidenceRepository;
 
 import java.util.Optional;
 
@@ -23,7 +21,8 @@ public class DraftCasefileCleanupService {
 
     private final DraftCasefileTestScope scope;
     private final DraftCasefileRepository repository;
-    private final ObjectMapper objectMapper;
+    private final DraftCasefileTestEligibility eligibility;
+    private final PublicationEvidenceRepository evidence;
 
     @Transactional
     public void cleanup(Long draftCasefileId, String testRunReference) {
@@ -34,6 +33,8 @@ public class DraftCasefileCleanupService {
         DraftCasefileEntity draft = found.orElseThrow();
         scope.requireOwnedRun(draft, testRunReference);
         requireUnpublished(draft);
+        evidence.findObservation(draftCasefileId).ifPresent(observation ->
+            evidence.deleteObservation(draftCasefileId, observation.testRunReference()));
         repository.delete(draft);
         repository.flush();
     }
@@ -49,32 +50,7 @@ public class DraftCasefileCleanupService {
         boolean submittedWithValidation = draft.getCasefileStatus() == DraftCasefileStatus.SUBMITTED
             && (draft.getValidatedDate() != null || draft.getValidatedBy() != null
                 || draft.getValidatedByName() != null);
-        if (!unlinkedLifecycle || submittedWithValidation
-            || draft.getAccountId() != null || draft.getAccountNumber() != null) {
-            throw conflict();
-        }
-        try {
-            JsonNode snapshot = objectMapper.readTree(draft.getCasefileSnapshot());
-            if (snapshot == null || !snapshot.isObject()) {
-                throw conflict();
-            }
-            requireEmptyAccount(snapshot.path("respondent_account"));
-            requireEmptyAccount(snapshot.path("applicant_account"));
-            JsonNode minors = snapshot.path("minor_creditor_accounts");
-            if (!minors.isArray()) {
-                throw conflict();
-            }
-            for (JsonNode minor : minors) {
-                requireEmptyAccount(minor);
-            }
-        } catch (JsonProcessingException exception) {
-            throw conflict();
-        }
-    }
-
-    private static void requireEmptyAccount(JsonNode account) {
-        if (!account.isObject() || !account.has("account_id") || !account.get("account_id").isNull()
-            || !account.has("account_number") || !account.get("account_number").isNull()) {
+        if (!unlinkedLifecycle || submittedWithValidation || !eligibility.isUnlinked(draft)) {
             throw conflict();
         }
     }

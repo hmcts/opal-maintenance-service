@@ -182,7 +182,7 @@ class PublicationEvidenceWriterIntegrationTest extends BaseIntegrationTest {
     @TestConfiguration(proxyBeanMethods = false)
     static class SecondInstance {
 
-        @Bean
+        @Bean(defaultCandidate = false)
         PublicationEvidenceWriter secondPublicationEvidenceWriter(JdbcTemplate jdbc, Clock clock) {
             return new PublicationEvidenceWriter(new PublicationEvidenceRepository(jdbc, clock));
         }
