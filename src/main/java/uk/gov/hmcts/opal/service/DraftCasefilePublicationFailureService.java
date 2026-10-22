@@ -5,6 +5,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import uk.gov.hmcts.opal.entity.DraftCasefileStatus;
+import uk.gov.hmcts.opal.mapper.DraftCasefilePublicationMapper;
 import uk.gov.hmcts.opal.exception.DraftCasefilePublicationException.Attempt;
 import uk.gov.hmcts.opal.repository.DraftCasefileRepository;
 import uk.gov.hmcts.opal.repository.extensions.DraftCasefilePublicationRepository;
@@ -21,6 +22,7 @@ public class DraftCasefilePublicationFailureService {
     private final DraftCasefileRepository drafts;
     private final DraftCasefilePublicationRepository publication;
     private final Clock clock;
+    private final DraftCasefilePublicationMapper mapper;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public boolean markFailed(Attempt attempt, String safeStatusMessage) {
@@ -28,15 +30,7 @@ public class DraftCasefilePublicationFailureService {
         if (draft == null) {
             return false;
         }
-        if (draft.getCasefileStatus() == DraftCasefileStatus.PUBLISHED
-            && draft.getAccountId() != null && draft.getAccountNumber() != null
-            && !draft.getAccountNumber().isBlank()) {
-            return false;
-        }
-        if (draft.getAccountId() != null || draft.getAccountNumber() != null
-            || draft.getCasefileStatus() == DraftCasefileStatus.PUBLISHED) {
-            throw new IllegalStateException("Inconsistent publication identity");
-        }
+        mapper.validatePublicationState(draft);
         if (draft.getCasefileStatus() != DraftCasefileStatus.PUBLISHING_PENDING) {
             return false;
         }

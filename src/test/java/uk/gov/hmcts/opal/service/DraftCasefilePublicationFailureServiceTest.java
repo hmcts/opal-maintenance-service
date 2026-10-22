@@ -3,6 +3,7 @@ package uk.gov.hmcts.opal.service;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import uk.gov.hmcts.opal.entity.DraftCasefileEntity;
+import uk.gov.hmcts.opal.mapper.DraftCasefilePublicationMapper;
 import uk.gov.hmcts.opal.entity.DraftCasefileStatus;
 import uk.gov.hmcts.opal.exception.DraftCasefilePublicationException.Attempt;
 import uk.gov.hmcts.opal.repository.DraftCasefileRepository;
@@ -24,7 +25,8 @@ class DraftCasefilePublicationFailureServiceTest {
     private final DraftCasefileRepository drafts = mock(DraftCasefileRepository.class);
     private final DraftCasefilePublicationRepository publication = mock(DraftCasefilePublicationRepository.class);
     private final DraftCasefilePublicationFailureService service = new DraftCasefilePublicationFailureService(
-        drafts, publication, Clock.fixed(Instant.parse("2026-10-22T12:00:00Z"), ZoneOffset.UTC));
+        drafts, publication, Clock.fixed(Instant.parse("2026-10-22T12:00:00Z"), ZoneOffset.UTC),
+        new DraftCasefilePublicationMapper());
     private final LocalDateTime approved = LocalDateTime.of(2026, 10, 21, 12, 0);
     private final Attempt attempt = new Attempt(42L, 1L, "CHECKER", approved);
     private DraftCasefileEntity draft;
@@ -33,7 +35,7 @@ class DraftCasefilePublicationFailureServiceTest {
     void setUp() {
         draft = DraftCasefileEntity.builder().draftCasefileId(42L).versionNumber(1L)
             .casefileStatus(DraftCasefileStatus.PUBLISHING_PENDING)
-            .validatedBy("CHECKER").validatedDate(approved).build();
+            .validatedBy("CHECKER").validatedDate(approved).casefileSnapshot("{}").build();
         when(drafts.findForPublicationById(42L)).thenAnswer(invocation -> Optional.of(draft));
     }
 
@@ -46,7 +48,10 @@ class DraftCasefilePublicationFailureServiceTest {
     @Test
     void doesNotOverwriteWinningPublication() {
         draft = draft.toBuilder().casefileStatus(DraftCasefileStatus.PUBLISHED)
-            .accountId(123L).accountNumber("00123A").build();
+            .accountId(123L).accountNumber("00123A").casefileSnapshot("""
+                {"respondent_account":{"account_id":123,"account_number":"00123A"},
+                 "applicant_account":{"account_id":124,"account_number":"00124B"},"minor_creditor_accounts":[]}
+                """).build();
         assertThat(service.markFailed(attempt, "Publication failed; contact support")).isFalse();
         assertThat(draft.getCasefileStatus()).isEqualTo(DraftCasefileStatus.PUBLISHED);
     }

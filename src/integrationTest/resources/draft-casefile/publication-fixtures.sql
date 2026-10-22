@@ -18,10 +18,10 @@ SELECT id,'Synthetic publication Result',TRUE,FALSE,FALSE,TRUE,FALSE,creditor,FA
  FALSE,FALSE,'',FALSE,FALSE,
  '[{"name":"Amount","type":"decimal-2dp","mandatory":true,"min":0,"max":10000,"language_dependent":false}]'::JSON
 FROM(VALUES('P55A',TRUE),('P55B',TRUE),('P55N',FALSE))v(id,creditor);
-CREATE TEMP TABLE pdc_payloads(label TEXT PRIMARY KEY,payload JSON NOT NULL);
+CREATE TEMP TABLE pdc_payloads(label TEXT PRIMARY KEY,payload JSON NOT NULL) ON COMMIT DROP;
 INSERT INTO pdc_payloads VALUES('base',$payload$
 { "respondent_account": {
- "application_code":"PDC55",
+ "business_unit_id":32055,"casefile_type":"REMO In","application_code":"PDC55",
  "respondent":{"party_details":{"organisation":false,"individual_details":{"surname":"Synthetic Respondent"},
  "address":{"address_line_1":"Respondent address","cjs_code":31055}}},
  "order_details":{"date_ordered":"2024-01-01","date_arrears_last_updated":"2024-01-01",
@@ -41,6 +41,9 @@ INSERT INTO public.draft_casefiles(draft_casefile_id,business_unit_id,created_da
  casefile_status_date,timeline_data,version_number)
 SELECT id,32055,TIMESTAMP '2024-01-01','P55_SUBMIT','Synthetic saved submitter',
  TIMESTAMP '2024-01-02','P55_APPROVE','Synthetic saved approver',payload,
- '{ "respondent_name" : "Synthetic Respondent", "applicant_name" : "Synthetic Applicant" }'::JSON,
+ '{"respondent_account":{"account_id":null,"account_number":null,"respondent_name":"Synthetic Respondent"},
+   "applicant_account":{"account_id":null,"account_number":null,"applicant_name":"Synthetic Applicant"},
+   "minor_creditor_accounts":[{"creditor_sequence":7,"account_id":null,"account_number":null,
+   "name":"Synthetic Minor Seven"}]}'::JSON,
  'REMO In','PUBLISHING_PENDING',TIMESTAMP '2024-01-02','[ { "event" : "Synthetic approval" } ]'::JSON,1
 FROM pdc_payloads CROSS JOIN(VALUES(1062901::BIGINT),(1062902::BIGINT))v(id);

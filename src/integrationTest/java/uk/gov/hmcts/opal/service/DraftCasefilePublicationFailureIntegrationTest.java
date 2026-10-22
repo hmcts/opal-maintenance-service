@@ -76,7 +76,8 @@ class DraftCasefilePublicationFailureIntegrationTest extends BaseIntegrationTest
     void preservesAlreadyPublishedOutcome() {
         jdbc.update("""
             UPDATE draft_casefiles SET casefile_status='PUBLISHED',account_id=101,account_number='R101',
-              casefile_snapshot='{"respondent_account":{"account_id":101,"account_number":"R101"}}'
+              casefile_snapshot='{"respondent_account":{"account_id":101,"account_number":"R101"},
+                "applicant_account":{"account_id":102,"account_number":"A102"},"minor_creditor_accounts":[]}' 
             WHERE draft_casefile_id=1062901
             """);
         assertThat(failures.markFailed(attempt(1L), "Publication failed; contact support")).isFalse();
