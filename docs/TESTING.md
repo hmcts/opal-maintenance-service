@@ -387,6 +387,9 @@ The runner resolves `org.flywaydb:flyway-core` and
 and checks every native Flyway JSON response's `flywayVersion` against it. Missing,
 duplicate, mismatched or unsupported versions fail closed. Reports retain the
 resolved runtime version and selected image; no image override is supported.
+Native `validate` also requires JSON `validationSuccessful: true`; a zero process
+exit cannot hide a reported validation failure. The original JSON and diagnostic
+remain in the target receipts.
 
 The common NLE profile proves its seed without applying DEV migrations. Staging
 currently adds no SQL under `data/stg`; these profiles do not claim validation of
@@ -491,10 +494,11 @@ applicable upgrades while every fresh suite still runs. Full mode and absent
 comparison evidence select all eligible scenarios; a profile with no eligible registrations
 still reports outside-profile scenarios explicitly.
 
-The comparison ref controls impact selection and immutable-history checks. It
-does not recreate a Git-parent database and apply all incoming migrations as one
-retained transition; no actual-parent transition task is provided by this
-framework.
+For normal `dbUnitTest`, the comparison ref controls impact selection and
+immutable-history checks. Registered replay recreates each selected numerical
+predecessor independently. The separate
+[actual-parent task](#actual-comparison-parent-batch-verification) verifies a
+retained comparison inventory plus the complete incoming batch.
 
 New candidate registrations, changed owning suites/registrations and intersecting
 declared dependencies select their scenarios. The owning suite and candidate are
@@ -541,6 +545,106 @@ retain the legacy owner phases described below. Later versions remain excluded
 until the candidate's assertions finish. Test-state cleanup and exact target
 removal remain mandatory. A true initial migration receives explicit upgrade N/A
 plus the full fresh run.
+
+#### Actual comparison-parent batch verification
+
+```bash
+./gradlew dbUnitTestParentTransitionTest --no-daemon -PdbUnitTestComparisonRef=<exact-full-SHA>
+```
+
+This explicit additional task verifies both fixed profiles independently, each on
+one retained disposable PostgreSQL 17 target. It supplements fresh execution and
+full registered replay. The public task is not a default build requirement
+without a comparison ref. Native Flyway uses the same resolved application
+modules and JSON runtime checks as ordinary execution (currently 13.10.0), with
+no profile or image override.
+
+Use a locally available full comparison SHA for reproducible evidence. Any accepted
+ref must resolve unambiguously and must equal
+tested HEAD or its sole immediate Git parent. Comparison equal to HEAD accepts
+an existing merge commit and reports `comparisonKind=head-inventory`. If it
+differs from HEAD, HEAD must have exactly the comparison as its one parent;
+`comparisonKind=sole-immediate-parent` records that result. A merge candidate,
+distant ancestor, unrelated ref, missing comparison or invalid history fails
+closed. There is no CI/base fallback or fallback to registered numerical replay.
+
+Reports retain `parentProvenance`, `comparisonKind`, `candidateMode`, `overlayPaths`,
+`testedHeadTree` and `testedParents`, alongside exact comparison/tested identities,
+locations, fingerprints, delta and native/TAP results. `candidateMode` is
+`committed HEAD` for clean source or `HEAD plus index/worktree overlay` for
+actual staged, unstaged and untracked changes. Relevant ignored executable inputs
+also count as overlays; unrelated ignored build and evidence files do not. A
+working-candidate run does not
+prove a committed candidate's parent relationship. Rerun on the clean committed
+child against its sole immediate parent to retain that committed-parent evidence.
+
+Complete-tree numerical uniqueness, immutable committed HEAD/comparison paths and
+bytes, fixed adoption and registration/support validation still run globally
+before target creation. Each profile derives its exact comparison and tested
+inventory using its fixed locations. The nonempty comparison must be an exact
+numerical prefix, including path and hash. Equality is fully verified, not
+skipped. Outside-location migrations remain Unverified. Existing historical seed
+registrations are not incoming additions; their boundaries remain covered by
+ordinary full registered replay.
+
+For each profile, native Flyway migrates and validates the comparison inventory,
+then shared support captures durable original state. One native migrate applies
+all additions. Verification checks exact final inventory, every complete original
+history row, successful checksummed SQL and exact preservation before final
+owning assertions. Owners run ordinary fresh branches with positive exact TAP
+plans and rollback. After those assertions, repeat migration must apply zero
+files, native validation must pass and every complete final history field must
+remain equal. Empty deltas execute all preservation, owner, repeat/history and
+cleanup checks.
+
+Only `db_upgrade_contract_pgtap_tests.sql`,
+`db_upgrade_framework_pgtap_tests.sql` and `db_upgrade_lifecycle_pgtap_tests.sql`
+are excluded from retained owners because they require absent observation state.
+All application owners remain selected. Ordinary fresh execution retains all 32
+suites in both profiles, including these three fixed framework self-suites.
+
+The bounded delta allows registered routine creation/replacement and explicitly
+recognized Aliases-name and Order-Term-response schema contracts. Delta comes
+only from actual additions. Unsupported structural or incoming data changes fail
+closed; a compact data `observe` declaration grants no implicit batch exemption.
+Routine identities are canonicalized in PostgreSQL; a routine created and
+replaced inside the batch need not exist at the comparison boundary. Declared
+routine definitions may change while existing properties and privileges remain
+exact. Other public application relations, columns, defaults, constraints,
+indexes, comments, ACLs, trigger definitions/enabled state, RLS policies, enum
+labels and sequence state are compared. Extension-owned objects and Flyway's
+history table are excluded from application snapshots; complete history is
+compared separately. This is an enumerated catalogue contract, not all PostgreSQL
+system catalogues; physical statistics and the transient index MVCC check flag
+are excluded.
+
+Rows preserve original JSON text, duplicate keys and multiplicity. Only original
+columns are projected for the allowed nullable response-column addition.
+Migration-created empty business tables stay empty: this task does not borrow
+registered synthetic predecessor preparation or its approval. Shared support
+owns guarded committed observations and cleanup, with absence checked from a
+distinct backend. A separate `parent-session-absence` probe checks that no other
+client backends remain on the test-owned target, excluding its own PID, including
+after shared cleanup failure. UUID-owned container and every known anonymous
+volume absence are checked independently, including after failure. After global preflight and
+image preparation, both profiles are attempted even if the first fails. Primary,
+nested and cleanup failures are retained and fail the aggregate.
+
+Reports are separate from normal fresh/registered receipts:
+`build/reports/dbUnitTest/parent-transition/summary.txt` is the aggregate;
+`parent-transition/<profile>/summary.txt` and each profile's `runs/<run-id>/`
+retain selection, delta, fingerprints, phase results and cleanup evidence.
+Normal root/profile latest entry points remain unchanged.
+
+`./gradlew dbUnitTestParentTransitionFrameworkTest --no-daemon` exercises the same
+maintained runner with fixed fixtures. It retains the original 24 batch/failure
+controls and adds equal-inventory no-op, provenance, owner SQL/TAP/zero-plan/
+wrong-plan failures, observation identity, undeclared routine changes,
+enum/sequence-privilege preservation and first-profile-failure/second-profile
+continuation controls. It is part of the existing `dbUnitTestFrameworkTest` graph;
+its separate report is `build/reports/dbUnitTest/parent-framework/summary.txt`.
+Fixtures are never production migrations. Public tasks accept no arbitrary SQL,
+target, credentials or fault injection.
 
 #### Compact contract and shared dispatch
 
@@ -816,6 +920,7 @@ src/dbUnitTest/
 ├── support/manifest.json
 ├── support/upgrade_contract.sql
 ├── support/upgrade_dispatch.sql
+├── support/parent_transition.sql
 ├── upgradeCases/                 # optional declared cases only
 ├── framework/                    # fixed framework regressions
 └── README.md

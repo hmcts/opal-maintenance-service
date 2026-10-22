@@ -70,7 +70,271 @@ tasks.register('dbUnitTestSelectionTest') {
       try { action() } catch (org.gradle.api.GradleException expected) { rejected = true }
       assert rejected : 'Expected invalid declaration/options rejection'
     }
+    def selectParent = { Map f, Map options = [:] ->
+      assert project.ext.has('selectDbParentTransition') : 'Actual-parent selector is required'
+      project.ext.selectDbParentTransition(f.scenarios, f.repo,
+        [comparisonRef:f.base, selectedLocations:profileLocations['non-live-dev']] + options)
+    }
+    def mergeFixture = {
+      def f = fixture()
+      write(f.repo,'README.md','feature branch\n'); commit(f)
+      git(f.repo,['checkout','selection-base'])
+      write(f.repo,'base.txt','base branch\n'); commit(f)
+      f.firstParent = git(f.repo,['rev-parse','HEAD'])
+      git(f.repo,['merge','--no-ff','selection-feature','-m','fixed parent merge'])
+      f.base = git(f.repo,['rev-parse','HEAD'])
+      f
+    }
     try {
+      ['changed','removed','renamed','lower'].each { mutation ->
+        check("actual parent rejects ${mutation} prefix") {
+          def f=fixture()
+          def old=new File(f.repo,'src/main/resources/db/migration/ddl/V1_1__old.sql')
+          if (mutation=='changed') { old.text='changed\n' }
+          if (mutation=='removed') { old.delete() }
+          if (mutation=='renamed') { old.renameTo(new File(old.parentFile,'V1_1__renamed.sql')) }
+          if (mutation=='lower') { write(f.repo,'src/main/resources/db/migration/ddl/V0_9__lower.sql','lower\n') }
+          rejects { project.ext.selectDbParentTransition(f.scenarios,f.repo,[comparisonRef:f.base]) }
+        }
+      }
+      check('actual parent rejects ambiguous comparison') {
+        def f=fixture()
+        git(f.repo,['branch','--no-track','ambiguous-parent']); git(f.repo,['tag','ambiguous-parent'])
+        rejects { project.ext.selectDbParentTransition(f.scenarios,f.repo,[comparisonRef:'ambiguous-parent']) }
+      }
+      check('actual parent refuses a distant ancestor') {
+        def f=fixture()
+        write(f.repo,'README.md','first\n'); commit(f)
+        write(f.repo,'README.md','second\n'); commit(f)
+        rejects { project.ext.selectDbParentTransition(f.scenarios,f.repo,[comparisonRef:f.base]) }
+      }
+      check('actual parent accepts equal inventory no-op') {
+        def f=fixture()
+        assert project.ext.selectDbParentTransition(f.scenarios,f.repo,[comparisonRef:f.base]).additions.isEmpty()
+      }
+      check('actual parent accepts exact multiple-location prefix') {
+        def f = fixture()
+        write(f.repo, 'src/main/resources/db/migration/data/dev/V1_2__data.sql', 'data\n')
+        write(f.repo, 'src/main/resources/db/migration/ddl/V1_10__last.sql', 'last\n')
+        def result = project.ext.selectDbParentTransition(f.scenarios, f.repo,
+          [comparisonRef:f.base, selectedLocations:['ddl','data/dev']])
+        assert result.baseEntries*.version == ['1','1.1']
+        assert result.additions*.version == ['1.2','1.10']
+      }
+      ['missing', null].each { comparison ->
+        check("actual parent refuses unavailable comparison ${comparison}") {
+          def f = fixture()
+          rejects { project.ext.selectDbParentTransition(f.scenarios, f.repo, [comparisonRef:comparison]) }
+        }
+      }
+      check('actual parent records clean HEAD tree and empty root parent list') {
+        def f = fixture(); def result = selectParent(f)
+        assert result.comparisonKind == 'head-inventory'
+        assert result.candidateMode == 'committed HEAD'
+        assert result.overlayPaths == []
+        assert result.testedParents == []
+        assert result.testedHeadTree == git(f.repo,['rev-parse','HEAD^{tree}'])
+        assert result.parentProvenance.contains('HEAD inventory')
+      }
+      check('actual parent accepts two-parent HEAD as comparison inventory') {
+        def f = mergeFixture(); def result = selectParent(f)
+        assert result.testedParents.size() == 2
+        assert result.comparisonKind == 'head-inventory'
+        assert result.candidateMode == 'committed HEAD'
+        assert result.additions == []
+      }
+      check('actual parent accepts sole child of merge baseline') {
+        def f = mergeFixture()
+        write(f.repo,'README.md','single child\n'); commit(f)
+        def result = selectParent(f)
+        assert result.testedParents == [f.base]
+        assert result.comparisonKind == 'sole-immediate-parent'
+        assert result.candidateMode == 'committed HEAD'
+        assert result.overlayPaths == []
+        assert result.changedPaths == ['README.md']
+        assert result.testedHeadTree == git(f.repo,['rev-parse','HEAD^{tree}'])
+        assert result.parentProvenance.contains('sole immediate Git parent')
+      }
+      check('actual parent rejects merge candidate against first parent') {
+        def f = mergeFixture(); rejects { selectParent(f,[comparisonRef:f.firstParent]) }
+      }
+      ['worktree','indexed','untracked'].each { state ->
+        check("actual parent labels ${state} overlay separately from committed differences") {
+          def f = fixture()
+          write(f.repo,'README.md','committed change\n'); commit(f)
+          def path = state == 'untracked' ? 'new file.txt' : 'src/main/resources/dependency.sql'
+          write(f.repo,path,'overlay\n')
+          if (state == 'indexed') { git(f.repo,['add',path]) }
+          def result = selectParent(f)
+          assert result.candidateMode == 'HEAD plus index/worktree overlay'
+          assert result.comparisonKind == 'sole-immediate-parent'
+          assert result.overlayPaths == [path]
+          assert !result.overlayPaths.contains('README.md')
+        }
+      }
+      check('actual parent combines staged working and untracked overlays') {
+        def f = fixture()
+        write(f.repo,'README.md','indexed\n'); git(f.repo,['add','README.md'])
+        write(f.repo,'README.md','working\n')
+        write(f.repo,'src/main/resources/dependency.sql','working dependency\n')
+        write(f.repo,'new file.txt','untracked\n')
+        assert selectParent(f).overlayPaths == ['README.md','new file.txt','src/main/resources/dependency.sql']
+      }
+      check('actual parent includes both sides of indexed rename') {
+        def f = fixture(); git(f.repo,['mv','README.md','renamed README.md'])
+        assert selectParent(f).overlayPaths == ['README.md','renamed README.md']
+      }
+      check('actual parent excludes ignored files from overlay provenance') {
+        def f = fixture(); new File(f.repo,'.git/info/exclude').text = 'ignored.txt\n'
+        write(f.repo,'ignored.txt','ignored\n')
+        assert selectParent(f).overlayPaths == []
+        assert selectParent(f).candidateMode == 'committed HEAD'
+      }
+      check('actual parent labels ignored versioned migration as working overlay') {
+        def f = fixture()
+        def path = 'src/main/resources/db/migration/ddl/V1_2__ignored.sql'
+        new File(f.repo,'.git/info/exclude').text = path + '\n'
+        write(f.repo,path,'ignored migration\n')
+        def result = selectParent(f)
+        assert result.candidateMode == 'HEAD plus index/worktree overlay'
+        assert result.overlayPaths == [path]
+        assert result.additions*.path == ['ddl/V1_2__ignored.sql']
+      }
+      check('actual parent labels ignored declared owner as working overlay') {
+        def f = fixture()
+        def path = 'src/dbUnitTest/ignored_owner_pgtap_tests.sql'
+        new File(f.repo,'.git/info/exclude').text = path + '\n'
+        write(f.repo,path,'ignored owner\n')
+        f.scenarios[0].owner = new File(f.repo,path)
+        def result = selectParent(f)
+        assert result.candidateMode == 'HEAD plus index/worktree overlay'
+        assert result.overlayPaths == [path]
+      }
+      ['src/dbUnitTest/upgradeCases/ignored_custom.sql','src/main/resources/ignored_dependency.sql'].each { path ->
+        check("actual parent labels ignored validated dependency ${path}") {
+          def f = fixture()
+          new File(f.repo,'.git/info/exclude').text = path + '\n'
+          write(f.repo,path,'ignored declared input\n')
+          // Registration resolution adds validated custom scripts to inputs before selection.
+          f.scenarios[0].inputs = [path]
+          def result = selectParent(f)
+          assert result.candidateMode == 'HEAD plus index/worktree overlay'
+          assert result.overlayPaths == [path]
+        }
+      }
+      ['nested/ignored_pgtap_tests.sql','nested/ignored_unit_tests.sql'].each { name ->
+        check("actual parent labels ignored discovered SQL suite ${name}") {
+          def f = fixture(); def path = 'src/dbUnitTest/' + name
+          new File(f.repo,'.git/info/exclude').text = path + '\n'
+          write(f.repo,path,'ignored discovered suite\n')
+          def result = selectParent(f)
+          assert result.candidateMode == 'HEAD plus index/worktree overlay'
+          assert result.overlayPaths == [path]
+        }
+      }
+      def fixedSupportPaths = ['src/dbUnitTest/support/manifest.json',
+        'src/dbUnitTest/framework/upgrade_lifecycle.sql','src/dbUnitTest/support/upgrade_contract.sql',
+        'src/dbUnitTest/support/upgrade_dispatch.sql','src/dbUnitTest/support/parent_transition.sql']
+      fixedSupportPaths.each { ignoredPath ->
+        check("actual parent labels ignored fixed support input ${ignoredPath}") {
+          def f = fixture()
+          def supportContents = fixedSupportPaths.collectEntries { path ->
+            [(path):path.endsWith('manifest.json') ? JsonOutput.toJson([files:fixedSupportPaths.drop(1)]) : 'fixed support\n']
+          }
+          supportContents.findAll { path, content -> path != ignoredPath }.each { path, content ->
+            write(f.repo,path,content)
+          }
+          commit(f); f.base = git(f.repo,['rev-parse','HEAD'])
+          new File(f.repo,'.git/info/exclude').text = ignoredPath + '\n'
+          write(f.repo,ignoredPath,supportContents[ignoredPath])
+          def result = selectParent(f)
+          assert result.candidateMode == 'HEAD plus index/worktree overlay'
+          assert result.overlayPaths == [ignoredPath]
+        }
+      }
+      check('actual parent excludes ignored irrelevant build evidence and undispatched SQL') {
+        def f = fixture()
+        def irrelevant = ['build/ignored.txt','docs/superpowers/evidence/ignored.md',
+          'src/dbUnitTest/upgradeCases/undeclared.sql','src/dbUnitTest/framework/ignored_pgtap_tests.sql',
+          'src/dbUnitTest/support/undeclared.sql']
+        new File(f.repo,'.git/info/exclude').text = irrelevant.join('\n') + '\n'
+        irrelevant.each { write(f.repo,it,'ignored non-executable input\n') }
+        def result = selectParent(f)
+        assert result.candidateMode == 'committed HEAD'
+        assert result.overlayPaths == []
+      }
+      profileLocations.each { profile, locations ->
+        check("actual parent exact no-op inventory ${profile}") {
+          def f = profileFixture(); f.base = git(f.repo,['rev-parse','HEAD'])
+          def result = selectParent(f,[selectedLocations:locations])
+          assert result.baseEntries*.version == (profile == 'non-live-dev' ? ['1','1.1','1.2','1.3'] : ['1','1.1','1.3'])
+          assert result.testedEntries == result.baseEntries
+          assert result.additions == []
+        }
+        check("actual parent exact addition history ${profile}") {
+          def f = profileFixture(); def result = selectParent(f,[selectedLocations:locations])
+          assert result.baseEntries*.version == ['1','1.1']
+          assert result.additions*.path == (profile == 'non-live-dev' ?
+            ['data/dev/V1_2__dev.sql','data/nle/V1_3__nle.sql'] : ['data/nle/V1_3__nle.sql'])
+          assert result.selected*.id == (profile == 'non-live-dev' ?
+            ['fixture.unchanged','fixture.other','fixture.dev','fixture.nle'] :
+            ['fixture.unchanged','fixture.other','fixture.nle'])
+        }
+      }
+      [null,[], '', 'ddl', ['ddl','ddl'], ['../ddl'], ['/ddl'], ['data//dev'], [42], ['absent']].each { locations ->
+        check("actual parent rejects invalid or empty-prefix locations ${locations.inspect()}") {
+          def f = fixture(); rejects { selectParent(f,[selectedLocations:locations]) }
+        }
+      }
+      check('actual parent rejects unrelated history') {
+        def f = fixture(); git(f.repo,['checkout','--orphan','unrelated-parent'])
+        git(f.repo,['commit','--allow-empty','-m','unrelated root'])
+        def unrelated = git(f.repo,['rev-parse','HEAD']); git(f.repo,['checkout','selection-feature'])
+        rejects { selectParent(f,[comparisonRef:unrelated]) }
+      }
+      check('actual parent rejects advanced comparison') {
+        def f = fixture(); write(f.repo,'README.md','advanced\n'); commit(f)
+        def advanced = git(f.repo,['rev-parse','HEAD']); git(f.repo,['checkout','--detach',f.base])
+        rejects { selectParent(f,[comparisonRef:advanced]) }
+      }
+      check('actual parent never infers comparison from CI') {
+        def f = fixture(); rejects { selectParent(f,[comparisonRef:null,
+          environment:[CHANGE_ID:'1',CHANGE_TARGET:'selection-base',GIT_COMMIT:f.base]]) }
+      }
+      check('actual parent rejects shallow history') {
+        def f = fixture(); new File(f.repo,'.git/shallow').text = f.base + '\n'; rejects { selectParent(f) }
+      }
+      check('actual parent rejects unavailable index evidence') {
+        def f = fixture(); new File(f.repo,'.git/index').text = 'fixed corrupt index\n'; rejects { selectParent(f) }
+      }
+      check('actual parent fails closed when overlay queries fail') {
+        def f = fixture(); git(f.repo,['config','diff.renames','invalid-value']); rejects { selectParent(f) }
+      }
+      ['committed','indexed','worktree'].each { state ->
+        check("actual parent preserves outside-profile immutable history ${state}") {
+          def f = fixture(); def path = 'src/main/resources/db/migration/data/stg/V1_2__historic.sql'
+          write(f.repo,path,'historic stage\n'); commit(f); f.base = git(f.repo,['rev-parse','HEAD'])
+          write(f.repo,path,'changed stage\n')
+          if (state == 'indexed') { git(f.repo,['add',path]) }
+          if (state == 'committed') { commit(f) }
+          rejects { selectParent(f) }
+        }
+      }
+      check('actual parent rejects global collisions outside profile') {
+        def f = fixture(); write(f.repo,'src/main/resources/db/migration/data/stg/V1_1_0__collision.sql','collision\n')
+        rejects { selectParent(f) }
+      }
+      check('actual parent index policy cannot be hidden by restored working bytes') {
+        def f = fixture(); write(f.repo,'src/main/resources/db/migration/ddl/V1_1__old.sql','indexed mutation\n')
+        git(f.repo,['add','.']); write(f.repo,'src/main/resources/db/migration/ddl/V1_1__old.sql','initial\n')
+        rejects { selectParent(f) }
+      }
+      check('actual parent keeps outside-profile additions unverified') {
+        def f = fixture(); write(f.repo,'src/main/resources/db/migration/data/stg/V1_2__stage.sql','stage\n')
+        def result = selectParent(f)
+        assert result.additions == []
+        assert result.unverifiedMigrations*.path == ['data/stg/V1_2__stage.sql']
+      }
       check('new candidate selects only its owner') {
         def f = fixture()
         write(f.repo, 'src/main/resources/db/migration/ddl/V1_2__new.sql', 'new\n')

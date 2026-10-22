@@ -226,7 +226,8 @@ ext.dbUpgradeContractVariables = { Map scenario ->
 ext.dbUpgradeSupportFiles = { File repository ->
   def manifestPath = 'src/dbUnitTest/support/manifest.json'
   def expected = ['src/dbUnitTest/framework/upgrade_lifecycle.sql',
-    'src/dbUnitTest/support/upgrade_contract.sql','src/dbUnitTest/support/upgrade_dispatch.sql']
+    'src/dbUnitTest/support/upgrade_contract.sql','src/dbUnitTest/support/upgrade_dispatch.sql',
+    'src/dbUnitTest/support/parent_transition.sql']
   def manifest = regularRepositoryFile(repository, manifestPath)
   def declaration = constrainedJson(manifest.text, manifestPath)
   exactFields(declaration, ['files'], [], manifestPath)
@@ -420,7 +421,7 @@ tasks.register('dbUnitTestContractTest') {
     assert project.ext.dbUpgradeContractVariables(parsed).opal_assertion_group == 'fixture.current'
     assert new groovy.json.JsonSlurper().parseText(project.ext.dbUpgradeContractVariables(parsed).opal_contract_json) == parsed.contract
     checks++
-    assert project.ext.dbUpgradeSupportFiles(rootDir).size()==4
+    assert project.ext.dbUpgradeSupportFiles(rootDir).size()==5
     checks++
     def temporary = Files.createTempDirectory('opal-contract-metadata-').toFile()
     def fileRejects = { String name, Closure action ->
@@ -431,11 +432,12 @@ tasks.register('dbUnitTestContractTest') {
     }
     try {
       def supportPaths = ['src/dbUnitTest/framework/upgrade_lifecycle.sql',
-        'src/dbUnitTest/support/upgrade_contract.sql','src/dbUnitTest/support/upgrade_dispatch.sql']
+        'src/dbUnitTest/support/upgrade_contract.sql','src/dbUnitTest/support/upgrade_dispatch.sql',
+        'src/dbUnitTest/support/parent_transition.sql']
       supportPaths.each { path -> def target = new File(temporary,path); target.parentFile.mkdirs(); target.text='fixed metadata fixture\n' }
       def manifest = new File(temporary,'src/dbUnitTest/support/manifest.json')
       manifest.text = JsonOutput.toJson([files:supportPaths])
-      assert project.ext.dbUpgradeSupportFiles(temporary).size()==4
+      assert project.ext.dbUpgradeSupportFiles(temporary).size()==5
       checks++
       def validManifest = manifest.text
       ['malformed':'{bad}','unknown-field':JsonOutput.toJson([unknown:supportPaths]),
