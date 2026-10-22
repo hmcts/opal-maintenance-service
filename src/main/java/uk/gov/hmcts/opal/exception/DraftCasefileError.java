@@ -9,7 +9,8 @@ import uk.gov.hmcts.opal.common.exception.OpalApiError;
 @RequiredArgsConstructor
 public enum DraftCasefileError implements OpalApiError {
     INVALID_REQUEST("001", HttpStatus.BAD_REQUEST, "Invalid Draft Casefile request"),
-    CLEANUP_NOT_ELIGIBLE("002", HttpStatus.CONFLICT, "Draft Casefile is not eligible for test cleanup");
+    CLEANUP_NOT_ELIGIBLE("002", HttpStatus.CONFLICT, "Draft Casefile is not eligible for test cleanup"),
+    PUBLICATION_EVIDENCE_NOT_REGISTERED("003", HttpStatus.CONFLICT, "Publication evidence is not registered");
 
     private static final String ERROR_TYPE_PREFIX = "DRAFT_CASEFILE";
     private final String errorTypeNumeric;

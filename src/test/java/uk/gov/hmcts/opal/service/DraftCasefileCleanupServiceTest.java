@@ -14,13 +14,17 @@ import org.springframework.security.access.AccessDeniedException;
 import uk.gov.hmcts.opal.authorisation.MaintenanceUser;
 import uk.gov.hmcts.opal.authorisation.MaintenanceUserService;
 import uk.gov.hmcts.opal.common.exception.OpalApiException;
+import uk.gov.hmcts.opal.dto.PublicationObservation;
 import uk.gov.hmcts.opal.entity.DraftCasefileEntity;
 import uk.gov.hmcts.opal.entity.DraftCasefileStatus;
 import uk.gov.hmcts.opal.exception.DraftCasefileError;
 import uk.gov.hmcts.opal.repository.DraftCasefileRepository;
+import uk.gov.hmcts.opal.repository.PublicationEvidenceRepository;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -42,8 +46,10 @@ class DraftCasefileCleanupServiceTest {
     private static final String EMPTY_ACCOUNT = "{\"account_id\":null,\"account_number\":null}";
     private final MaintenanceUserService users = mock(MaintenanceUserService.class);
     private final DraftCasefileRepository repository = mock(DraftCasefileRepository.class);
+    private final PublicationEvidenceRepository evidence = mock(PublicationEvidenceRepository.class);
     private final DraftCasefileCleanupService service = new DraftCasefileCleanupService(
-        new DraftCasefileTestScope(users, new ObjectMapper()), repository, new ObjectMapper());
+        new DraftCasefileTestScope(users, new ObjectMapper()), repository,
+        new DraftCasefileTestEligibility(new ObjectMapper()), evidence);
 
     @BeforeEach
     void authoriseAutomation() {
@@ -191,6 +197,34 @@ class DraftCasefileCleanupServiceTest {
         verify(repository).delete(draft);
     }
 
+    @Test
+    void deletesAttachedObservationUsingItsPersistedMarkerAfterCurrentScopeCheck() {
+        DraftCasefileEntity draft = ownedDraft();
+        found(draft);
+        var observation = new PublicationObservation(UUID.randomUUID(), 41L, "E2E-fedcba9876543210", Instant.EPOCH);
+        when(evidence.findObservation(41L)).thenReturn(Optional.of(observation));
+        service.cleanup(41L, RUN);
+        var order = inOrder(users, repository, evidence);
+        order.verify(repository).findForCleanupById(41L);
+        order.verify(users).requireAuthorisedUser((short) 1, CREATE_MANAGE_DRAFT_CASEFILES);
+        order.verify(evidence).findObservation(41L);
+        order.verify(evidence).deleteObservation(41L, observation.testRunReference());
+        order.verify(repository).delete(draft);
+        order.verify(repository).flush();
+    }
+
+    @Test
+    void journalDeletionFailurePreventsDraftDeletion() {
+        found(ownedDraft());
+        var observation = new PublicationObservation(UUID.randomUUID(), 41L, RUN, Instant.EPOCH);
+        when(evidence.findObservation(41L)).thenReturn(Optional.of(observation));
+        var failure = new DataAccessResourceFailureException("Synthetic journal failure");
+        doThrow(failure).when(evidence).deleteObservation(41L, RUN);
+        assertThatThrownBy(() -> service.cleanup(41L, RUN)).isSameAs(failure);
+        verify(repository, never()).delete(any(DraftCasefileEntity.class));
+        verify(repository, never()).flush();
+    }
+
     private void found(DraftCasefileEntity draft) {
         when(repository.findForCleanupById(41L)).thenReturn(Optional.of(draft));
     }
@@ -214,6 +248,7 @@ class DraftCasefileCleanupServiceTest {
     }
 
     private void assertNoDeletion() {
+        verifyNoInteractions(evidence);
         verify(repository, never()).delete(any(DraftCasefileEntity.class));
         verify(repository, never()).flush();
     }
