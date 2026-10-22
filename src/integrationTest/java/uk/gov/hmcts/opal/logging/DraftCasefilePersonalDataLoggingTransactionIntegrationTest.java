@@ -182,7 +182,7 @@ class DraftCasefilePersonalDataLoggingTransactionIntegrationTest extends BaseInt
             assertThat(details.getCategory()).isEqualTo(PersonalDataProcessingCategory.CONSULTATION);
             assertThat(details.getIndividuals()).singleElement().satisfies(identifier -> {
                 assertThat(identifier.getIdentifier()).isEqualTo("123");
-                assertThat(identifier.getType().getType()).isEqualTo("DRAFT_CASEFILE");
+                assertThat(identifier.getType().getType()).isEqualTo("RM_DRAFT_CASEFILE");
             });
         });
     }

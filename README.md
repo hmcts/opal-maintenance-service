@@ -168,6 +168,10 @@ that support the shared Docker environment.
 To run the dependencies in Docker and Maintenance Service in IntelliJ, follow
 the [local development guide](docs/LOCAL_DEVELOPMENT.md).
 
+Draft Casefile PDPO logs use `RM_DRAFT_CASEFILE` as the individual identifier
+type. The logging-service database must include this value in
+`t_pdpo_identifier_individual_type_enum` before it can persist these logs.
+
 First ensure all repositories are downloaded in the same parent directory.
 To do this automatically you can run the following command from the opal-shared-infrastructure directory:
 ```bash / zsh

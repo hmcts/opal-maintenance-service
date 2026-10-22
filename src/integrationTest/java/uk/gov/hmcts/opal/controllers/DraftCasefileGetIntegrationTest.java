@@ -376,7 +376,7 @@ class DraftCasefileGetIntegrationTest extends BaseIntegrationTest {
             assertThat(entry.getRecipient()).isNull();
             assertThat(entry.getIndividuals()).singleElement().satisfies(individual -> {
                 assertThat(individual.getIdentifier()).isEqualTo(Long.toString(id));
-                assertThat(individual.getType().getType()).isEqualTo("DRAFT_CASEFILE");
+                assertThat(individual.getType().getType()).isEqualTo("RM_DRAFT_CASEFILE");
             });
             assertThat(JSON.writeValueAsString(entry)).doesNotContain(PRIVATE, "Synthetic", "R101", "M301", "M302");
         });

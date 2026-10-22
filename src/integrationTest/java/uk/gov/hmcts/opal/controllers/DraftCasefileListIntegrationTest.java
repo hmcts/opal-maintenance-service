@@ -259,7 +259,7 @@ class DraftCasefileListIntegrationTest extends BaseIntegrationTest {
             assertThat(entry.getIpAddress()).isEqualTo("192.0.2.1");
             assertThat(entry.getRecipient()).isNull();
             assertThat(entry.getIndividuals()).allSatisfy(id ->
-                assertThat(id.getType().getType()).isEqualTo("DRAFT_CASEFILE"));
+                assertThat(id.getType().getType()).isEqualTo("RM_DRAFT_CASEFILE"));
         });
         String serialised = new JacksonCompatibilityConfiguration().objectMapper()
             .writeValueAsString(details.getAllValues());
