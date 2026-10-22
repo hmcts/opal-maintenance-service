@@ -10,6 +10,7 @@ import org.springframework.aop.support.AopUtils;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.core.annotation.Order;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
@@ -60,6 +61,28 @@ public class MaintenanceGlobalExceptionHandler {
             HttpStatus.BAD_REQUEST, "Bad Request", detail, "type-mismatch", false, null, LOG
         );
         return OpalProblemDetailFactory.responseWithProblemDetail(HttpStatus.BAD_REQUEST, problem);
+    }
+
+    @ExceptionHandler(DataAccessResourceFailureException.class)
+    public ResponseEntity<ProblemDetail> handleDataAccessResourceFailureException(
+        DataAccessResourceFailureException exception
+    ) {
+        ProblemDetail problem = OpalProblemDetailFactory.createProblemDetail(
+            HttpStatus.SERVICE_UNAVAILABLE, "Service Unavailable", "Opal database is currently unavailable",
+            "database-unavailable", true, null, LOG
+        );
+        return OpalProblemDetailFactory.responseWithProblemDetail(HttpStatus.SERVICE_UNAVAILABLE, problem);
+    }
+
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<ProblemDetail> handleIllegalStateException(IllegalStateException exception) {
+        return problemResponse(
+            HttpStatus.INTERNAL_SERVER_ERROR,
+            "Internal Server Error",
+            "An unexpected error occurred while processing your request",
+            "internal-server-error",
+            null
+        );
     }
 
     @ExceptionHandler(ConstraintViolationException.class)

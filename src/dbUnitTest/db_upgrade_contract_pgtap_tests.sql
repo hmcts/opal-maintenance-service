@@ -10,13 +10,14 @@
  * Date        Author         Ticket        Nature of Change
  * ----------  -------------  ------------  ----------------------------------------
  * 15/10/2026  Frankie Moran  PO-10643      Initial shared-contract pgTAP test suite.
+ * 22/10/2026  Frankie Moran  PO-10643      Verify bounded data observations and exact capture.
  */
 \set ON_ERROR_STOP 1
 \ir support/upgrade_contract.sql
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap;
 SET LOCAL search_path = public, pg_catalog;
-SELECT plan(30);
+SELECT plan(36);
 -- -----------------------------------------------------------------------------
 -- Scenario: Shared capture observes real scoped rows without rewriting JSON text.
 -- Setup: A rolled-back synthetic table contains duplicate-key JSON source text.
@@ -116,6 +117,36 @@ SELECT ok(pg_temp.opal_contract_changed_objects('{"objects":{"created":[],"repla
     'replacement declaration records complete predecessor routine');
 SELECT throws_ok($q$SELECT pg_temp.opal_contract_object('unsupported','public.opal_contract_fixture')$q$,'P0001',NULL,
     'unsupported changed object kind fails closed');
+-- -----------------------------------------------------------------------------
+-- Scenario: Shared data observations retain exact mutable data for custom checks.
+-- Setup: Duplicate source-JSON rows and a sequence are observed without preservation exemptions.
+-- Expected: Original row text/multiplicity and full sequence state survive capture; invalid scopes fail.
+-- -----------------------------------------------------------------------------
+INSERT INTO public.opal_contract_fixture SELECT * FROM public.opal_contract_fixture;
+SELECT '{"type":"data","objects":{"created":[],"replaced":[]},
+    "preserve":{"rows":[],"tables":[],"routines":[],"enums":[],"sequences":[]},
+    "observe":{"rows":["public.opal_contract_fixture"],"sequences":["public.opal_contract_sequence"]},
+    "assertion":"fixture.data"}'::JSONB AS observation_contract \gset
+SELECT is(pg_temp.opal_contract_observe(:'observation_contract'::JSONB)->'rows'->'public.opal_contract_fixture',
+    (SELECT JSONB_AGG(ROW_TO_JSON(t)::TEXT ORDER BY ROW_TO_JSON(t)::TEXT) FROM public.opal_contract_fixture t),
+    'data observation retains duplicate-key source text and duplicate row multiplicity');
+SELECT is(pg_temp.opal_contract_observe(:'observation_contract'::JSONB)->'sequences'->'public.opal_contract_sequence',
+    pg_temp.opal_contract_object('sequence','public.opal_contract_sequence'),
+    'data observation captures complete sequence definition, ownership, privileges and state');
+SELECT is(pg_temp.opal_contract_observe(:'fixture_contract'::JSONB),'{}'::JSONB,
+    'existing contracts without observations keep their bounded empty observation');
+SELECT throws_ok($q$SELECT pg_temp.opal_contract_observe('{"type":"data","objects":{"created":[],"replaced":[]},
+    "preserve":{"rows":[],"tables":[],"routines":[],"enums":[],"sequences":[]},
+    "observe":{"rows":[]},"assertion":"fixture.data"}'::JSONB)$q$,'P0001',NULL,
+    'malformed observation missing sequence scope fails closed');
+SELECT throws_ok($q$SELECT pg_temp.opal_contract_observe('{"type":"additive","objects":{"created":[],"replaced":[]},
+    "preserve":{"rows":[],"tables":[],"routines":[],"enums":[],"sequences":[]},
+    "observe":{"rows":["public.opal_contract_fixture"],"sequences":[]},"assertion":"fixture.data"}'::JSONB)$q$,'P0001',NULL,
+    'observation outside an explicit data contract fails closed');
+SELECT throws_ok($q$SELECT pg_temp.opal_contract_observe('{"type":"data","objects":{"created":[],"replaced":[]},
+    "preserve":{"rows":[],"tables":[],"routines":[],"enums":[],"sequences":[]},
+    "observe":{"rows":[],"sequences":["public.opal_contract_missing"]},"assertion":"fixture.data"}'::JSONB)$q$,'P0001',NULL,
+    'missing observed sequence cannot silently produce incomplete data evidence');
 SELECT ok(TO_REGNAMESPACE('opal_test_upgrade_observation') IS NULL,
     'pure shared snapshots create no committed observation state');
 -- -----------------------------------------------------------------------------

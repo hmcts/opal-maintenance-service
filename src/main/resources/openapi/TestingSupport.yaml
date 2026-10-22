@@ -1,0 +1,83 @@
+openapi: 3.1.1
+info:
+  title: Opal Maintenance Service
+  version: 1.0.0
+  description: Explicitly enabled synthetic Draft Casefile test cleanup
+paths:
+  /testing-support/draft-casefiles/{draft_casefile_id}:
+    delete:
+      tags: [Testing Support]
+      operationId: cleanupDraftCasefile
+      summary: Deletes the authenticated submitter's synthetic submitted Draft Casefile
+      description: >-
+        Registered when testing-support is enabled. Deployments must disable testing-support in production.
+        Requires permission 21 in the stored draft's Maintenance Business Unit and a matching authenticated submitter.
+        Existing rows must match the exact run reference in respondent_account.remo_reference.
+        Only unvalidated SUBMITTED rows without published account links can be deleted.
+        Already-absent IDs succeed after authentication; no draft remains for an ownership or BU permission check. No GET request or If-Match header is required.
+      security:
+        - TestingSupportBearerAuth: []
+      parameters:
+        - name: draft_casefile_id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+        - name: Test-Run-Reference
+          in: header
+          required: true
+          description: Exact scenario marker entered through the existing REMO Reference field
+          schema:
+            type: string
+            minLength: 20
+            maxLength: 20
+            pattern: '^E2E-[0-9a-f]{16}$'
+      responses:
+        '204':
+          description: Deleted, or already absent after authentication
+        '400':
+          description: Invalid identifier or missing or invalid run-reference header
+          content:
+            application/problem+json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
+        '401':
+          description: Missing or invalid bearer authentication
+          content:
+            application/problem+json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
+        '403':
+          description: Caller permission, stored ownership or run-reference scope is not permitted
+          content:
+            application/problem+json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
+        '404':
+          description: Cleanup route is not registered when disabled
+        '409':
+          description: Draft is outside the permitted lifecycle or has linked or inconsistent account metadata
+          content:
+            application/problem+json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
+        '500':
+          description: Unexpected failure; deletion is rolled back
+          content:
+            application/problem+json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
+        '503':
+          description: Persistence temporarily unavailable; deletion is rolled back
+          content:
+            application/problem+json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
+components:
+  securitySchemes:
+    TestingSupportBearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

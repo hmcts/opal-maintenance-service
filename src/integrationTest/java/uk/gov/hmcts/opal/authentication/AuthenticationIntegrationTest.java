@@ -11,6 +11,8 @@ import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -57,6 +59,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 import uk.gov.hmcts.opal.BaseIntegrationTest;
+import uk.gov.hmcts.opal.support.DraftCasefileHttpFixture;
 
 @AutoConfigureMockMvc
 @ExtendWith(OutputCaptureExtension.class)
@@ -179,9 +182,12 @@ class AuthenticationIntegrationTest extends BaseIntegrationTest {
 
     @Test
     void leavesDisabledTestingSupportEndpointsAbsent() throws Exception {
-        mockMvc.perform(get("/testing-support/ping"))
+        var syntheticUser = authentication(DraftCasefileHttpFixture.token((short) 1));
+        mockMvc.perform(get("/testing-support/ping").with(syntheticUser))
             .andExpect(status().isNotFound());
-        mockMvc.perform(get("/testing-support/auth/check"))
+        mockMvc.perform(get("/testing-support/auth/check").with(syntheticUser))
+            .andExpect(status().isNotFound());
+        mockMvc.perform(delete("/testing-support/draft-casefiles/123").with(syntheticUser))
             .andExpect(status().isNotFound());
     }
 

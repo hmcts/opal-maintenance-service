@@ -133,12 +133,37 @@ The response should have status `UP`. The service API is available at
 
 ## Optional testing-support endpoints
 
-Add this environment variable only when testing Maintenance Service's
-testing-support endpoints:
+For an IntelliJ or Gradle service run, enable all testing-support endpoints with:
 
 ```text
 TESTING_SUPPORT_ENDPOINTS_ENABLED=true
 ```
+
+The same flag controls diagnostics and draft cleanup; there is no separate cleanup
+switch. Normal `./gradlew build`, `test` and `integration` commands need no new
+settings because the tests supply their own configuration.
+
+Standalone `docker compose up --build` enables testing support by default (override
+with `TESTING_SUPPORT_ENDPOINTS_ENABLED=false`). The shared-stack Compose file
+inherits the flag from
+`opal-shared-infrastructure/docker-files/.env.shared` without overriding it.
+
+No extra RM environment file or endpoint-specific owner variables are needed.
+Cleanup uses the logged-in user's normal User Service identity, requires permission
+21 in the stored draft's business unit, and verifies that the caller submitted it.
+The scenario must still submit synthetic data, retain the POST ID and send the exact
+run reference used in its REMO Reference field. Published/validated drafts remain
+ineligible.
+
+There is no application-level environment allowlist or deployment-environment
+variable for testing support. Keep the shared flag disabled in production deployment
+configuration, following Fines. Gradle/IntelliJ do not automatically load
+`.env.shared`; set the shared enablement flag in your shell/private run configuration.
+See the [cleanup guide](DRAFT_CASEFILE_TEST_CLEANUP.md) for the full contract.
+
+See the Draft Casefile
+[functional prerequisites](TESTING.md#draft-casefile-deployed-api-journeys-po-10287)
+for the required users, reference data, marker and cleanup header.
 
 ## Common problems
 

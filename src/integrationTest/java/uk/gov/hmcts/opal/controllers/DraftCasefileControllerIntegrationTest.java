@@ -1,5 +1,6 @@
 package uk.gov.hmcts.opal.controllers;
 
+import jakarta.persistence.EntityNotFoundException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -22,9 +23,10 @@ import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.json.JsonMapper;
 import uk.gov.hmcts.common.exceptions.standard.UnauthorizedException;
 import uk.gov.hmcts.opal.BaseIntegrationTest;
-import uk.gov.hmcts.opal.dto.DraftCasefileSubmission;
+import uk.gov.hmcts.opal.dto.VersionedResponse;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileAddRequest;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileAddResponse;
+import uk.gov.hmcts.opal.generated.model.DraftCasefileGetResponse;
 import uk.gov.hmcts.opal.service.DraftCasefileService;
 import uk.gov.hmcts.opal.support.DraftCasefileHttpFixture;
 
@@ -34,6 +36,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -66,7 +69,7 @@ class DraftCasefileControllerIntegrationTest extends BaseIntegrationTest {
     void acceptsRawCasefileAndArbitraryNamedStringsWithoutApplyingGeneratedDefaults() throws Exception {
         String body = validBody.replace("100.00", "arbitrary named string");
         when(service.addDraftCasefile(any())).thenReturn(
-            new DraftCasefileSubmission(new DraftCasefileAddResponse().draftCasefileId(123L), 7L));
+            new VersionedResponse<>(new DraftCasefileAddResponse().draftCasefileId(123L), 7L));
         mockMvc.perform(post("/draft-casefiles").with(authentication(DraftCasefileHttpFixture.token((short) 1)))
             .contentType(MediaType.APPLICATION_JSON).content(body))
             .andExpect(status().isCreated())
@@ -147,5 +150,77 @@ class DraftCasefileControllerIntegrationTest extends BaseIntegrationTest {
         mockMvc.perform(post("/draft-casefiles").contentType(MediaType.APPLICATION_JSON).content(validBody))
             .andExpect(status().isUnauthorized());
         verifyNoInteractions(service);
+    }
+
+    @Test
+    void returnsCurrentStrongEtagWithoutVersionInTheBody() throws Exception {
+        when(service.getDraftCasefile(123L))
+            .thenReturn(new VersionedResponse<>(new DraftCasefileGetResponse(), 4L));
+
+        mockMvc.perform(get("/draft-casefiles/123")
+                .with(authentication(DraftCasefileHttpFixture.token((short) 1))))
+            .andExpect(status().isOk())
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+            .andExpect(header().string("ETag", "\"4\""))
+            .andExpect(jsonPath("$.version_number").doesNotExist())
+            .andExpect(header().doesNotExist("Location"));
+        verify(service).getDraftCasefile(123L);
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {403, 404, 500, 503})
+    void retrievalUsesSharedSafeProblemDetails(int expectedStatus) throws Exception {
+        RuntimeException failure = switch (expectedStatus) {
+            case 403 -> new AccessDeniedException("No matching identity");
+            case 404 -> new EntityNotFoundException("Draft Casefile not found");
+            case 503 -> new DataAccessResourceFailureException("SYNTHETIC_PRIVATE_CONNECTION_VALUE");
+            default -> new IllegalStateException("Unable to read stored Draft Casefile data");
+        };
+        when(service.getDraftCasefile(123L)).thenThrow(failure);
+
+        String response = mockMvc.perform(get("/draft-casefiles/123")
+                .with(authentication(DraftCasefileHttpFixture.token((short) 1))))
+            .andExpect(status().is(expectedStatus))
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+            .andExpect(jsonPath("$.status").value(expectedStatus))
+            .andExpect(jsonPath("$.operation_id").isNotEmpty())
+            .andExpect(jsonPath("$.casefile").doesNotExist())
+            .andExpect(jsonPath("$.casefile_snapshot").doesNotExist())
+            .andExpect(jsonPath("$.timeline_data").doesNotExist())
+            .andExpect(header().doesNotExist("ETag"))
+            .andReturn().getResponse().getContentAsString();
+        assertThat(response).doesNotContain("SYNTHETIC_PRIVATE_CONNECTION_VALUE",
+            "Unable to read stored Draft Casefile data");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"text", "0", "-1", "9223372036854775808"})
+    void rejectsInvalidRetrievalIdentifiersBeforeServiceInvocation(String identifier) throws Exception {
+        mockMvc.perform(get("/draft-casefiles/" + identifier)
+                .with(authentication(DraftCasefileHttpFixture.token((short) 1))))
+            .andExpect(status().isBadRequest())
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+            .andExpect(jsonPath("$.status").value(400))
+            .andExpect(jsonPath("$.operation_id").isNotEmpty())
+            .andExpect(header().doesNotExist("ETag"));
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void retrievalRequiresAuthentication() throws Exception {
+        mockMvc.perform(get("/draft-casefiles/123"))
+            .andExpect(status().isUnauthorized());
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void rejectsUnsupportedRetrievalAcceptBeforeServiceInvocation(CapturedOutput output) throws Exception {
+        mockMvc.perform(get("/draft-casefiles/123")
+                .with(authentication(DraftCasefileHttpFixture.token((short) 1)))
+                .accept(MediaType.TEXT_PLAIN))
+            .andExpect(status().isNotAcceptable())
+            .andExpect(header().doesNotExist("ETag"));
+        verifyNoInteractions(service);
+        assertThat(output).doesNotContain("Consultation");
     }
 }

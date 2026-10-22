@@ -10,6 +10,7 @@
  * Date        Author         Ticket        Nature of Change
  * ----------  -------------  ------------  ----------------------------------------
  * 15/10/2026  Frankie Moran  PO-10643      Centralise contract lifecycle and TAP.
+ * 22/10/2026  Frankie Moran  PO-10643      Share bounded data observation capture.
  */
 \set ON_ERROR_STOP 1
 \ir upgrade_contract.sql
@@ -20,9 +21,11 @@ SET LOCAL TIME ZONE 'UTC';
 SET LOCAL statement_timeout = '30s';
 SELECT pg_temp.opal_upgrade_require_identity(:'opal_scenario_id', :'opal_candidate_version', :'opal_predecessor_version');
 SELECT pg_temp.opal_contract_require(:'opal_contract_json'::JSONB);
-SELECT :'opal_contract_json'::JSONB AS contract \gset
+SELECT :'opal_contract_json'::JSONB AS contract,
+       :'opal_contract_json'::JSONB ? 'observe' AS has_observation \gset
 \if :is_prepare
-    SELECT plan(2 + JSONB_ARRAY_LENGTH(:'contract'::JSONB->'objects'->'created')
+    SELECT plan(2 + CASE WHEN :'has_observation'::BOOLEAN THEN 1 ELSE 0 END
+        + JSONB_ARRAY_LENGTH(:'contract'::JSONB->'objects'->'created')
         + JSONB_ARRAY_LENGTH(:'contract'::JSONB->'objects'->'replaced'));
     -- -------------------------------------------------------------------------
     -- Scenario: Capture declared predecessor scope through shared observation state.
@@ -36,11 +39,16 @@ SELECT :'opal_contract_json'::JSONB AS contract \gset
     FROM JSONB_EACH(:'changed'::JSONB->'replaced');
     SELECT pg_temp.opal_upgrade_save(:'opal_scenario_id', :'opal_candidate_version', :'opal_predecessor_version',
         JSONB_BUILD_OBJECT('contract', :'contract'::JSONB,
-            'snapshot',pg_temp.opal_contract_snapshot(:'contract'::JSONB),'objects',:'changed'::JSONB));
+            'snapshot',pg_temp.opal_contract_snapshot(:'contract'::JSONB),'objects',:'changed'::JSONB,
+            'observed',pg_temp.opal_contract_observe(:'contract'::JSONB)));
     SELECT pg_temp.opal_contract_load(:'contract'::JSONB, :'opal_scenario_id', :'opal_candidate_version', :'opal_predecessor_version') AS saved \gset
     SELECT ok(:'saved'::JSONB->'contract'=:'contract'::JSONB,'stored contract has exact provenance');
     SELECT ok(:'saved'::JSONB->'snapshot'=pg_temp.opal_contract_snapshot(:'contract'::JSONB),
         'stored declared predecessor state is exact');
+    \if :has_observation
+        SELECT ok(:'saved'::JSONB->'observed'=pg_temp.opal_contract_observe(:'contract'::JSONB),
+            'stored declared data observation is exact');
+    \endif
     SELECT * FROM finish();
     COMMIT;
 \elif :is_verify

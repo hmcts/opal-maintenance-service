@@ -2,11 +2,13 @@ import groovy.json.JsonOutput
 import java.nio.file.Files
 
 // Frankie Moran — PO-10643 — 14/10/2026
+// Frankie Moran — PO-10643 — 22/10/2026 — Verify fixed-profile replay eligibility.
 // Real local Git histories exercise selection without Docker or network access.
 tasks.register('dbUnitTestSelectionTest') {
   group = 'Verification'
   description = 'Verifies affected upgrade selection against disposable Git histories'
   doLast {
+    assert project.ext.has('selectDbUpgradeScenarios') : 'Upgrade selector is required'
     def failures = []
     int checks = 0
     def check = { String name, Closure body ->
@@ -42,13 +44,27 @@ tasks.register('dbUnitTestSelectionTest') {
          [id:'fixture.other', candidate:'ddl/V1_0__other.sql', owner:new File(repo,'src/dbUnitTest/other_pgtap_tests.sql'), inputs:[]]]]
     }
     def select = { Map f, Map options = [:] ->
-      if (!project.ext.has('selectDbUpgradeScenarios')) {
-        return [selected:f.scenarios, mode:'full', reasons:[:], changedPaths:[]]
-      }
       project.ext.selectDbUpgradeScenarios(f.scenarios, f.repo,
         [comparisonRef:f.base, environment:[:]] + options)
     }
     def commit = { Map f -> git(f.repo, ['add', '.']); git(f.repo, ['commit', '-m', 'fixed selection change']) }
+    def profileLocations = [
+      'non-live-dev':['ddl','data/allEnvs','data/nle','data/dev'],
+      'non-live':['ddl','data/allEnvs','data/nle']
+    ]
+    def profileFixture = {
+      def f = fixture()
+      ['dev':'1_2','nle':'1_3'].each { location, version ->
+        def candidate = "data/${location}/V${version}__${location}.sql".toString()
+        def owner = "src/dbUnitTest/${location}_pgtap_tests.sql".toString()
+        write(f.repo, 'src/main/resources/db/migration/' + candidate, 'new profile candidate\n')
+        write(f.repo, owner, 'profile assertions\n')
+        f.scenarios.add([id:"fixture.${location}".toString(), candidate:candidate,
+          owner:new File(f.repo,owner), inputs:location == 'dev' ? ['src/main/resources/dependency.sql'] : []])
+      }
+      commit(f)
+      f
+    }
     def rejects = { Closure action ->
       boolean rejected = false
       try { action() } catch (org.gradle.api.GradleException expected) { rejected = true }
@@ -66,6 +82,64 @@ tasks.register('dbUnitTestSelectionTest') {
         assert result.reasons['fixture.unchanged'] == 'Not selected — unchanged'
         assert result.baseSha == f.base
         assert result.testedSourceSha == git(f.repo, ['rev-parse','HEAD'])
+      }
+      profileLocations.each { profile, locations ->
+        check("new profile candidates select eligible owners ${profile}") {
+          def f = profileFixture()
+          def result = select(f,[selectedLocations:locations])
+          assert result.mode == 'affected'
+          assert result.selected*.id == (profile == 'non-live-dev' ? ['fixture.dev','fixture.nle'] : ['fixture.nle'])
+          assert result.outsideProfileScenarios*.id == (profile == 'non-live-dev' ? [] : ['fixture.dev'])
+          assert result.historyValidation.addedSelectedPaths == (profile == 'non-live-dev' ?
+            ['data/dev/V1_2__dev.sql','data/nle/V1_3__nle.sql'] : ['data/nle/V1_3__nle.sql'])
+          assert result.unverifiedMigrations*.path == (profile == 'non-live-dev' ? [] : ['data/dev/V1_2__dev.sql'])
+          if (profile == 'non-live') {
+            assert result.reasons['fixture.dev'] == 'Not selected — outside selected profile locations'
+          }
+        }
+        ['explicit-full','missing-base','absent-comparison'].each { context ->
+          check("full replay retains profile eligibility ${profile} ${context}") {
+            def f = profileFixture()
+            def options = [selectedLocations:locations] + (context == 'explicit-full' ? [mode:'full'] :
+              [comparisonRef:context == 'missing-base' ? 'missing-base' : null])
+            def result = select(f,options)
+            assert result.mode == 'full'
+            assert result.selected*.id == (profile == 'non-live-dev' ?
+              ['fixture.unchanged','fixture.other','fixture.dev','fixture.nle'] :
+              ['fixture.unchanged','fixture.other','fixture.nle'])
+            assert result.outsideProfileScenarios*.id == (profile == 'non-live-dev' ? [] : ['fixture.dev'])
+            if (profile == 'non-live') {
+              assert result.reasons['fixture.dev'] == 'Not selected — outside selected profile locations'
+              assert result.unverifiedMigrations*.path == ['data/dev/V1_2__dev.sql']
+            }
+          }
+        }
+        ['owner','dependency'].each { input ->
+          check("DEV-only input classification stays global ${profile} ${input}") {
+            def f = profileFixture()
+            f.base = git(f.repo,['rev-parse','HEAD'])
+            def path = input == 'owner' ? 'src/dbUnitTest/dev_pgtap_tests.sql' : 'src/main/resources/dependency.sql'
+            write(f.repo,path,'changed DEV-only assertion input\n')
+            commit(f)
+            def result = select(f,[selectedLocations:locations])
+            assert result.mode == 'affected'
+            assert result.selected*.id == (profile == 'non-live-dev' ? ['fixture.dev'] : [])
+            assert !result.frameworkTestsRequired
+            assert result.fallbackReason == null
+            assert result.changedPaths == [path]
+            if (profile == 'non-live') {
+              assert result.reasons['fixture.dev'] == 'Not selected — outside selected profile locations'
+              assert result.outsideProfileScenarios*.id == ['fixture.dev']
+              assert result.unverifiedMigrations*.path == ['data/dev/V1_2__dev.sql']
+            }
+          }
+        }
+      }
+      [empty:[], duplicate:['ddl','ddl'], 'null':null, scalar:'ddl', traversal:['../ddl']].each { name, locations ->
+        check("invalid selected locations rejected ${name}") {
+          def f = fixture()
+          rejects { select(f,[selectedLocations:locations]) }
+        }
       }
       check('known no impact selects zero') {
         def f = fixture(); write(f.repo, 'README.md', 'documentation\n'); commit(f)

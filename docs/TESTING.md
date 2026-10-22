@@ -27,6 +27,104 @@ representative data for the behavior under test.
 
 Never put a bearer token in a tracked file or command-line argument.
 
+### User Service access
+
+Draft Casefile functional tests use existing test users and their assigned
+Maintenance permissions. Jenkins defaults `OPAL_USER_SERVICE_API_URL` to the
+shared staging User Service. These tests do not require an
+`enable_opal_user_service` label, a separate User Service deployment, user or role
+provisioning, or changes to User Service configuration.
+
+The token helper calls `/testing-support/token/user` on the configured User
+Service. The authorised scenario submits a synthetic casefile, captures its ID,
+asserts the response and deletes it through Maintenance testing support using
+the same user and run marker. Rejection scenarios use existing users and
+reference data; the prerequisites below must already be satisfied.
+
+Local runs continue to use `OPAL_USER_SERVICE_API_URL`, defaulting to
+`http://localhost:4555`. A passing local run does not verify the shared staging
+users, permissions or Jenkins connectivity; CI must exercise those prerequisites.
+Testing support must remain disabled in production deployments.
+
+### Draft Casefile deployed API journeys (PO-10287)
+
+The five `@PO10287` scenario examples cover authorised creation, permission
+denial, unknown application, inactive country and historical country. They
+exercise the deployed Maintenance and User services in an agreed non-live
+environment. Set both `TEST_URL` (Maintenance Service) and
+`OPAL_USER_SERVICE_API_URL` (User Service) to the intended environment before
+running either command; their localhost defaults are not suitable for deployed
+verification. Do not put account passwords or bearer values in the command or
+tracked files.
+
+```bash
+./gradlew functionalOpal -Dcucumber.filter.tags='@PO10287' -Dcucumber.execution.dry-run=true
+./gradlew functionalOpal -Dcucumber.filter.tags='@PO10287'
+```
+
+The environment must already contain the authorised account
+`opal-test@dev.platform.hmcts.net`, the account without Draft Casefile create
+permission `opal-test-2@dev.platform.hmcts.net`, Business Unit 44, the
+authorised user's Business Unit User ID `L044JG`, and Create and Manage Draft
+Casefiles permission 21. The live reference set must include active Maintenance
+Application `AP00001`, active country CJS code `1`, and result `MAT`. The
+rejection cases use unknown application `ZZ99999`, inactive country CJS code
+`0`, and historical country CJS code `2`. The tests never provision users or
+reference data; missing or changed prerequisites are an environment-readiness
+failure, not a reason to substitute mocks or create shared records.
+
+The historical country example uses an inactive retired record, matching the
+current active-flag validation.
+
+Enable `TESTING_SUPPORT_ENDPOINTS_ENABLED=true` only in the agreed non-live
+environment. A successful create is cleaned up with the merged
+`DELETE /testing-support/draft-casefiles/{id}` API. Each scenario generates an
+`E2E-` marker followed by 16 lowercase hexadecimal characters and sets
+`casefile.respondent_account.remo_reference` to that value. Cleanup sends the
+same marker in the required `Test-Run-Reference` header, accepts
+`application/problem+json` as declared by the generated cleanup route, and uses the bearer token
+captured when that draft was created. The ID is captured before response
+assertions, so the after hook still attempts cleanup when an assertion fails.
+An HTTP 204 confirms cleanup; a failed cleanup fails an otherwise passing scenario,
+or attaches the ID, marker and safe failure reason to an already failed scenario.
+No bearer values or response payloads are included in cleanup failure evidence.
+See the [cleanup guide](DRAFT_CASEFILE_TEST_CLEANUP.md) for ownership, lifecycle,
+enablement and retry requirements.
+
+The merged support API provides deletion only, with no inspection or marker-search
+route. Functional assertions check the real POST response, including snapshot,
+timeline, ETag and correlated permission/reference errors. Persistence,
+rejected-request row absence and rollback are verified by `DraftCasefileDatabaseIntegrationTest` and
+`DraftCasefileAuthenticationIntegrationTest`; cleanup isolation and actual row
+removal are verified by `DraftCasefileCleanupIntegrationTest`. These database
+assertions are integration coverage, not deployed functional evidence.
+
+Server-error mapping and transaction rollback are verified by the controller and
+database integration suites using persistence failures. The deployed functional
+scenarios do not inject server failures or claim deployed rollback coverage.
+
+The ticket's acceptance criteria are covered as follows:
+
+| Acceptance criterion | Deployed functional coverage | Supporting integration coverage |
+| --- | --- | --- |
+| Create a submitted Draft Casefile with backend identity, submitter, snapshot and timeline | Authorised create example checks the POST response | `createsCommittedDraftWithUnchangedJsonDerivedDataAndAfterCommitLogs` verifies the committed row and derived JSON |
+| Reject creation without Business Unit permission | Permission-denied example | `DraftCasefileAuthenticationIntegrationTest` verifies denied creation leaves no row |
+| Reject unknown, inactive or out-of-date references | Unknown application, inactive country and historical country examples | `rejectsBadReferenceWithoutRowOrLog` verifies rejected validation leaves no row; validator tests cover reference rules |
+| Return a correlated failure without retaining a partial Draft Casefile, snapshot or timeline | No deployed failure injection | `rollsBackSavedRowWhenPersistenceFails` verifies correlated 500/503 problems, absent success fields, row rollback and no publication in the same request |
+
+Snapshot and timeline data are stored in the draft row, so verifying that no draft
+row remains also verifies that no partial snapshot or timeline was retained.
+The failure criterion is integration evidence, not a sixth deployed functional
+example.
+
+Run the functional helper regression tests without a Cucumber tag property.
+Cucumber also discovers its suite during filtered runs, so use dry-run mode to
+disable scenario actions while the JUnit helper tests execute normally:
+
+```bash
+./gradlew functionalOpal --tests 'uk.gov.hmcts.opal.*.DraftCasefile*Test' -Dcucumber.execution.dry-run=true
+```
+
 ## Database migration validation
 
 Normal Docker Compose use is a persistent local-development workflow.
@@ -150,15 +248,52 @@ them here.
 
 `./gradlew build` is the baseline validation for source, build, and runtime
 configuration changes. In this repository, `check` depends on `dbUnitTest`
-and `integration` as peer suites. Selection and compact-contract regressions
-also run under `check`; shared runner/support/configuration changes require the
-native framework failure matrix as well as full registered replay.
+and `integration` as peer suites. Fixed-profile/runtime, selection and
+compact-contract regressions also run under `check`; shared
+runner/support/configuration changes require the native framework failure matrix
+as well as full registered replay in both supported profiles.
 Run focused tests with `./gradlew test --tests 'fully.qualified.Pattern'` or
 `./gradlew integration --tests 'fully.qualified.Pattern'`. Focused quality
 commands are `./gradlew checkstyleMain` and `./gradlew jacocoTestReport`.
 PMD is not configured in the current build. For documentation-only or similarly
 non-executable changes, run checks appropriate to the changed artefacts and
 record why the baseline build was not run.
+
+## Synthetic Draft Casefile cleanup
+
+The [cleanup guide](DRAFT_CASEFILE_TEST_CLEANUP.md) defines shared enablement,
+the HTTP contract and future Cypress capture/ledger handling. Service checks use
+synthetic data in disposable PostgreSQL 17 and signed JWT/local WireMock fixtures;
+no shared service or real account is required for these automated checks.
+
+```bash
+./gradlew test --tests '*DraftCasefileCleanup*'
+./gradlew integration --tests '*DraftCasefileCleanup*' --tests '*DisabledDraftCasefileCleanup*'
+./gradlew bundleOpenApi generateOpenApiValidationSchema
+./gradlew openApiGenerate compileJava --no-daemon
+./gradlew build --no-daemon
+./gradlew jacocoTestReport
+```
+
+The integration suites prove real POST-ID-to-DELETE behavior, caller/BU/run scope,
+lifecycle/publication rejection, embedded-data deletion, sibling/reference retention,
+rollback after a real flush, safe repeats and actual PostgreSQL locking-SELECT
+contention. Signed JWT cases verify bearer validation, User Service permission 21
+and submitter ownership, including another user cleaning their own draft. Disabled
+HTTP/runtime-doc tests distinguish authenticated 404 from anonymous 401. Missing IDs return 204 to authenticated callers.
+Unit tests cover enabled/disabled/default-off shared-flag behaviour and
+caller-derived ownership without additional environment or owner configuration. These are endpoint/application
+tests, rather than direct database schema assertions.
+
+No migration-specific boundary assertions required: cleanup adds no schema,
+routine or persistent SQL contract. Existing `draft_casefiles_pgtap_tests.sql` and
+`draft_casefiles_publication_link_pgtap_tests.sql` remain unchanged schema coverage;
+they do not prove endpoint deletion or rollback. Run the full build's `dbUnitTest`
+baseline and inspect its timings, PostgreSQL version and cleanup confirmation in
+`build/reports/dbUnitTest`. Do not infer execution from compilation or task presence.
+Functional/smoke suites require a separately running service; document any omitted
+external check, its setup and expected result. Do not enable cleanup or run it
+against shared data as part of routine local verification.
 
 ## Test design
 
@@ -228,13 +363,37 @@ Introduced or changed routines use the owning suite and framework-gap rules in
 [Routine suites and framework gaps](#routine-suites-and-framework-gaps).
 Discovered suites are part of Gradle and the normal `check` lifecycle.
 
-The task starts a fresh PostgreSQL 17 container with pgTAP, confirms the empty
-start state, and applies the explicit `ddl`, `data/allEnvs`, and `data/dev`
-locations through the version-matched Flyway container. It validates Flyway,
-confirms a second migration is a no-op, runs the pgTAP contracts, and confirms
-container cleanup. It fails closed when application or external Flyway target
-settings are present, so it cannot fall back to a developer-owned or shared
-database. Failure output lists setting names only and never their values.
+The task runs two fixed PostgreSQL 17 profiles with pgTAP:
+
+| Profile | Flyway migration locations |
+| --- | --- |
+| `non-live-dev` | `ddl`, `data/allEnvs`, `data/nle`, `data/dev` |
+| `non-live` | `ddl`, `data/allEnvs`, `data/nle` |
+
+Each profile runs the complete discovered fresh suite set against its own empty
+disposable database, followed by its applicable selected registered upgrades in
+separate targets. Each target has native Flyway validation, no-op repeat checks
+and independently confirmed container/volume cleanup. After global preflight
+and shared image preparation succeed, both profiles are attempted in order even
+if the first fails; either profile failure fails the aggregate `dbUnitTest`
+result. A global preflight or preparation failure reports profiles as not
+started. Normal `./gradlew dbUnitTest` and `./gradlew build` use both profiles;
+there is no profile override.
+
+The runner resolves `org.flywaydb:flyway-core` and
+`org.flywaydb:flyway-database-postgresql` from the application's actual
+`runtimeClasspath`. It requires exactly one of each with the same numerical
+`x.y.z` release version, derives `flyway/flyway:<version>` from that agreement,
+and checks every native Flyway JSON response's `flywayVersion` against it. Missing,
+duplicate, mismatched or unsupported versions fail closed. Reports retain the
+resolved runtime version and selected image; no image override is supported.
+
+The common NLE profile proves its seed without applying DEV migrations. Staging
+currently adds no SQL under `data/stg`; these profiles do not claim validation of
+future staging-specific migrations or live deployment settings. The task fails
+closed when application or external Flyway target settings are present, so it
+cannot fall back to a developer-owned or shared database. Failure output lists
+setting names only and never their values.
 
 Every fresh and functional verification phase must start a transaction, create
 the `pgtap` extension if required, declare a positive exact `plan`, call
@@ -253,44 +412,61 @@ Run the database unit-test suite with:
 ./gradlew dbUnitTest
 ```
 
-Raw TAP diagnostics and a non-sensitive execution summary are written under
-`build/reports/dbUnitTest`. The current Countries contract is
+Raw TAP diagnostics and non-sensitive execution summaries are retained in unique
+`build/reports/dbUnitTest/<profile>/runs/<run-id>/` directories. Each profile's
+`summary.txt`, `pg-prove.log` and `framework-self-test.log` provide its latest
+entry points. `build/reports/dbUnitTest/summary.txt` records the aggregate result,
+both profile outcomes and their cleanup evidence.
+The current Countries contract is
 `src/dbUnitTest/countriesTest/countries_pgtap_tests.sql`.
 
 ### Maintained predecessor upgrade contract
 
-Normal `./gradlew dbUnitTest` runs the complete latest fresh suite set, then
-affected registered upgrades in native numerical order, each in a new disposable
-target. `check` and `build` inherit this selection contract. Every invocation
-validates the complete-tree numerical inventory, committed migration bytes,
-selected adoption checksums and required registrations before selecting upgrades.
-A trustworthy comparison inventories both revisions; existing migration paths
-and bytes are immutable, and new selected versions must extend that history.
-Modification, removal, rename and lower-version insertion fail before targets
-are created; full fallback does not excuse an invalid history. No fresh-suite skip or external target
-property exists. The three selected locations remain `ddl`, `data/allEnvs`, and
-`data/dev`. Added migrations outside them are reported individually as
-**Unverified**, including their paths and versions; selected-location success
-does not establish their deployment coverage. Verify those locations through an
-explicitly supported disposable configuration before claiming their criteria.
+Normal `./gradlew dbUnitTest` runs the complete latest fresh suite set and then
+affected registered upgrades for each fixed profile. Upgrades run in native
+numerical order, each in a new disposable target using that profile's locations.
+`check` and `build` inherit this selection contract. Registration discovery and
+adoption validation use the complete migration tree once; upgrade eligibility
+and immediate predecessor selection use each profile's exact inventory.
+
+Every invocation validates complete-tree numerical uniqueness, committed migration
+bytes, all fixed adoption checksums and required registrations. A trustworthy
+comparison inventories both revisions; existing migration paths and bytes are
+immutable, and new selected versions must extend that history. Modification,
+removal, rename and lower-version insertion fail before targets are created;
+full fallback does not excuse invalid history. No fresh-suite skip or external
+target property exists.
+
+A registration whose candidate is absent from the current profile is reported
+**Not selected — outside selected profile locations**, never PASS or upgrade
+N/A. Its declared dependencies remain part of global impact classification.
+Migrations outside that profile are individually **Unverified**, including their
+paths and versions. For example, DEV upgrades execute only in `non-live-dev`,
+while NLE upgrades execute in both profiles with their respective predecessors.
+One profile's success does not prove another profile or an unexercised location;
+retain the applicable profile's actual boundary evidence.
 
 ```bash
 ./gradlew dbUnitTest --no-daemon -PdbUnitTestComparisonRef=origin/codex/parent
 ./gradlew dbUnitTest --no-daemon -PdbUnitTestUpgradeMode=full
-./gradlew dbUnitTestSelectionTest --no-daemon
+./gradlew dbUnitTestProfileTest dbUnitTestSelectionTest dbUnitTestContractTest --no-daemon
 ```
 
 `dbUnitTestUpgradeMode` accepts `affected` (default) or `full`. Full mode replays
-all discovered historical registrations and is required after shared runner,
-lifecycle SQL, framework fixture, database image, or relevant build/toolchain
-infrastructure changes. Automatic selection also forces full replay for these
-inputs and for unknown relevant database dependencies. Relevant shared inputs
+all historical registrations applicable to each fixed profile and is required
+after shared runner, lifecycle SQL, framework fixture, database image, or relevant
+build/toolchain infrastructure changes. Automatic selection also forces full
+replay for these inputs and for unknown relevant database dependencies. Relevant shared inputs
 include Gradle/wrapper files, Docker/Compose configuration, charts, workflows,
-Jenkinsfile, application Java/configuration, framework SQL, the fixed support manifest/dependencies and regression fixtures.
-`dbUnitTestFrameworkTest` runs automatically after the normal database task for
-shared changes or uncertain comparison evidence; direct invocation remains
-available. Unchanged trusted input can omit the native matrix, while selector
-and compact-contract metadata regressions still run in the normal build.
+Jenkinsfile, application Java/configuration, framework SQL, the fixed support
+manifest/dependencies, `gradle/db-unit-test-profiles.gradle` and regression fixtures.
+`dbUnitTestProfileTest` checks the fixed profiles, failure aggregation and resolved
+runtime agreement without Docker; selection and compact-contract checks are also
+independent of Docker. `dbUnitTestFrameworkTest` runs automatically after a
+successful normal database task for shared changes or uncertain comparison
+evidence; direct invocation remains available. Unchanged trusted input can omit the native matrix, while
+fixed-profile/runtime, selector and compact-contract metadata regressions still
+run in the normal build.
 Unclassified paths under `src/main/resources/db/` or `src/dbUnitTest/` also force
 full replay; declare object-specific dependencies through `inputs`.
 
@@ -311,7 +487,14 @@ Gradle; otherwise use full mode and retain the fallback evidence.
 No implicit fetch occurs. Missing refs, shallow or
 insufficient history, ambiguous or contradictory context fail closed to full
 replay with the reason recorded. A valid no-impact comparison may select zero
-upgrades while every fresh suite still runs; absent comparison evidence cannot.
+applicable upgrades while every fresh suite still runs. Full mode and absent
+comparison evidence select all eligible scenarios; a profile with no eligible registrations
+still reports outside-profile scenarios explicitly.
+
+The comparison ref controls impact selection and immutable-history checks. It
+does not recreate a Git-parent database and apply all incoming migrations as one
+retained transition; no actual-parent transition task is provided by this
+framework.
 
 New candidate registrations, changed owning suites/registrations and intersecting
 declared dependencies select their scenarios. The owning suite and candidate are
@@ -319,49 +502,53 @@ implicit dependency inputs. Keep additional dependency declarations complete;
 shared infrastructure changes require full replay even when a consumer itself
 is unchanged.
 
-Add one line after the human-attributed header in the owning flat SQL suite:
-
-```sql
--- OPAL-DB-UPGRADE {"id":"object.change","candidate":"ddl/V2_0__example.sql","scope":"both","data":"migration-created-only"}
-```
-
-The filename above is illustrative; allocate the actual migration globally.
-The four required string fields are `id`, `candidate`, `scope` (`both` or
+Place the declaration after the human-attributed header in the owning flat SQL
+suite. New upgrade contracts require the compact `contract` object and shared
+dispatch described below, including when the owning suite already existed.
+Existing four-field registrations retain only the compatibility described below.
+Example filenames are illustrative; allocate actual migrations globally.
+The four required identity string fields are `id`, `candidate`, `scope` (`both` or
 `upgrade`), and `data` (`migration-created-only` or `approved-synthetic`). IDs
 are globally unique lowercase `[a-z][a-z0-9._-]*`. Candidates are canonical
 paths relative to `src/main/resources/db/migration`. The optional `inputs` array
 declares additional canonical repository-relative
 dependency file paths. Paths must name existing files or tracked deletions,
 contain no absolute/dot/parent segments, and must not repeat the implicit owning
-suite/candidate paths. Existing four-field registrations remain supported. Metadata
-contains constrained strings and this optional array, never executable SQL;
-unsafe, unknown or duplicate inputs, escaped strings, unknown/missing/duplicate fields,
-duplicate IDs, multiple owners, absent/unselected candidates and unsupported
-migration categories fail before target creation. Approved synthetic scenarios
+suite/candidate paths. Metadata contains constrained values and arrays, never
+executable SQL. Unsafe, unknown or duplicate inputs, escaped strings,
+unknown/missing/duplicate fields,
+duplicate IDs, multiple owners, candidates absent from the complete inventory
+and unsupported migration categories fail before target creation. A globally
+valid candidate outside one profile is excluded from that profile's replay. Approved synthetic scenarios
 also require an `Approved data scenario:` comment naming the approved contract;
 the handoff/README must evidence that approval. The marker does not grant it.
 
 The fixed adoption inventory in the runner pins paths, normalized numerical
-versions and SHA-256 bytes for the 32 selected migrations at
-`847739c9ee40ca1c09687756212f7f0dcbb56e7d`. Missing or changed adoption files fail.
-Every later selected migration requires exactly one registration; never extend
-that inventory to exempt a new migration. Existing registrations can cover
-historical migrations explicitly, without claiming historical backfill.
+versions and SHA-256 bytes for the 32 historical migrations at
+`847739c9ee40ca1c09687756212f7f0dcbb56e7d`. It is checked globally, including
+adopted DEV files omitted from `non-live`. Missing or changed adoption files fail.
+Every later migration in the union of supported profile locations requires
+exactly one registration; never extend that inventory to exempt a new migration.
+Existing registrations can cover historical migrations explicitly, without
+claiming historical backfill. Registration alone does not prove execution.
 
 The runner cross-checks native Flyway `info` against the selected files before
-migration. It applies/validates P, runs framework predecessor assertions and
-owner preparation, applies/validates only C, runs framework candidate and owner
-verification, repeats/validates at C with native zero-applied evidence and SQL
-full-history equality, runs owner/framework cleanup, and destroys the target.
-Later versions remain excluded until the candidate's assertions finish.
-A true initial migration receives explicit upgrade N/A plus the full fresh run.
+migration. It applies/validates P, captures predecessor evidence, applies/validates
+only C, checks the declared preservation and candidate outcomes, and repeats at C
+with native zero-applied evidence and complete SQL history equality. Compact
+contracts use shared preparation and cleanup; genuine earlier registrations
+retain the legacy owner phases described below. Later versions remain excluded
+until the candidate's assertions finish. Test-state cleanup and exact target
+removal remain mandatory. A true initial migration receives explicit upgrade N/A
+plus the full fresh run.
 
 #### Compact contract and shared dispatch
 
-A new migration normally supplies its production SQL, ordinary owning pgTAP
-assertions and an extended `OPAL-DB-UPGRADE` declaration. Keep the four required
-fields above; add a `contract` object to opt into shared preservation and
-phase dispatch. For example, with a globally allocated candidate:
+Every new upgrade contract supplies ordinary owning pgTAP assertions and an
+`OPAL-DB-UPGRADE` declaration with the four identity fields and a mandatory
+compact `contract` object. This also applies to a newly registered boundary in
+an existing suite. Shared dispatch owns preparation, capture and cleanup; do not
+add owner lifecycle boilerplate. For example, with a globally allocated candidate:
 
 ```sql
 -- OPAL-DB-UPGRADE {"id":"example.create","candidate":"ddl/V2_0__example.sql","scope":"both","data":"migration-created-only","contract":{"type":"additive","objects":{"created":[{"kind":"routine","identity":"public.example(bigint)"}],"replaced":[]},"preserve":{"rows":["public.notes"],"tables":["public.notes"],"routines":[],"enums":[],"sequences":[]},"assertion":"example.current"}}
@@ -388,6 +575,30 @@ whitespace and row multiplicity are preserved rather than normalised. Catalogue
 snapshots and observations exclude framework-owned state. Declare only relevant
 scope, keeping every required relationship and predecessor invariant covered.
 
+Data contracts may additionally declare `observe` with exactly two arrays,
+`rows` and `sequences`, for example:
+
+```json
+{"rows":["public.example_data"],"sequences":["public.example_data_id_seq"]}
+```
+
+Only data contracts accept this field. Both keys are required, at least one
+array must be nonempty, and identities must be canonical permitted qualified
+names without duplicates. An observed row relation cannot also occur in
+`preserve.rows`, and an observed sequence cannot also occur in
+`preserve.sequences`. Observing a relation's rows may still preserve its table
+metadata through `preserve.tables`. Data contracts continue to forbid declared
+object creations/replacements and require an explicit custom verifier.
+
+Shared preparation at P saves these bounded observations under `observed`,
+alongside the unchanged exact-preservation `snapshot`; without `observe`, the
+observation value is `{}`. Observation uses the same exact row-text and sequence
+capture machinery. It supplies predecessor evidence for precise custom outcome
+checks and does not relax any `preserve` equality assertion. A verifier may parse
+a copy of a row string to classify it, but comparisons of retained rows must use
+the original strings and preserve multiplicity and IDs. Declare and assert each
+intended row or sequence-state delta explicitly.
+
 Catalogue scope includes relation identity/ownership, table and column privileges,
 columns/defaults/comments, constraint/index definitions, routine properties and
 definitions, enum labels, and sequence definition/state/ownership. Trigger and
@@ -404,15 +615,19 @@ storage, and cleanup absence readback from a distinct backend. It uses the
 existing guarded `framework/upgrade_lifecycle.sql` transport. Owners no longer
 repeat those lifecycle phases.
 
-Gradle runs shared preparation at P, applies only C, verifies preservation before
-functional mutations, then invokes the owning rolled-back assertion group with
-`opal_phase=fresh`, `opal_assertion_group`, scenario ID, candidate and predecessor
-versions. All current functional assertions still run on the latest fresh schema.
-At historical boundaries, owners explicitly select compatible assertions and
-retain focused earlier expectations where later dependencies or behaviour differ.
-Never run future-dependent assertions at an earlier candidate or silently omit a
-required boundary check. The repeat remains native zero-applied plus complete
-history equality. Shared cleanup and exact target destruction follow.
+Gradle runs shared preparation at P, applies only C, and verifies exact
+preservation before any custom or ordinary functional verifier. Optional custom
+verification runs next with `opal_phase=verify`, followed by the ordinary owning
+assertion group with `opal_phase=fresh`. Both verification phases use positive
+exact TAP plans and rollback. They receive `opal_assertion_group`, scenario ID,
+candidate and predecessor versions, and the compact contract. All current
+functional assertions still run on the latest fresh schema. At historical
+boundaries, owners explicitly select compatible assertions and retain focused
+earlier expectations where later dependencies or behaviour differ. Never run
+future-dependent assertions at an earlier candidate or silently omit a required
+boundary check. The repeat remains native zero-applied plus complete history
+equality. Shared cleanup and exact target destruction follow, including after a
+custom verifier fails; its native/SQL/TAP diagnostic remains a command failure.
 
 An optional `custom` object names canonical `prepare` and/or `verify` SQL paths
 under `src/dbUnitTest/upgradeCases`. The runner invokes those explicitly through
@@ -421,14 +636,33 @@ Custom preparation requires `approved-synthetic` and evidenced approval; custom
 verification declares the risk-specific transition outcomes. Custom scripts use
 positive exact TAP plans and only test-owned state; fresh/functional work rolls
 back, and approved preparation alone may commit. Shared observation storage and
-cleanup remain framework-owned. Include all additional historical assertion
-inputs in `inputs`; malformed contracts, unsupported categories, missing files,
-unknown fields, duplicate fields and symlink paths fail before target creation.
+cleanup remain framework-owned.
+
+Alternatively, `custom.verify` may contain the reserved string `owner`. It resolves
+only to that registration's declaring regular SQL file beneath `src/dbUnitTest`;
+canonical path, existence and symlink checks still apply. It cannot select a
+different owner or supply SQL, and `custom.prepare` cannot use this token. The
+owner's `opal_phase=verify` branch loads the guarded shared payload through
+`pg_temp.opal_contract_load`, using the exact contract, scenario, candidate and
+predecessor identities. Bounded data observations are available in `saved.observed`
+for explicit transition checks. The subsequent ordinary `opal_phase=fresh`
+assertions remain rolled back; the owner does not save, commit or clean up shared
+observations.
+
+The owner is already an implicit dependency. The reserved `owner` token is not
+classified as a file path and must not be added to `inputs`, nor should the owner
+path be duplicated there. Ordinary custom SQL paths remain dependency inputs and
+are fingerprinted; declare any further historical assertion dependencies in
+`inputs`. Malformed contracts, unsupported categories, missing files, unknown or
+duplicate fields, and symlink paths fail before target creation.
 
 #### Existing registration compatibility
 
-Existing four-field registrations retain the legacy owner phase API during
-adaptation: `opal_phase=fresh|prepare|verify|cleanup`, `opal_scenario_id`,
+Genuine earlier four-field registrations retain the legacy owner phase API
+during separately reviewed adaptation. An existing suite does not make a new
+upgrade registration legacy; all new upgrade contracts require the compact
+shared-dispatch interface above. The retained API is
+`opal_phase=fresh|prepare|verify|cleanup`, `opal_scenario_id`,
 `opal_candidate_version` and `opal_predecessor_version`. Their fixed
 `\ir framework/upgrade_lifecycle.sql` include guards the disposable identity and
 exports `pg_temp.opal_upgrade_require_identity`, `opal_upgrade_save`,
@@ -442,8 +676,11 @@ boilerplate with a compact declaration.
 
 Framework capability does not prove consumer adoption. Record each consuming
 suite's actual interface, required assertion groups, source revision and passing
-fresh plus affected/full boundary execution. Existing legacy compatibility is
-not a recommendation to duplicate lifecycle machinery in a new suite.
+fresh plus affected/full boundary execution. For data observation contracts,
+retain the exact declared observation scope, shared capture/preservation phases,
+custom outcome assertions, ordinary owning assertions and independently checked
+shared cleanup. Existing legacy compatibility does not exempt new registrations
+or permit duplicated lifecycle machinery.
 
 The generic flat `db_upgrade_framework_pgtap_tests.sql` owns exact expected
 history prefixes, successful checksummed SQL, complete predecessor row equality,
@@ -459,34 +696,48 @@ For diagnosis only:
 ./gradlew dbUnitTest --no-daemon -PdbUnitTestUpgradeSuite=object_pgtap_tests.sql
 ```
 
-The selector still validates all registrations and runs every fresh suite; it
-selects only the named owner's upgrades. Unknown/empty selections fail, and
-this diagnostic selector with `check`/`build` fails. Automatic affected selection
-and explicit full mode are supported under `check`/`build`. A diagnostic run
+The selector still validates all registrations globally and runs every fresh
+suite in both profiles; it selects only the named owner's upgrades where that
+owner's candidate belongs to the profile. Other profiles report the registration
+as outside their selected locations. Unknown owners or owners with no global
+registrations fail, and this diagnostic selector with `check`/`build` fails.
+Automatic affected selection and explicit full mode are supported under
+`check`/`build`. A diagnostic run
 does not replace required affected or full replay evidence.
 
 `./gradlew dbUnitTestFrameworkTest --no-daemon` exercises fixed framework-only
 SQL/migration fixtures through the same orchestration, including native ordering,
-later exclusion, durability, controlled unchanged-byte retry, phase failures and
-cleanup diagnostics. Fixtures under `framework/` are fixed framework regressions, never production
-migrations. Shared support and approved custom cases follow the explicit
+later exclusion, durability, controlled unchanged-byte retry, phase failures,
+first-profile failure followed by second-profile execution, and independent
+cleanup diagnostics. Fixtures under `framework/` are fixed framework regressions,
+never production migrations. Shared support and approved custom cases follow the explicit
 manifest/declaration rules above; they are not discovered as fresh suites.
 
-Reports retain unique `build/reports/dbUnitTest/runs/<run-id>/` directories with
-source fingerprints, revision/dirty paths, native command exits/timings, exact
-TAP plans/executed counts, per-target phase status, exact UUID-owned container
-removal and confirmed absence, and removal and confirmed absence of that target's
-owned anonymous volumes. Cleanup is limited to those disposable task-owned
-resources; it must not prune global Docker resources or developer-owned named
-volumes.
-Top-level `summary.txt`, `pg-prove.log`, and `framework-self-test.log` remain latest
-run entry points. An earlier completed report survives a later scenario failure.
+Reports retain unique `build/reports/dbUnitTest/<profile>/runs/<run-id>/`
+directories with profile/locations, resolved Flyway runtime/image, source
+fingerprints, revision/dirty paths, native command exits/timings, exact TAP
+plans/executed counts and per-target phase status. Shared image preparation and
+framework regression runs use the `preparation` and `framework` report directories.
+Per-profile `summary.txt`, `pg-prove.log` and `framework-self-test.log` remain
+latest entry points; the root `summary.txt` records the aggregate profile result.
+An earlier completed report survives a later scenario or profile failure.
+
+Target cleanup separately attempts removal, container absence and every known
+owned anonymous volume's absence, even after an earlier cleanup command fails.
+Unknown volume ownership or any unconfirmed absence fails closed. Cleanup is
+limited to exact UUID-owned resources; it must not prune global Docker resources
+or developer-owned named volumes. A cleanup error fails an otherwise successful
+run. When verification also fails, retain the original primary error and all
+cleanup diagnostics, including additional cleanup errors under the aggregate.
+Fixed cleanup-injection regressions independently remove their actual resources
+and confirm absence without turning the observed failure into PASS.
+
 Reports distinguish discovered, selected, attempted and passed scenarios, with
 selection mode, reasons, changed inputs, comparison validity and fallback reason.
-Excluded unchanged scenarios are **Not selected**, never PASS or upgrade N/A.
-Selected unexecuted phases/scenarios remain **Not run**. Cleanup failure fails the
-command and is retained alongside any primary error. Framework tests use only
-fixed internal injections; callers cannot inject commands, targets or failures.
+Excluded unchanged or outside-profile scenarios are **Not selected**, never PASS
+or upgrade N/A. Selected unexecuted phases/scenarios remain **Not run**. Framework
+tests use only fixed internal injections; callers cannot inject commands,
+targets or failures.
 
 ### pgTAP file headers
 
@@ -623,10 +874,143 @@ Central Authority checks require a nonempty result and verify the seeded
 record's casefile details; they do not assume generated identifiers or
 exactly ten records.
 
-The current seed contains only active Central Authorities. PO-10297 checks
-the empty result for active non-Central Authority creditors, malformed
-active-filter rejection and authentication. Its positive creditor retrieval
-acceptance criterion remains uncovered until approved non-Central Authority
-data exists. The seed also lacks inactive comparison rows, so these tests
-cannot prove exclusion using those rows. See the feature comment before
-the PO-10297 scenarios. Do not modify shared data to make these checks pass.
+PO-10297 positive coverage originally required the DEV-only
+`data/dev/V1_33__insert_major_creditors_dev_data.sql`, applied through normal
+Flyway migration with `ddl`, `data/allEnvs` and `data/dev` selected. It adds
+three synthetic BU 44 records: active non-Central Authority `T901`, inactive
+non-Central Authority `T902`, and active Central Authority `T903`. The positive
+scenario requires T901's exact casefile details, excludes T902/T903, and allows
+additional qualifying creditors without assuming generated IDs or an exact
+result count. Malformed-filter and authentication scenarios remain covered.
+
+The DEV-only synthetic reference-data contract was approved by the requester
+on 2 October 2026; see `src/dbUnitTest/majorCreditorsDevDataTest/README.md`.
+The saved PO-10297 ticket draft originally called for test-owned data. The
+subsequently approved strategy uses seeded reference data and read-only HTTP
+steps. On 21 October 2026 the requester expanded that strategy to every
+non-live environment, following the Fines common-NLE pattern. This is a scope
+amendment to record in the PR; it does not establish a Jira update or deployed
+approval. `data/nle/V1_34__insert_major_creditors_nle_data.sql` supplies the
+same three records through the common NLE location. Historical DEV V1_33 and
+its approval and verification evidence remain unchanged.
+
+The checked-in local application default and DEV Helm template select
+`ddl + allEnvs + nle + dev`; the staging Helm template selects
+`ddl + allEnvs + nle`. The production base Helm values select only
+`ddl + allEnvs`, excluding both synthetic-data locations. These files do not
+prove the effective settings of a running deployment. Separately managed
+`FLYWAY_LOCATIONS` overrides, the image contents and migration history must be
+checked per target. The repository has migration directories for demo, ITHC
+and performance, but no checked-in deployment overlay for those targets; if
+any is deployed, inventory its effective locations and include `data/nle` for
+this approved non-live scope before running positive scenarios. Do not infer
+coverage from an environment name or add an unconfigured overlay.
+
+V1_34 inserts exactly three rows when none of the BU 44 T901/T902/T903 keys
+exists. If all three rows exactly match the approved fields and Country, it
+makes no change, preserving DEV V1_33's generated IDs. A partial set or any
+conflicting field fails the migration atomically and needs investigation;
+neither case is silently repaired or skipped. The migration resolves the
+existing Czech Republic uniquely and leaves unrelated creditors intact.
+The owning flat pgTAP suite checks both fresh profiles, including direct rerun,
+all fields, rollback and failure atomicity. The existing DEV suite remains in
+the discovered suite set for both profiles and verifies the historical V1_33
+contract without requiring that migration in common NLE Flyway history.
+Local disposable verification does not establish shared-environment deployment
+or QA sign-off. Positive coverage requires both approved data and a passing
+live scenario; an empty response cannot satisfy the positive acceptance
+criterion. Apply the appropriate non-live migration locations before executing
+positive functional tests.
+Before rollout, confirm the target's effective `FLYWAY_LOCATIONS`, deployed
+image and `flyway_schema_history` script names. Inspect the earlier seed names
+V1_15, V1_17 and V1_31 as well as V1_33; a version number alone may refer to
+another migration. Apply V1_34 through normal Flyway deployment after `ddl`
+and `allEnvs`. If history is incompatible, stop and obtain a separate approved
+database-owner recovery decision; never automatically repair history or edit an
+applied migration. After deployment, refresh affected BU 44
+`majorCreditorReferenceDataCache` entries through the approved administration
+route, using the actual environment/cache prefix. Include
+`44_noFilter_noFilter`, `44_false_true` and any other cached BU 44 filter
+combinations in use. Do not flush Redis globally. Redis TTL defaults to eight
+hours, and restarting a pod does not clear Redis. Then rerun the live positive,
+malformed-filter and authentication scenarios against an agreed compatible
+non-live Maintenance and User Service target. Cache refresh and migration are
+rollout actions, never functional-test setup or cleanup hooks.
+Targets that select `allEnvs` without `dev` require the approved `nle` location
+when non-live functional coverage runs. Do not enable DEV or NLE data in
+production. Tests make read-only HTTP requests and never insert, update or
+clean up reference data. V1_33 remains historically one-shot, while V1_34
+accepts an exact direct rerun and rejects partial or mismatching data.
+See `src/dbUnitTest/majorCreditorsDevDataTest/README.md` for fresh/upgrade scope
+and historical database-boundary assertions. Fresh checks do not establish
+deployment, positive functional execution, or predecessor upgrade readiness.
+
+
+## Results reference-data functional prerequisites
+
+PO-10298 follows the Fines seeded-data pattern: all four scenarios use normal
+TEST_URL and the existing OPAL_USER_SERVICE_API_URL. The all-environment Results
+baseline contains MAT / Matrimonial Order for Adult, MCHILD / Maintenance Order
+for child(ren), and MLUMP / Lump sum order as the three active Order Terms.
+There are no inactive Order Terms. Normal service startup applies the configured
+Flyway locations; functional tests do not insert, delete or alter reference data.
+
+The empty live scenario requests order_term=true&active=false and asserts count
+0 with refData []. It is named for that inactive precondition. The original
+no-active-Order-Term condition is covered in ResultsDatabaseIntegrationTest with
+owned per-test rows and the exact order_term=true&active=true request. These are
+separate coverage statements. No special Results target URL or fixture database
+is required. Incompatible baseline data is a test failure, not a skip.
+
+Run the live parent scenarios:
+
+    ./gradlew functionalOpal -Dcucumber.filter.tags=@JIRA-STORY:PO-10298
+
+Validate discovery separately:
+
+    ./gradlew functionalOpal -Dcucumber.filter.tags=@JIRA-STORY:PO-10298 -Dcucumber.execution.dry-run=true
+
+Run assertion checks without a Cucumber tag property:
+
+    ./gradlew functionalOpal --tests 'uk.gov.hmcts.opal.steps.ResultsStepDefTest'
+
+Preserve scenario names, test/failure/error/skipped counts, exact command,
+elapsed time and non-sensitive setup notes before the next functionalOpal run
+clears reports. Discovery and HTTP mocks are not live API evidence. Review raw
+reports before sharing; never archive bearer headers, tokens or reusable
+connection credentials. A normal full functional/smoke run also needs the other
+journeys' documented data and compatible authentication service.
+
+## Result detail functional coverage
+
+PO-10301 uses the same normal TEST_URL and OPAL_USER_SERVICE_API_URL as the list
+scenarios. MLUMP / Lump sum order is supplied by the maintained all-environment
+baseline; ZZZZZZ is an explicitly unallocated identifier. Functional requests
+are read-only and need no synthetic inserts, fixture database or special detail
+URL. Existing authentication remains enabled.
+
+The three live scenarios verify selected seeded details and meaningful Amount
+metadata, correlated 404 for an absent identifier, and 401 without Result data
+for an unauthenticated request. MLUMP's Amount uses decimal-2dp, prompt “Amount
+of order”, mandatory true, minimum 0 and maximum 9999999999.99.
+
+Inactive retrieval (200), unfamiliar metadata passthrough (200), explicit SQL
+null and encoded [] are covered in ResultDatabaseIntegrationTest using owned
+per-test data and cache reset. The original active-empty list condition is
+separately covered in ResultsDatabaseIntegrationTest. These integration cases
+are not counted as live functional scenarios; this is the requester-approved
+coverage/data-strategy amendment to the original ticket requirements.
+
+Validate discovery:
+
+    ./gradlew functionalOpal '-Dcucumber.filter.tags=@JIRA-STORY:PO-10298 or @JIRA-STORY:PO-10301' -Dcucumber.execution.dry-run=true
+
+Run both stories live against the normal seeded service:
+
+    ./gradlew functionalOpal '-Dcucumber.filter.tags=@JIRA-STORY:PO-10298 or @JIRA-STORY:PO-10301'
+
+Expect seven Results scenarios: four list and three detail. Missing baseline
+records, an allocated absent identifier or incompatible authentication is a
+setup/test failure, never a skip or a reason to mutate reference data. Preserve
+non-sensitive reports before later invocations clear them. The full functional
+suite also needs all other documented reference-data prerequisites.

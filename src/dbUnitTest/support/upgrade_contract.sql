@@ -10,6 +10,7 @@
  * Date        Author         Ticket        Nature of Change
  * ----------  -------------  ------------  ----------------------------------------
  * 15/10/2026  Frankie Moran  PO-10643      Add shared declared preservation checks.
+ * 22/10/2026  Frankie Moran  PO-10643      Capture bounded data contract observations.
  */
 \ir ../framework/upgrade_lifecycle.sql
 
@@ -164,6 +165,49 @@ BEGIN
     RETURN result;
 END;
 $snapshot$;
+
+CREATE OR REPLACE FUNCTION pg_temp.opal_contract_observe(contract JSONB) RETURNS JSONB
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $observe$
+DECLARE category TEXT; entry JSONB; identity TEXT; scope JSONB;
+BEGIN
+    PERFORM pg_temp.opal_contract_require(contract);
+    IF NOT (contract ? 'observe') THEN RETURN '{}'::JSONB; END IF;
+    scope := contract->'observe';
+    IF contract->>'type' IS DISTINCT FROM 'data'
+       OR JSONB_TYPEOF(scope) IS DISTINCT FROM 'object' THEN
+        RAISE EXCEPTION 'Observations require a bounded data contract';
+    END IF;
+    IF (SELECT ARRAY_AGG(key ORDER BY key) FROM JSONB_OBJECT_KEYS(scope) key)
+           IS DISTINCT FROM ARRAY['rows','sequences']::TEXT[]
+       OR JSONB_TYPEOF(scope->'rows') IS DISTINCT FROM 'array'
+       OR JSONB_TYPEOF(scope->'sequences') IS DISTINCT FROM 'array' THEN
+        RAISE EXCEPTION 'Malformed data observation scope';
+    END IF;
+    IF JSONB_ARRAY_LENGTH(scope->'rows') + JSONB_ARRAY_LENGTH(scope->'sequences') = 0 THEN
+        RAISE EXCEPTION 'Data observation scope must be nonempty';
+    END IF;
+    FOREACH category IN ARRAY ARRAY['rows','sequences'] LOOP
+        IF (SELECT COUNT(*) <> COUNT(DISTINCT value) FROM JSONB_ARRAY_ELEMENTS(scope->category)) THEN
+            RAISE EXCEPTION 'Duplicate data observation identity';
+        END IF;
+        FOR entry IN SELECT JSONB_ARRAY_ELEMENTS(scope->category) LOOP
+            identity := entry #>> '{}';
+            IF JSONB_TYPEOF(entry) IS DISTINCT FROM 'string'
+               OR identity !~ '^[a-z_][a-z0-9_]*[.][a-z_][a-z0-9_]*$'
+               OR SPLIT_PART(identity,'.',1) IN ('pg_catalog','information_schema')
+               OR SPLIT_PART(identity,'.',1) LIKE 'pg_%'
+               OR SPLIT_PART(identity,'.',1) LIKE 'opal_test_%'
+               OR SPLIT_PART(identity,'.',2) = 'flyway_schema_history'
+               OR (contract->'preserve'->category) ? identity THEN
+                RAISE EXCEPTION 'Invalid or overlapping data observation identity';
+            END IF;
+        END LOOP;
+    END LOOP;
+    RETURN pg_temp.opal_contract_snapshot(JSONB_SET(contract,'{preserve}',JSONB_BUILD_OBJECT(
+        'rows',scope->'rows','tables','[]'::JSONB,'routines','[]'::JSONB,
+        'enums','[]'::JSONB,'sequences',scope->'sequences')));
+END;
+$observe$;
 
 CREATE OR REPLACE FUNCTION pg_temp.opal_contract_changed_objects(contract JSONB) RETURNS JSONB
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $changes$

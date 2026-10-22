@@ -357,6 +357,15 @@ database-owned `dbUnitTest` task. Its suite ownership, lifecycle integration,
 reporting, and availability are documented in
 [Testing](TESTING.md#db-01-suite-semantics).
 
+The task exercises both fixed profiles documented in
+[DB-10 execution](TESTING.md#db-10-pgtap-execution): `non-live-dev` selects
+`ddl`, `data/allEnvs`, `data/nle`, `data/dev`; `non-live` selects the first three.
+Both run all discovered fresh owning suites. The common NLE profile does not
+establish future staging-specific migration or production deployment coverage.
+Resolve the actual application Flyway core and PostgreSQL runtime module
+versions, require equal numerical release versions and use the matching Flyway
+image. Every native JSON response must report that same version.
+
 The fresh-database workflow must:
 
 1. Start a disposable PostgreSQL 17 container and create a test-owned
@@ -372,14 +381,18 @@ The fresh-database workflow must:
    Flyway state, and required schema, object, and reference-data outcomes.
 6. Run Flyway validation, then migrate a second time and assert that no
    migration is applied on the second run.
-7. Clean up the logical database and container automatically and confirm that
-   cleanup completed.
+7. Destroy the owned logical database/container and its owned anonymous volumes
+   automatically. Independently attempt container and every known volume absence
+   check even after removal or another absence check fails.
 
 Fail closed before migration if an external JDBC URL, credential, or target
 override is present, the resolved target is not test-owned and disposable, a
 required migration location is missing, or the starting state is invalid. Also
-fail on a migration, validation, or assertion error and when cleanup cannot be
-confirmed. Never fall back to a developer-owned or shared database.
+fail on a migration, validation, runtime-version, or assertion error and when
+cleanup cannot be confirmed. After global preflight and image preparation,
+attempt both profiles even if the first fails, retain each profile's report and
+fail their aggregate result. Preserve primary and cleanup diagnostics together.
+Never fall back to a developer-owned or shared database.
 
 Return only non-sensitive results to the evidence report defined in Testing.
 Do not expose production data, PII, secrets, credentials, or reusable
@@ -400,31 +413,41 @@ does not create a second framework and must not use Spring or backend
 integration-test fixtures. The maintained declaration, dispatch, adoption and
 report contract is documented in
 [Testing](TESTING.md#maintained-predecessor-upgrade-contract). Normal
-`./gradlew dbUnitTest` runs every fresh suite and affected registered upgrades;
-`check` and `build` inherit that coverage. Explicit full replay and conservative
-full fallback follow the linked selection contract. Excluded scenarios are Not
-selected, not verified. Shared database-test infrastructure changes require full
-historical replay and automatically run the native framework regression matrix;
-uncertain comparison evidence also requires that matrix. Framework delivery
+`./gradlew dbUnitTest` runs every fresh suite and affected registered upgrades
+in each fixed profile; `check` and `build` inherit that coverage. Explicit full
+replay and conservative full fallback select all registered candidates eligible
+for each profile. Globally valid candidates outside a profile's locations are
+Not selected — outside selected profile locations, not verified by that profile.
+The complete fresh suite set still runs in both profiles. Shared database-test
+infrastructure changes require full historical replay and automatically run the
+native framework regression matrix; uncertain comparison evidence also requires
+that matrix. Framework delivery
 alone does not prove a consumer: record its actual registration, predecessor,
-candidate, owning-suite
-assertions and retained passing execution evidence.
+candidate, owning-suite assertions and retained passing execution evidence.
 
 Before creating targets, validate the complete-tree numerical inventory,
-registrations, adoption checksums and immutable history. Working migration bytes
-must match their committed HEAD versions; a trustworthy comparison also checks
-existing migration paths and bytes across both revisions. Reject modification,
+registrations, adoption checksums and immutable history. Validate the fixed
+32-migration adoption foundation globally, including adopted files excluded from
+one profile. Every later migration in the union of supported locations needs
+one owning registration; do not enlarge the adoption list to exempt it.
+Registration/dependency validation is global, while execution eligibility is
+profile-specific. Working migration bytes must match their committed HEAD
+versions; a trustworthy comparison also checks existing migration paths and bytes
+across both revisions. Reject modification,
 removal, rename, duplicate versions and a new selected version inserted below
 existing history. Missing or uncertain comparison context falls back to full
 registered replay, but cannot excuse a history-policy error. Added migrations
 outside the exercised locations are reported as Unverified; validate their
 applicable disposable configuration separately before claiming coverage.
 
-Resolve the actual candidate and its immediate predecessor from the selected
-Flyway migration locations at the implementation baseline. The predecessor is
-the greatest selected version below the candidate, using Flyway's numerical
-version ordering across those locations. Do not infer it from lexical filename
-order, the preceding DDL file, or the candidate number minus one.
+Resolve the actual candidate and its immediate predecessor separately from each
+profile's selected Flyway migration locations at the implementation baseline.
+The predecessor is the greatest selected version below the candidate, using
+Flyway's numerical version ordering across those locations. Do not infer it from lexical filename
+order, the preceding DDL file, or the candidate number minus one. A candidate
+can therefore have different predecessors in the two profiles. Comparison refs
+select affected registrations; this framework does not provide an actual
+Git-parent inventory plus incoming-batch transition task.
 
 For a candidate migration with an immediate predecessor, use this
 Flyway-native sequence:
@@ -442,23 +465,28 @@ Flyway-native sequence:
    decided. Translate only its approved cases into the smallest deterministic
    synthetic dataset.
 4. Capture the relevant scoped predecessor rows and objects through shared
-   SQL support using the owning suite's compact declaration. Keep test observation
-   state outside application objects and preserve it across connections. Approved
-   synthetic preparation or risk-specific transitions may use explicitly declared
-   custom SQL cases; ordinary routine creation does not need bespoke phases.
+   SQL support using the owning suite's mandatory compact declaration. Keep test
+   observation state outside application objects and preserve it across
+   connections. Bounded data observations may separately capture declared rows
+   and sequences for precise custom outcomes without weakening exact preservation.
+   Approved synthetic preparation or risk-specific transitions may use explicitly
+   declared custom SQL cases; ordinary routine creation does not need bespoke phases.
 5. Apply only the candidate as the next migration and validate at that same
    candidate boundary. No later migration may run before candidate assertions.
-6. Compare the scoped predecessor rows and objects before functional fixtures
-   or routine calls mutate them, then assert the relevant schema,
-   reference-data, and affected-row outcomes and applicable database contract.
-   Capture the complete candidate Flyway history for the repeat comparison.
+6. Compare the exact-preservation rows and objects first. Run any custom outcome
+   verifier, then the ordinary owning assertion group, both with positive exact
+   TAP plans and rollback. Assert the relevant schema, reference-data and
+   affected-row outcomes and applicable database contract. Capture the complete
+   candidate Flyway history for the repeat comparison.
 7. Migrate and validate again at the same candidate boundary. Require native
    evidence of zero newly applied migrations and complete Flyway history
    equality with the captured candidate history; counts or script names alone
    do not prove this. History equality does not replace row/object preservation
    assertions.
-8. Remove and verify removal of test-owned observation state, then destroy the
-   disposable database and container automatically and confirm cleanup.
+8. Remove and independently verify removal of test-owned observation state, then
+   destroy the disposable database/container and owned anonymous volumes.
+   Independently attempt every target/volume absence check even if an earlier
+   cleanup command fails; retain each failure alongside any primary error.
 
 The maintained DB-03 phases use separate SQL connections, so predecessor
 observations have an ordinary, committed lifetime inside the disposable target.
@@ -469,18 +497,45 @@ and [SQL ownership contract](TESTING.md#pgtap-suite-layout). The fixed
 helpers are never discovered as standalone suites. Shared SQL owns declared-scope
 capture and comparison, phase plans and transactions, guarded observation
 identity, committed storage, and independently checked cleanup. Row/text snapshot
-strings remain exact. The flat owning suite retains functional assertions,
-independent expectations, fixtures and real-session concurrency. Do not copy
-phase validation, observation tables, commits or cleanup into each new suite.
+strings remain exact. Every new upgrade contract, including a new registration
+in an existing suite, requires compact declaration and shared dispatch. The flat
+owning suite retains functional assertions, independent expectations, fixtures
+and real-session concurrency. Do not copy phase validation, observation tables,
+commits or cleanup into owners of new upgrade contracts.
+
+A data contract may declare optional `observe` with exactly `rows` and `sequences`
+arrays of canonical qualified identities. Both keys are mandatory, at least one
+array is nonempty, duplicates are rejected, and identities cannot overlap their
+corresponding exact-preservation arrays. The same relation may have observed rows
+and preserved table metadata. Other contract types cannot declare observations.
+Shared preparation stores `observed` separately from the unchanged preservation
+`snapshot`; the custom verifier explicitly checks intended data/sequence outcomes.
+Observation never relaxes exact row or catalogue preservation. Compare retained
+row strings with their original text and multiplicity; parse copies only when
+classification is required. Data contracts still require a verifier and forbid
+declared object creations/replacements.
 
 Optional `upgradeCases/` scripts are invoked only by an explicit contract for
 approved preparation or a risk-specific transition; they do not become another
-routine suite or reimplement shared observation machinery. Functional assertion
+routine suite or reimplement shared observation machinery. Custom preparation
+keeps its canonical path and approved-synthetic requirements. Only custom verify
+may instead use the reserved `owner` token, resolving to the declaring regular,
+canonical SQL file beneath `src/dbUnitTest`, never another owner or executable
+metadata. Missing files and symlinks fail validation. The token is not a dependency
+path; the owner is already an implicit input. Ordinary custom paths remain
+classified and fingerprinted, and additional dependencies belong in `inputs`.
+
+The custom owner verifier loads the shared payload under exact contract/scenario/
+candidate/predecessor identity, checks the bounded observed outcomes with
+`opal_phase=verify`, and rolls back. Ordinary compatible owning assertions then
+run with `opal_phase=fresh` and rollback. Both follow shared exact-preservation
+verification; shared support alone owns committed capture and cleanup. Assertion
 groups must be compatible with the candidate schema, including focused historical
-expectations when a later migration changes behaviour or dependencies. Existing
-four-field registrations retain the documented legacy phase API during separately
-reviewed consumer adaptation; keep their coverage until that adaptation has been
-verified. Framework support alone does not establish consumer adoption.
+expectations when a later migration changes behaviour or dependencies. Genuine
+earlier four-field registrations retain their legacy phase API during separately
+reviewed adaptation; keep their coverage until that adaptation is verified. This
+compatibility does not exempt newly registered contracts in an existing suite.
+Framework support alone does not establish consumer adoption.
 
 Exact ownership checks precede loading/removal; removal is committed and absence
 is checked from a distinct backend. Only narrowly owned
@@ -490,12 +545,14 @@ Fresh and functional verification retain rollback, and production routines retai
 backend-owned transaction boundaries. Every phase requires a positive exact TAP
 plan; target destruction remains mandatory after success or failure.
 
-Retain non-sensitive evidence of actual candidate/predecessor paths and versions,
-selected locations, phase results and assertion counts, validation, native repeat
-results, history equality, scoped preservation, and confirmed test-state and
-target cleanup. Migration, validation, SQL, assertion, or cleanup failure must
-fail the maintained command. Preserve primary and cleanup failures and identify
-unexecuted phases when a failure stops the workflow; an incomplete run cannot
+Retain non-sensitive evidence per profile of actual candidate/predecessor paths
+and versions, selected locations, resolved runtime/image, phase results and
+assertion counts, validation, native repeat results, history equality, scoped
+preservation, any bounded observation/custom outcomes, and confirmed shared
+state, target and owned-volume cleanup. Keep unique per-profile run reports and the aggregate profile outcome described in
+[Testing](TESTING.md#maintained-predecessor-upgrade-contract). Migration,
+validation, SQL, assertion, or cleanup failure must fail the maintained command.
+Preserve primary and cleanup failures and identify unexecuted phases when a failure stops the workflow; an incomplete run cannot
 establish upgrade verification.
 
 An initial migration with no predecessor uses the fresh-database path from an

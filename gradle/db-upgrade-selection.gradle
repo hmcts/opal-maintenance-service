@@ -4,6 +4,7 @@ import java.security.MessageDigest
 import org.gradle.api.GradleException
 
 // Frankie Moran — PO-10643 — 14/10/2026
+// Frankie Moran — PO-10643 — 22/10/2026 — Select eligible owners within fixed profiles.
 // Selection uses only local Git evidence; target creation remains in db-unit-test.gradle.
 def canonicalPath = { Object value ->
   value instanceof String && value ==~ /[A-Za-z0-9_.\/-]+/ && !value.startsWith('/') &&
@@ -223,22 +224,31 @@ ext.selectDbUpgradeScenarios = { List scenarios, File repository, Map options ->
     mergeBaseSha:null, testedSourceSha:null, changedPaths:[], reasons:[:], fallbackReason:null,
     boundary:'merge-base to actual tested HEAD, plus index/worktree/untracked paths',
     frameworkTestsRequired:false, unverifiedMigrations:[], historyValidation:[:]]
-  def full = { String reason ->
-    result.mode = 'full'; result.fallbackReason = reason; result.selected = scenarios
-    // Unknown impact conservatively exercises shared lifecycle failure handling.
-    if (reason != 'Explicit full replay' || result.baseSha == null) { result.frameworkTestsRequired = true }
-    scenarios.each { result.reasons[it.id] = "Selected — ${reason}".toString() }
-    result
-  }
   def resolve = { String ref ->
     def git = localGit(repository, ['-c','core.warnAmbiguousRefs=true','rev-parse','--verify','--end-of-options',"${ref}^{commit}".toString()])
     git.exitCode == 0 && git.stderr.isBlank() ? git.stdout.trim() : null
   }
-  def locations = options.selectedLocations ?: ['ddl','data/allEnvs','data/dev']
-  if (!(locations instanceof List) || !locations.every { canonicalPath(it) }) {
+  def locations = options.containsKey('selectedLocations') ? options.selectedLocations :
+    ['ddl','data/allEnvs','data/dev']
+  if (!(locations instanceof List) || locations.isEmpty() ||
+      locations.toSet().size() != locations.size() || !locations.every { canonicalPath(it) }) {
     throw new GradleException('Invalid selected migration locations')
   }
   def selectedMigration = { Map entry -> locations.any { entry.path.startsWith(it + '/') } }
+  // All declarations remain dependency owners even when their candidates are
+  // outside this profile; only eligible owners may be scheduled for replay.
+  def eligibleScenarios = scenarios.findAll { selectedMigration([path:it.candidate]) }
+  result.outsideProfileScenarios = scenarios.findAll { !eligibleScenarios.contains(it) }
+  result.outsideProfileScenarios.each {
+    result.reasons[it.id] = 'Not selected — outside selected profile locations'
+  }
+  def full = { String reason ->
+    result.mode = 'full'; result.fallbackReason = reason; result.selected = eligibleScenarios
+    // Unknown impact conservatively exercises shared lifecycle failure handling.
+    if (reason != 'Explicit full replay' || result.baseSha == null) { result.frameworkTestsRequired = true }
+    eligibleScenarios.each { result.reasons[it.id] = "Selected — ${reason}".toString() }
+    result
+  }
   // Complete working-tree policy checks require no Git context and cannot be
   // converted into fallback. Missing Git/index evidence is a separate condition.
   def workingInventory = workingMigrationInventory(repository)
@@ -380,7 +390,7 @@ ext.selectDbUpgradeScenarios = { List scenarios, File repository, Map options ->
       (path.startsWith('src/main/resources/db/') || path.startsWith('src/dbUnitTest/')) && !known.contains(path)
     }
     if (unknown) { return full("Unclassified database input changed: ${unknown.join(', ')}".toString()) }
-    scenarios.each { scenario ->
+    eligibleScenarios.each { scenario ->
       def affected = declared[scenario.id].findAll { it in paths }
       result.reasons[scenario.id] = affected ? "Selected — changed inputs: ${affected.join(', ')}".toString() : 'Not selected — unchanged'
       if (affected) { result.selected.add(scenario) }
