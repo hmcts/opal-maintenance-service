@@ -325,7 +325,7 @@ class DraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
     @ValueSource(strings = {"REJECTED", "DELETED"})
     void actualCheckerDecisionCanBeCleanedWithoutChangingSibling(String decision) throws Exception {
         long id = submit(RUN);
-        DraftCasefileEntity sibling = repository.findById(submit("E2E-fedcba9876543210")).orElseThrow();
+        final DraftCasefileEntity sibling = repository.findById(submit("E2E-fedcba9876543210")).orElseThrow();
         Long version = repository.findById(id).orElseThrow().getVersionNumber();
         var checker = DraftCasefileHttpFixture.token((short) 1, 124L, "BUU-CHECKER",
             Set.of(new Permission(22L, "Check and validate draft Casefiles")));
@@ -361,7 +361,7 @@ class DraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
                 account.putNull("account_id");
                 account.put(field, "SYNTHETIC-1");
             }
-            DraftCasefileEntity before = repository.saveAndFlush(original.toBuilder()
+            final DraftCasefileEntity before = repository.saveAndFlush(original.toBuilder()
                 .casefileSnapshot(objectMapper.writeValueAsString(snapshot)).build());
             submit("E2E-fedcba9876543210");
             List<DraftCasefileEntity> beforeRows = repository.findAll();
