@@ -14,6 +14,7 @@ import uk.gov.hmcts.opal.generated.model.CasefileType;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileReplaceRequest;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileUpdateRequest;
 import uk.gov.hmcts.opal.service.messaging.DraftCasefileQueuePublisher;
+import uk.gov.hmcts.opal.service.messaging.DraftCasefileQueueMessage;
 import uk.gov.hmcts.opal.validator.IfMatchValidator;
 import uk.gov.hmcts.opal.authorisation.MaintenanceUser;
 import uk.gov.hmcts.opal.authorisation.MaintenanceUserService;
@@ -159,7 +160,7 @@ public class DraftCasefileService {
         VersionedResponse<DraftCasefileGetResponse> result =
             new VersionedResponse<>(response, saved.getVersionNumber());
         if (saved.getCasefileStatus() == DraftCasefileStatus.PUBLISHING_PENDING) {
-            queuePublisher.publish(id);
+            queuePublisher.publish(new DraftCasefileQueueMessage(id, user.userId(), user.ipAddress()));
         }
         eventPublisher.publishEvent(event);
         return result;

@@ -36,6 +36,7 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.clearInvocations;
@@ -98,8 +99,8 @@ class DraftCasefileQueueIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
-    void publishesPersistentIdOnlyMessageToConfiguredQueue() throws Exception {
-        publisher.publish(900001L);
+    void publishesPersistentApprovalMessageToConfiguredQueue() throws Exception {
+        publisher.publish(new DraftCasefileQueueMessage(900001L, 123L, "192.0.2.1"));
         assertMessage(900001L);
     }
 
@@ -122,7 +123,7 @@ class DraftCasefileQueueIntegrationTest extends BaseIntegrationTest {
                 }
             });
             return null;
-        }).when(publisher).publish(id);
+        }).when(publisher).publish(argThat(message -> message.draftCasefileId().equals(id)));
         mockMvc.perform(patch("/draft-casefiles/{id}", id).header("If-Match", "\"0\"")
             .contentType(MediaType.APPLICATION_JSON)
             .content("{\"business_unit_id\":1,\"casefile_status\":\"PUBLISHING_PENDING\"}")
@@ -138,15 +139,20 @@ class DraftCasefileQueueIntegrationTest extends BaseIntegrationTest {
         try (ServerSocket unavailable = new ServerSocket(0)) {
             var factory = new JmsConnectionFactory("amqp://localhost:" + unavailable.getLocalPort()
                 + "?jms.connectTimeout=500&jms.requestTimeout=500&jms.sendTimeout=500");
-            var failed = new DraftCasefileQueuePublisherImpl(new JmsTemplate(factory), JSON, queue);
-            assertThatThrownBy(() -> failed.publish(900002L)).isInstanceOf(JmsException.class);
+            var failed = new DraftCasefileQueuePublisherImpl(new JmsTemplate(factory), JSON, queue,
+                new DraftCasefileQueueMessageValidator());
+            assertThatThrownBy(() -> failed.publish(new DraftCasefileQueueMessage(900002L, 123L, "192.0.2.1")))
+                .isInstanceOf(JmsException.class);
         }
     }
 
     private void assertMessage(long id) throws Exception {
         var message = template.receive(queue);
         assertThat(message).isInstanceOf(TextMessage.class);
-        assertThat(((TextMessage) message).getText()).isEqualTo("{\"draft_casefile_id\":" + id + "}");
+        var body = JSON.readTree(((TextMessage) message).getText());
+        assertThat(body.get("draft_casefile_id").longValue()).isEqualTo(id);
+        assertThat(body.get("checker_user_id").longValue()).isPositive();
+        assertThat(body.get("originating_ip_address").asString()).isNotBlank();
         assertThat(message.getJMSDeliveryMode()).isEqualTo(DeliveryMode.PERSISTENT);
     }
 
