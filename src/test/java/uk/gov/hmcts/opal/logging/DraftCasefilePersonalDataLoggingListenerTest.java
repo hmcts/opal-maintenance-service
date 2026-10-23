@@ -66,6 +66,33 @@ class DraftCasefilePersonalDataLoggingListenerTest {
     }
 
     @Test
+    void sendsOneAlterationPerCategoryWithIdentifiersAndExactResubmissionInstant() {
+        when(logging.personalDataAccessLogAsync(any())).thenReturn(true);
+        var resubmission = new DraftCasefilePersonalDataEvent(Operation.RESUBMISSION, event.draftId(),
+            event.userId(), event.ipAddress(), event.occurredAt(), event.participantCategories());
+        listener.onPersonalDataAccess(resubmission);
+        ArgumentCaptor<PersonalDataProcessingLogDetails> payloads =
+            ArgumentCaptor.forClass(PersonalDataProcessingLogDetails.class);
+        verify(logging, times(4)).personalDataAccessLogAsync(payloads.capture());
+        assertThat(payloads.getAllValues()).extracting(PersonalDataProcessingLogDetails::getBusinessIdentifier)
+            .containsExactly("Resubmit Draft Casefile - Respondent",
+                "Resubmit Draft Casefile - Applicant / Beneficiary",
+                "Resubmit Draft Casefile - Related parties", "Resubmit Draft Casefile - Minor Creditor");
+        assertThat(payloads.getAllValues()).allSatisfy(payload -> {
+            assertThat(payload.getCategory()).isEqualTo(PersonalDataProcessingCategory.ALTERATION);
+            assertThat(payload.getCreatedAt()).isEqualTo(event.occurredAt().atOffset(ZoneOffset.UTC));
+            assertThat(payload.getCreatedBy().getIdentifier()).isEqualTo("99");
+            assertThat(payload.getCreatedBy().getType().getType()).isEqualTo("OPAL_USER_ID");
+            assertThat(payload.getIpAddress()).isEqualTo("192.0.2.1");
+            assertThat(payload.getRecipient()).isNull();
+            assertThat(payload.getIndividuals()).singleElement().satisfies(individual -> {
+                assertThat(individual.getIdentifier()).isEqualTo("123");
+                assertThat(individual.getType().getType()).isEqualTo("RM_DRAFT_CASEFILE");
+            });
+        });
+    }
+
+    @Test
     void sendsConsultationMetadataOncePerCategory() {
         Instant viewedAt = Instant.parse("2026-10-03T12:00:00Z");
         var viewEvent = new DraftCasefilePersonalDataEvent(Operation.VIEW, 123L, 99L, "192.0.2.1",
@@ -93,18 +120,33 @@ class DraftCasefilePersonalDataLoggingListenerTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = Operation.class, names = {"SUBMISSION", "VIEW"})
+    @EnumSource(value = Operation.class, names = {"SUBMISSION", "VIEW", "RESUBMISSION"})
     void falseResultsDoNotEscapeOrPreventLaterCategoriesAndDiagnosticsAreSafe(Operation operation) {
         when(logging.personalDataAccessLogAsync(any())).thenReturn(false);
         assertSafeFailureDiagnostics(operation);
     }
 
     @ParameterizedTest
-    @EnumSource(value = Operation.class, names = {"SUBMISSION", "VIEW"})
+    @EnumSource(value = Operation.class, names = {"SUBMISSION", "VIEW", "RESUBMISSION"})
     void exceptionsDoNotEscapeOrPreventLaterCategoriesAndDiagnosticsAreSafe(Operation operation) {
         when(logging.personalDataAccessLogAsync(any())).thenThrow(new IllegalStateException(
             "SYNTHETIC_CASEFILE SYNTHETIC_NAME SYNTHETIC_BANK 192.0.2.1"));
         assertSafeFailureDiagnostics(operation);
+    }
+
+    @ParameterizedTest
+    @EnumSource(ParticipantCategory.class)
+    void resubmissionLogsOnlyPresentCategory(ParticipantCategory category) {
+        listener.onPersonalDataAccess(new DraftCasefilePersonalDataEvent(Operation.RESUBMISSION, 123L, 99L,
+            null, Instant.EPOCH, java.util.Set.of(category)));
+        verify(logging).personalDataAccessLogAsync(any());
+    }
+
+    @Test
+    void emptyResubmissionCategoriesDoNotLog() {
+        listener.onPersonalDataAccess(new DraftCasefilePersonalDataEvent(Operation.RESUBMISSION, 123L, 99L,
+            null, Instant.EPOCH, java.util.Set.of()));
+        org.mockito.Mockito.verifyNoInteractions(logging);
     }
 
     private void assertSafeFailureDiagnostics(Operation operation) {
@@ -136,7 +178,11 @@ class DraftCasefilePersonalDataLoggingListenerTest {
     }
 
     private static String operationPrefix(Operation operation) {
-        return operation == Operation.SUBMISSION ? "Submit Draft Casefile - " : "View Draft Casefile - ";
+        return switch (operation) {
+            case SUBMISSION -> "Submit Draft Casefile - ";
+            case RESUBMISSION -> "Resubmit Draft Casefile - ";
+            case VIEW, LIST_VIEW -> "View Draft Casefile - ";
+        };
     }
 
     @Test

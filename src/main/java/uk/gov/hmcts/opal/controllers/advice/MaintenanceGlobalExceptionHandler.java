@@ -11,6 +11,7 @@ import org.springframework.core.Ordered;
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.core.annotation.Order;
 import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
@@ -21,6 +22,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import uk.gov.hmcts.common.exceptions.standard.UnauthorizedException;
 import uk.gov.hmcts.opal.common.controllers.advice.OpalProblemDetailFactory;
+import uk.gov.hmcts.opal.exception.ResourceConflictException;
 
 @Order(Ordered.HIGHEST_PRECEDENCE)
 @RestControllerAdvice(basePackages = "uk.gov.hmcts.opal.controllers")
@@ -72,6 +74,20 @@ public class MaintenanceGlobalExceptionHandler {
             "database-unavailable", true, null, LOG
         );
         return OpalProblemDetailFactory.responseWithProblemDetail(HttpStatus.SERVICE_UNAVAILABLE, problem);
+    }
+
+    @ExceptionHandler(ResourceConflictException.class)
+    public ResponseEntity<ProblemDetail> handleResourceConflictException(ResourceConflictException exception) {
+        return problemResponse(HttpStatus.CONFLICT, "Conflict", "A conflict occurred with the requested resource",
+            "resource-conflict", null);
+    }
+
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public ResponseEntity<ProblemDetail> handleOptimisticLockingFailure(
+        ObjectOptimisticLockingFailureException exception
+    ) {
+        return problemResponse(HttpStatus.CONFLICT, "Conflict", "Conflict updating record. Please try again.",
+            "optimistic-locking", null);
     }
 
     @ExceptionHandler(IllegalStateException.class)

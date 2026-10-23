@@ -267,6 +267,8 @@ class DraftCasefileValidatorTest {
     private void assertAcceptedUnchanged() {
         JsonNode original = request.getCasefile().deepCopy();
         assertThatCode(() -> validator.validate(request)).doesNotThrowAnyException();
+        assertThatCode(() -> validator.validate(request.getBusinessUnitId(), request.getCasefileType(),
+            request.getCasefile())).doesNotThrowAnyException();
         assertThat(request.getCasefile()).isEqualTo(original);
     }
 
@@ -280,6 +282,10 @@ class DraftCasefileValidatorTest {
         assertThat(exception.getError().getErrorTypeNumeric()).isEqualTo("001");
         assertThat(exception.getError().getTitle()).isEqualTo("Invalid request");
         assertThat(exception.getDetail()).isEqualTo(detail);
+        OpalApiException replacement = catchThrowableOfType(OpalApiException.class,
+            () -> validator.validate(request.getBusinessUnitId(), request.getCasefileType(), request.getCasefile()));
+        assertThat(replacement.getError()).isEqualTo(exception.getError());
+        assertThat(replacement.getDetail()).isEqualTo(detail);
         assertThat(request.getCasefile()).isEqualTo(original);
     }
 
