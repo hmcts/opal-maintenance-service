@@ -6,6 +6,7 @@ import io.restassured.config.RestAssuredConfig;
 import io.restassured.response.Response;
 import io.restassured.specification.RequestSpecification;
 import java.time.Duration;
+import java.util.Map;
 import net.serenitybdd.rest.SerenityRest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -27,6 +28,12 @@ public abstract class BaseStepDef {
 
     protected static Response getWithBearer(String path, String token) {
         return getWithBearer(TEST_URL, path, token);
+    }
+
+    protected static Response getWithBearer(String path, String token, Map<String, String> filters) {
+        return jsonRequest().queryParams(filters)
+            .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+            .when().get(TEST_URL + path);
     }
 
     protected static Response getWithBearer(String serviceUrl, String path, String token) {
