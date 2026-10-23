@@ -44,6 +44,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.doAnswer;
@@ -145,7 +146,7 @@ class DraftCasefileDecisionTransactionIntegrationTest extends BaseIntegrationTes
         Map<String, Object> saved = row(id);
         assertThat(saved.get("version_number")).isEqualTo(5L);
         assertThat(((JsonNode) saved.get("timeline_data")).size()).isEqualTo(3);
-        verify(publisher).publish(id);
+        verify(publisher).publish(argThat(message -> message.draftCasefileId().equals(id)));
         verify(logging, times(2)).personalDataAccessLogAsync(any());
         clearInvocations(logging);
         mockMvc.perform(request(id, approvalBody())
@@ -193,7 +194,7 @@ class DraftCasefileDecisionTransactionIntegrationTest extends BaseIntegrationTes
             SecurityContextHolder.clearContext();
         }
         assertThat(row(id)).isEqualTo(before);
-        verify(publisher).publish(id);
+        verify(publisher).publish(argThat(message -> message.draftCasefileId().equals(id)));
         verifyNoInteractions(logging);
     }
 
@@ -210,12 +211,12 @@ class DraftCasefileDecisionTransactionIntegrationTest extends BaseIntegrationTes
                     }
                 });
             return null;
-        }).when(publisher).publish(id);
+        }).when(publisher).publish(argThat(message -> message.draftCasefileId().equals(id)));
         mockMvc.perform(request(id, approvalBody())
 
             .with(authentication(DraftCasefileHttpFixture.token((short) 1, CHECK_VALIDATE_DRAFT_CASEFILES))))
             .andExpect(status().isInternalServerError());
-        verify(publisher).publish(id);
+        verify(publisher).publish(argThat(message -> message.draftCasefileId().equals(id)));
         assertThat(row(id)).isEqualTo(before);
         verifyNoInteractions(logging);
     }

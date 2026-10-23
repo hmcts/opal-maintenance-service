@@ -27,6 +27,7 @@ import uk.gov.hmcts.opal.mapper.DraftCasefileMapper;
 import uk.gov.hmcts.opal.mapper.DraftCasefileSummaryMapper;
 import uk.gov.hmcts.opal.repository.DraftCasefileRepository;
 import uk.gov.hmcts.opal.service.messaging.DraftCasefileQueuePublisher;
+import uk.gov.hmcts.opal.service.messaging.DraftCasefileQueueMessage;
 import uk.gov.hmcts.opal.validator.DraftCasefileQueryValidator;
 import uk.gov.hmcts.opal.validator.DraftCasefileValidator;
 import uk.gov.hmcts.opal.validator.IfMatchValidator;
@@ -127,7 +128,8 @@ class DraftCasefileDecisionServiceTest {
         if (approved) {
             var order = inOrder(repository, publisher, events);
             order.verify(repository).saveAndFlush(any());
-            order.verify(publisher).publish(42L);
+            order.verify(publisher).publish(new DraftCasefileQueueMessage(42L, checker.userId(), checker.ipAddress(),
+                "2026-10-19T10:00:00.123456Z"));
             order.verify(events).publishEvent(any(DraftCasefilePersonalDataEvent.class));
         } else {
             verifyNoInteractions(publisher);
