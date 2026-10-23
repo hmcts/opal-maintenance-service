@@ -1,5 +1,6 @@
 package uk.gov.hmcts.opal.assertions;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -16,7 +17,8 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public final class DraftCasefileRetrievalAssertions {
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = new ObjectMapper()
+        .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
     private static final String[] UNCHANGED = {"draft_casefile_id", "business_unit_id", "created_date",
         "submitted_by", "submitted_by_name", "casefile_type"};
     private static final String[] VALIDATION = {"validated_date", "validated_by", "validated_by_name"};

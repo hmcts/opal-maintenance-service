@@ -7,6 +7,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.restassured.builder.ResponseBuilder;
 import io.restassured.response.Response;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import uk.gov.hmcts.opal.data.DraftCasefileRequestFactory;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -151,6 +153,31 @@ class DraftCasefileRetrievalAssertionsTest {
             () -> DraftCasefileRetrievalAssertions.read(invalid));
         org.junit.jupiter.api.Assertions.assertFalse(jsonFailure.toString().contains(MARKER));
         org.junit.jupiter.api.Assertions.assertNull(jsonFailure.getCause());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"object", "garbage"})
+    void retrievalRejectsTrailingContentWithoutExposingIt(String content) throws Exception {
+        String trailing = "object".equals(content) ? " {\"private\":\"" + MARKER + "\"}" : " " + MARKER;
+        Response invalid = new ResponseBuilder().setStatusCode(200).setContentType("application/json")
+            .setHeader("ETag", "\"1\"").setBody(submitted() + trailing).build();
+        AssertionError failure = assertThrows(AssertionError.class,
+            () -> DraftCasefileRetrievalAssertions.read(invalid));
+        org.junit.jupiter.api.Assertions.assertFalse(failure.toString().contains(MARKER));
+        org.junit.jupiter.api.Assertions.assertNull(failure.getCause());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"object", "garbage"})
+    void safeProblemRejectsTrailingPayloadWithoutExposingIt(String content) {
+        String trailing = "object".equals(content)
+            ? " {\"casefile\":{\"remo_reference\":\"" + MARKER + "\"}}" : " " + MARKER;
+        Response invalid = new ResponseBuilder().setStatusCode(404).setContentType("application/problem+json")
+            .setBody(problem(404, null).asString() + trailing).build();
+        AssertionError failure = assertThrows(AssertionError.class,
+            () -> DraftCasefileRetrievalAssertions.safeProblem(invalid, 404, MARKER));
+        org.junit.jupiter.api.Assertions.assertFalse(failure.toString().contains(MARKER));
+        org.junit.jupiter.api.Assertions.assertNull(failure.getCause());
     }
 
     private JsonNode created(ObjectNode submitted) {

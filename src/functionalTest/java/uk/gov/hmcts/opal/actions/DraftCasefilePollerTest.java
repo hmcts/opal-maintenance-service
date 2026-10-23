@@ -6,6 +6,8 @@ import java.time.Duration;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -94,6 +96,23 @@ class DraftCasefilePollerTest {
             clock.set(1_000_000_000);
             return status("PUBLISHED");
         }, "PUBLISHED"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"object", "garbage"})
+    void terminalStatusRejectsTrailingContentWithoutRetryOrDisclosure(String content) {
+        String privateValue = "SYNTHETIC_PRIVATE_TRAILING_VALUE";
+        String trailing = "object".equals(content)
+            ? " {\"casefile\":{\"participant\":\"" + privateValue + "\"}}" : " " + privateValue;
+        AssertionError failure = assertThrows(AssertionError.class, () -> poller.await(() -> {
+            reads.incrementAndGet();
+            return new ResponseBuilder().setStatusCode(200).setContentType("application/json")
+                .setBody(status("PUBLISHED").asString() + trailing).build();
+        }, "PUBLISHED"));
+        assertEquals(1, reads.get());
+        assertEquals(0, clock.get());
+        assertFalse(failure.toString().contains(privateValue));
+        assertEquals(null, failure.getCause());
     }
 
     private Response status(String value) {
