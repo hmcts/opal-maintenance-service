@@ -127,6 +127,92 @@ disable scenario actions while the JUnit helper tests execute normally:
 ./gradlew functionalOpal --tests 'uk.gov.hmcts.opal.*.DraftCasefile*Test' -Dcucumber.execution.dry-run=true
 ```
 
+### Draft Casefile retrieval journeys (PO-10618)
+
+`GetDraftCasefile.feature` contains exactly five journeys, tagged `@Opal`,
+`@PO10618` and `@JIRA-STORY:PO-10618`:
+
+| Acceptance criterion | Scenario and observable evidence |
+| --- | --- |
+| Retrieve a complete authorised Draft Casefile | Complete submitted casefile matches the POST baseline and submitted JSON, with backend metadata, explicit null account identities, snapshot names, timeline and strong ETag |
+| Retrieve generated account identities after publication | Real `PUBLISHED` state retains approval history and top-level `validated_date`; respondent, applicant and minor creditors 7 and 23 have identities, with distinct creditor IDs and numbers |
+| Retrieve failed publication without invented identities | Real `PUBLISHING_FAILED` state preserves validation and approval history, retains explicit null identities, and has a nonblank status message |
+| Protect a missing Draft Casefile | Owner deletes its newly created draft before GET of the same ID returns a safe, correlated 404 problem |
+| Protect a draft outside the reader's Business Units | Existing reader without either owning Business Unit permission gets a safe, correlated 403 problem, rather than 401 |
+
+Each scenario POSTs its own synthetic draft with a fresh `E2E-` marker. No draft
+ID is supplied through environment configuration, SQL setup or shared records.
+The creator token and positive numeric Long ID are captured before later setup
+or response assertions. Every captured ID is deleted in the `@PO10618` after
+hook using the creator's token and marker, including after failed setup,
+approval, polling or assertions. The missing-resource scenario repeats the
+scoped DELETE safely. A 204 confirms cleanup. Any other status, including 409,
+or a transport error fails a passing scenario; an already failed scenario keeps
+its primary failure and receives separate safe cleanup evidence. An ambiguous
+create with no recoverable ID reports an unknown-owned-create limitation and
+marker for operator follow-up, without guessing an ID or replaying the POST.
+
+The standard existing identities are `opal-test@dev.platform.hmcts.net`
+(inputter), `opal-test-10@dev.platform.hmcts.net` (different checker), and
+`opal-test-2@dev.platform.hmcts.net` (denied reader). Optional overrides are
+`RM_DRAFT_CASEFILE_INPUTTER_USER`, `RM_DRAFT_CASEFILE_CHECKER_USER` and
+`RM_DRAFT_CASEFILE_DENIED_USER`. These users must already exist. The inputter
+needs permission 21 in Business Unit 44; the different checker needs permission
+22 there (the standard checker also has 21). The denied reader must have
+neither permission 21 nor 22 for that Business Unit. Tests obtain real tokens
+from User Service, require distinct submitter and validator identities, and
+assert actual HTTP outcomes; they never provision accounts or roles. Missing
+users or incompatible permissions fail the journey rather than skip it.
+
+Use a compatible Maintenance deployment and User Service, the active
+`AP00001` application, active country CJS code `1`, and result `MAT` baseline.
+Enable testing support only in the agreed non-live environment. Publication
+requires the real broker, running consumer and database provider
+`public.p_process_draft_casefiles`. The failed-publication fixture supplies a
+nonnumeric `Amount` (`not-an-amount`) accepted by draft creation, then requires
+the real failed publication state. The successful-publication scenario requires
+`PUBLISHED`: `PUBLISHING_FAILED` and deadline expiry remain failures. Missing
+provider delivery is expected to leave these checks red; there are no skipped,
+inverted or placeholder assertions. Cleanup of `PUBLISHED` and
+`PUBLISHING_PENDING` drafts currently returning 409 is a separate unmet
+support-API dependency and is not automatically fixed by merging the database
+provider. These tests do not bypass that lifecycle restriction.
+
+Polling allows 60 seconds with 500 ms intervals, blocks new reads and late
+acceptance after the deadline, and fails on an unexpected lifecycle state. An
+in-flight HTTP GET still uses the existing 10-second connection and 30-second
+socket timeouts; this is not a cancellable hard 60-second wall-clock limit.
+
+Run helper/glue regressions without a Cucumber tag property (a tag property
+selects only the Cucumber runner). JUnit checks execute normally while Cucumber
+actions are disabled:
+
+```bash
+./gradlew functionalOpal --tests 'uk.gov.hmcts.opal.*.DraftCasefile*Test' --tests 'uk.gov.hmcts.opal.steps.GetDraftCasefileStepDefTest' -Dcucumber.execution.dry-run=true
+./gradlew checkstyleFunctionalTest
+```
+
+Discovery must find exactly five PO-10618 scenarios without undefined or
+ambiguous steps. It does not prove live API behavior:
+
+```bash
+./gradlew functionalOpal -Dcucumber.filter.tags=@PO10618 -Dcucumber.execution.dry-run=true
+```
+
+For live verification, set `TEST_URL` and `OPAL_USER_SERVICE_API_URL` to the
+intended non-live environment, confirm the prerequisites above, then run:
+
+```bash
+./gradlew functionalOpal -Dcucumber.filter.tags=@PO10618
+```
+
+Record helper JUnit counts separately from five-scenario discovery and live
+results. Preserve non-sensitive retained draft IDs, markers, cleanup statuses
+and timings from reports before the next Gradle invocation clears functional
+reports. Never retain bearer tokens, request/response bodies or participant data
+in error messages, report attachments or handoff evidence. A local runtime of
+unknown source revision does not establish live verification of the branch.
+
 ## Draft Casefile publication tests
 
 The normal integration suite tests HTTP decisions and PostgreSQL transaction
