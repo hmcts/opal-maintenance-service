@@ -463,7 +463,7 @@ inventories and empty deltas still execute complete history, native validation,
 exact row/catalogue/ACL/routine/enum/sequence preservation, final application
 owners and zero-applied repeat/history checks. Only the three fixed framework
 self-suites requiring absent observations are excluded from retained owners;
-all 41 fresh suites remain required. Only explicitly bounded routine,
+all 42 fresh suites remain required. Only explicitly bounded routine,
 Aliases-name and Order-Term-response changes are allowed. Unsupported incoming
 data or structural changes fail closed; `observe` grants no batch exemption.
 Historical seeds are not incoming additions. No business preparation or
