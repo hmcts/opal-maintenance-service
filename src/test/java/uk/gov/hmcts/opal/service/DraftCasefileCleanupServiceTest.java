@@ -199,7 +199,7 @@ class DraftCasefileCleanupServiceTest {
     }
 
     private void assertNoDeletion() {
-        verify(repository, never()).delete(any());
+        verify(repository, never()).delete(any(DraftCasefileEntity.class));
         verify(repository, never()).flush();
     }
 

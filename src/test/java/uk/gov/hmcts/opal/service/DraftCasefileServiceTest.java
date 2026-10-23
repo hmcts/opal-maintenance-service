@@ -13,17 +13,22 @@ import uk.gov.hmcts.opal.authorisation.MaintenanceUserService;
 import uk.gov.hmcts.opal.common.exception.OpalApiException;
 import uk.gov.hmcts.opal.dto.VersionedResponse;
 import uk.gov.hmcts.opal.entity.DraftCasefileEntity;
-import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent;
 import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent.Operation;
-import uk.gov.hmcts.opal.exception.DraftCasefileError;
+import uk.gov.hmcts.opal.event.DraftCasefilePersonalDataEvent;
+import uk.gov.hmcts.opal.exception.RequestValidationError;
 import uk.gov.hmcts.opal.generated.model.CasefileType;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileAddRequest;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileGetResponse;
 import uk.gov.hmcts.opal.logging.DraftCasefileParticipantCategoryResolver;
+import uk.gov.hmcts.opal.mapper.DraftCasefileAddResponseMapperImpl;
 import uk.gov.hmcts.opal.mapper.DraftCasefileGetMapper;
+import uk.gov.hmcts.opal.mapper.DraftCasefileJsonMapper;
 import uk.gov.hmcts.opal.mapper.DraftCasefileMapper;
+import uk.gov.hmcts.opal.mapper.DraftCasefileSummaryMapper;
+import uk.gov.hmcts.opal.mapper.DraftCasefileValueMapper;
 import uk.gov.hmcts.opal.repository.DraftCasefileRepository;
 import uk.gov.hmcts.opal.validator.DraftCasefileValidator;
+import uk.gov.hmcts.opal.validator.DraftCasefileQueryValidator;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -33,8 +38,6 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static uk.gov.hmcts.opal.authorisation.MaintenancePermission.CHECK_VALIDATE_DRAFT_CASEFILES;
-import static uk.gov.hmcts.opal.authorisation.MaintenancePermission.CREATE_MANAGE_DRAFT_CASEFILES;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
@@ -43,6 +46,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static uk.gov.hmcts.opal.authorisation.MaintenancePermission.CHECK_VALIDATE_DRAFT_CASEFILES;
+import static uk.gov.hmcts.opal.authorisation.MaintenancePermission.CREATE_MANAGE_DRAFT_CASEFILES;
 
 class DraftCasefileServiceTest {
 
@@ -59,8 +64,13 @@ class DraftCasefileServiceTest {
               "individual_details":{"surname":"Synthetic"}}}},"applicant":{"party_details":{
               "organisation":false,"individual_details":{"surname":"Synthetic"}}}}
             """));
-    private final DraftCasefileService service = new DraftCasefileService(userService, validator, repository,
-        new DraftCasefileMapper(new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules()), getMapper,
+    private final DraftCasefileService service = new DraftCasefileService(
+        userService, validator, new DraftCasefileQueryValidator(), repository,
+        new DraftCasefileMapper(new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules()),
+        new DraftCasefileAddResponseMapperImpl(new DraftCasefileJsonMapper(JsonMapper.builder().build(),
+            new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules()),
+            new DraftCasefileValueMapper()), getMapper,
+        mock(DraftCasefileSummaryMapper.class),
         new DraftCasefileParticipantCategoryResolver(), events, clock);
 
     @BeforeEach
@@ -72,13 +82,14 @@ class DraftCasefileServiceTest {
     void identityFailureDoesNotValidatePersistOrPublish() {
         when(userService.requireAuthorisedUser((short) 1, CREATE_MANAGE_DRAFT_CASEFILES))
             .thenThrow(new AccessDeniedException("No identity"));
-        assertThatThrownBy(() -> service.addDraftCasefile(request)).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> service.addDraftCasefile(request))
+            .isInstanceOf(AccessDeniedException.class);
         verifyNoInteractions(validator, repository, events, clock);
     }
 
     @Test
     void referenceFailureDoesNotPersistOrPublish() {
-        doThrow(new OpalApiException(DraftCasefileError.INVALID_REQUEST, "Invalid reference"))
+        doThrow(new OpalApiException(RequestValidationError.INVALID_REQUEST, "Invalid reference"))
             .when(validator).validate(request);
         assertThatThrownBy(() -> service.addDraftCasefile(request)).isInstanceOf(OpalApiException.class);
         verifyNoInteractions(repository, events, clock);
@@ -166,7 +177,8 @@ class DraftCasefileServiceTest {
             CREATE_MANAGE_DRAFT_CASEFILES, CHECK_VALIDATE_DRAFT_CASEFILES))
             .thenThrow(new AccessDeniedException("Not authorised for owning business unit"));
 
-        assertThatThrownBy(() -> service.getDraftCasefile(123L)).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> service.getDraftCasefile(123L))
+            .isInstanceOf(AccessDeniedException.class);
 
         verify(userService).requireAuthorisedUser((short) 2,
             CREATE_MANAGE_DRAFT_CASEFILES, CHECK_VALIDATE_DRAFT_CASEFILES);
@@ -183,7 +195,8 @@ class DraftCasefileServiceTest {
         when(getMapper.toResponse(row))
             .thenThrow(new IllegalStateException("Unable to read stored Draft Casefile data"));
 
-        assertThatThrownBy(() -> service.getDraftCasefile(123L)).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> service.getDraftCasefile(123L))
+            .isInstanceOf(IllegalStateException.class);
 
         verifyNoInteractions(validator, events, clock);
         verify(repository, never()).save(any());

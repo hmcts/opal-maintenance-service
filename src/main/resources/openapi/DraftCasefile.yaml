@@ -10,6 +10,91 @@ info:
 
 paths:
   /draft-casefiles:
+    get:
+      tags: [Draft Casefile]
+      operationId: getDraftCasefiles
+      summary: Gets dashboard summaries or a count of Draft Casefiles
+      description: >-
+        Requires permission 21 or 22 in the requested Maintenance Business Unit.
+        Without restrict, returns count and every matching summary; the frontend sorts
+        and paginates. restrict=counts returns only count. Date bounds cover whole UTC
+        days inclusively and apply to casefile_status_date. Omitted bounds add no date
+        restriction. Summary ordering is draft_casefile_id ascending.
+      security:
+        - DraftCasefileBearerAuth: []
+      externalDocs:
+        description: Get Draft Casefiles logical API specification
+        url: https://hmcts.atlassian.net/wiki/spaces/PO/pages/271486183/Get+Draft+Casefiles
+      parameters:
+        - name: business_unit_id
+          in: query
+          required: true
+          schema: {type: integer, format: int16, minimum: 1, maximum: 32767}
+        - name: submitted_by
+          in: query
+          schema: {type: string, minLength: 1, maxLength: 20}
+        - name: not_submitted_by
+          in: query
+          schema: {type: string, minLength: 1, maxLength: 20}
+        - name: casefile_status
+          in: query
+          style: form
+          explode: false
+          schema:
+            type: array
+            minItems: 1
+            items: {$ref: '#/components/schemas/LifecycleStatus'}
+        - name: casefile_status_from_date
+          in: query
+          schema: {type: string, format: date}
+        - name: casefile_status_to_date
+          in: query
+          schema: {type: string, format: date}
+        - name: restrict
+          in: query
+          schema: {type: string, enum: [counts]}
+      responses:
+        '200':
+          description: >-
+            Normal responses contain count and summaries, including an empty array for
+            zero matches. Counts-only responses contain count and omit summaries.
+            No collection ETag is returned.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ListResponse'}
+              examples:
+                empty: {value: {count: 0, summaries: []}}
+                counts: {value: {count: 3}}
+        '400':
+          description: Invalid query parameters or date range
+          content:
+            application/problem+json:
+              schema: {$ref: './common.yaml#/components/schemas/ProblemDetail'}
+        '401':
+          description: Unauthorized
+          content:
+            application/problem+json:
+              schema: {$ref: './common.yaml#/components/schemas/ProblemDetail'}
+        '403':
+          description: No requested-BU identity or accepted permission
+          content:
+            application/problem+json:
+              schema: {$ref: './common.yaml#/components/schemas/ProblemDetail'}
+        '406':
+          description: Requested response media type is not supported
+          content:
+            application/problem+json:
+              schema: {$ref: './common.yaml#/components/schemas/ProblemDetail'}
+        '500':
+          description: Internal server error
+          content:
+            application/problem+json:
+              schema: {$ref: './common.yaml#/components/schemas/ProblemDetail'}
+        '503':
+          description: Database unavailable
+          content:
+            application/problem+json:
+              schema: {$ref: './common.yaml#/components/schemas/ProblemDetail'}
     post:
       tags:
         - Draft Casefile
@@ -406,3 +491,58 @@ components:
           minItems: 1
           items:
             $ref: './Casefile.yaml#/components/schemas/TimelineEntry'
+
+    LifecycleStatus:
+      type: string
+      enum: [SUBMITTED, DELETED, REJECTED, PUBLISHING_PENDING, PUBLISHED, PUBLISHING_FAILED, RESUBMITTED]
+
+    Summary:
+      type: object
+      additionalProperties: false
+      required:
+        - draft_casefile_id
+        - business_unit_id
+        - created_date
+        - submitted_by
+        - submitted_by_name
+        - casefile_snapshot
+        - casefile_type
+        - casefile_status
+        - casefile_status_name
+        - casefile_status_date
+      properties:
+        draft_casefile_id: {type: integer, format: int64, minimum: 1}
+        business_unit_id: {type: integer, format: int16, minimum: 1, maximum: 32767}
+        created_date:
+          type: string
+          format: date-time
+          description: Original submission timestamp, preserved on resubmission.
+        submitted_by: {type: string, maxLength: 20}
+        submitted_by_name: {type: string, maxLength: 100}
+        validated_date:
+          type: [string, 'null']
+          format: date-time
+          description: Approval timestamp, distinct from publication's status timestamp.
+        casefile_snapshot:
+          $ref: './Casefile.yaml#/components/schemas/CasefileSnapshot'
+        casefile_type:
+          $ref: './Casefile.yaml#/components/schemas/CasefileType'
+        casefile_status:
+          $ref: '#/components/schemas/LifecycleStatus'
+        casefile_status_name:
+          type: string
+          description: Backend display label for casefile_status.
+        casefile_status_date: {type: string, format: date-time}
+
+    ListResponse:
+      type: object
+      additionalProperties: false
+      required: [count]
+      properties:
+        count: {type: integer, format: int64, minimum: 0}
+        summaries:
+          type: array
+          description: Present without restrict; omitted for restrict=counts.
+          x-extra-annotation: >-
+            @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+          items: {$ref: '#/components/schemas/Summary'}
