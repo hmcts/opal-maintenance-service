@@ -13,6 +13,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 import uk.gov.hmcts.opal.BaseIntegrationTest;
 import uk.gov.hmcts.opal.repository.PublicationEvidenceRepository;
 import uk.gov.hmcts.opal.service.DraftCasefileTestScope;
+import uk.gov.hmcts.opal.service.DraftCasefileAdmission;
 import uk.gov.hmcts.opal.service.PublicationEvidenceService;
 import uk.gov.hmcts.opal.service.messaging.ObservedDraftCasefileQueuePublisher;
 import uk.gov.hmcts.opal.service.messaging.PublicationEvidenceWriter;
@@ -53,6 +54,7 @@ class DisabledDraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
     @Test
     void publicationEvidenceIsUnavailableWithNoJournalBeans() throws Exception {
         assertThat(context.getBeansOfType(PublicationEvidenceService.class)).isEmpty();
+        assertThat(context.getBeansOfType(DraftCasefileAdmission.class)).isEmpty();
         assertThat(context.getBeansOfType(PublicationEvidenceRepository.class)).isEmpty();
         assertThat(context.getBeansOfType(PublicationEvidenceWriter.class)).isEmpty();
         assertThat(context.getBeansOfType(ObservedDraftCasefileQueuePublisher.class)).isEmpty();
