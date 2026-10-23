@@ -58,6 +58,14 @@ public class DraftCasefileJsonMapper {
         }
     }
 
+    public String writeTimeline(List<CasefileTimelineEntry> timeline) {
+        try {
+            return compatible.writeValueAsString(timeline);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException exception) {
+            throw new IllegalStateException("Unable to serialize Draft Casefile metadata");
+        }
+    }
+
     private static IllegalStateException unreadableData() {
         return new IllegalStateException("Unable to read stored Draft Casefile data");
     }

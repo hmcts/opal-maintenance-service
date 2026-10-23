@@ -33,6 +33,7 @@ import uk.gov.hmcts.opal.mapper.DraftCasefileMapper;
 import uk.gov.hmcts.opal.mapper.DraftCasefileSummaryMapper;
 import uk.gov.hmcts.opal.mapper.DraftCasefileValueMapper;
 import uk.gov.hmcts.opal.repository.DraftCasefileRepository;
+import uk.gov.hmcts.opal.service.messaging.DraftCasefileQueuePublisher;
 import uk.gov.hmcts.opal.validator.DraftCasefileValidator;
 import uk.gov.hmcts.opal.validator.DraftCasefileQueryValidator;
 
@@ -73,14 +74,16 @@ class DraftCasefileServiceTest {
     private final DraftCasefileService service = new DraftCasefileService(
         userService, validator, new DraftCasefileQueryValidator(),
         new uk.gov.hmcts.opal.validator.IfMatchValidator(), repository,
-        new DraftCasefileMapper(new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules(),
-            new DraftCasefileJsonMapper(JsonMapper.builder().build(),
+        new DraftCasefileMapper(new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules()),
+        new DraftCasefileUpdater(
+            new DraftCasefileMapper(new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules()),
+            new DraftCasefileJsonMapper(tools.jackson.databind.json.JsonMapper.builder().build(),
                 new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules())),
         new DraftCasefileAddResponseMapperImpl(new DraftCasefileJsonMapper(JsonMapper.builder().build(),
             new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules()),
             new DraftCasefileValueMapper()), getMapper,
         mock(DraftCasefileSummaryMapper.class),
-        new DraftCasefileParticipantCategoryResolver(), events, clock);
+        new DraftCasefileParticipantCategoryResolver(), events, clock, mock(DraftCasefileQueuePublisher.class));
 
     @BeforeEach
     void setUp() {

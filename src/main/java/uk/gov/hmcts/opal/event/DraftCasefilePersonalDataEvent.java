@@ -13,6 +13,9 @@ public record DraftCasefilePersonalDataEvent(Operation operation, Long draftId, 
     public enum Operation {
         SUBMISSION,
         RESUBMISSION,
+        APPROVAL,
+        REJECTION,
+        DELETION,
         VIEW,
         LIST_VIEW
     }

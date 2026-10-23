@@ -177,10 +177,33 @@ class DraftCasefilePersonalDataLoggingListenerTest {
         }
     }
 
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"APPROVAL,Approve", "REJECTION,Reject", "DELETION,Delete"})
+    void checkerDecisionsUseAlterationAndExactAction(Operation operation, String action) {
+        when(logging.personalDataAccessLogAsync(any())).thenReturn(true);
+        listener.onPersonalDataAccess(new DraftCasefilePersonalDataEvent(operation, 42L, 123L, "192.0.2.1",
+            Instant.EPOCH, EnumSet.of(ParticipantCategory.RESPONDENT, ParticipantCategory.APPLICANT_BENEFICIARY,
+            ParticipantCategory.MINOR_CREDITOR)));
+        var payloads = ArgumentCaptor.forClass(PersonalDataProcessingLogDetails.class);
+        verify(logging, times(3)).personalDataAccessLogAsync(payloads.capture());
+        assertThat(payloads.getAllValues()).extracting(PersonalDataProcessingLogDetails::getBusinessIdentifier)
+            .containsExactly(action + " Draft Casefile - Respondent",
+                action + " Draft Casefile - Applicant / Beneficiary",
+                action + " Draft Casefile - Minor Creditor");
+        assertThat(payloads.getAllValues()).allSatisfy(payload -> {
+            assertThat(payload.getCategory()).isEqualTo(PersonalDataProcessingCategory.ALTERATION);
+            assertThat(payload.getCreatedBy().getIdentifier()).isEqualTo("123");
+            assertThat(payload.getRecipient()).isNull();
+        });
+    }
+
     private static String operationPrefix(Operation operation) {
         return switch (operation) {
             case SUBMISSION -> "Submit Draft Casefile - ";
             case RESUBMISSION -> "Resubmit Draft Casefile - ";
+            case APPROVAL -> "Approve Draft Casefile - ";
+            case REJECTION -> "Reject Draft Casefile - ";
+            case DELETION -> "Delete Draft Casefile - ";
             case VIEW, LIST_VIEW -> "View Draft Casefile - ";
         };
     }
