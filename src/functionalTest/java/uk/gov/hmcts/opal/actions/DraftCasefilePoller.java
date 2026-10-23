@@ -1,5 +1,6 @@
 package uk.gov.hmcts.opal.actions;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.restassured.response.Response;
@@ -10,7 +11,8 @@ import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
 public final class DraftCasefilePoller {
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = new ObjectMapper()
+        .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
     private static final Set<String> KNOWN_STATUSES = Set.of("SUBMITTED", "RESUBMITTED", "REJECTED", "DELETED",
         "PUBLISHING_PENDING", "PUBLISHED", "PUBLISHING_FAILED");
     private final long timeoutNanos;
