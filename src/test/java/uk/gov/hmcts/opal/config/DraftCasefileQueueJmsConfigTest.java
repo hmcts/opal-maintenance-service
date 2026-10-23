@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.util.ErrorHandler;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.boot.test.context.ConfigDataApplicationContextInitializer;
 import org.springframework.jms.config.SimpleJmsListenerEndpoint;
 import uk.gov.hmcts.opal.common.config.ServiceBusConnectionStringParser;
 import uk.gov.hmcts.opal.common.config.ServiceBusProperties;
@@ -20,19 +21,21 @@ import static org.mockito.Mockito.mock;
 
 class DraftCasefileQueueJmsConfigTest {
     @Test
-    void consumerDisabledByDefault() {
+    void explicitFalseDisablesConsumer() {
         new ApplicationContextRunner().withUserConfiguration(DraftCasefileQueueJmsConfig.class)
+            .withInitializer(new ConfigDataApplicationContextInitializer())
+            .withPropertyValues("opal.draft-casefile.service-bus.consumer-enabled=false")
             .run(context -> assertThat(context).doesNotHaveBean("draftCasefileListenerContainerFactory"));
     }
 
     @Test
-    void enabledConfigurationRegistersExactlyOneConsumerFactory() {
+    void applicationDefaultRegistersExactlyOneConsumerFactory() {
         var properties = new ServiceBusProperties();
         properties.setConnectionString("Endpoint=sb://localhost/;SharedAccessKeyName=test;SharedAccessKey=test");
         new ApplicationContextRunner().withUserConfiguration(DraftCasefileQueueJmsConfig.class)
             .withBean(ServiceBusProperties.class, () -> properties)
             .withBean(ServiceBusConnectionStringParser.class, () -> new ServiceBusConnectionStringParser(properties))
-            .withPropertyValues("opal.draft-casefile.service-bus.consumer-enabled=true")
+            .withInitializer(new ConfigDataApplicationContextInitializer())
             .run(context -> assertThat(context).hasSingleBean(
                 org.springframework.jms.config.DefaultJmsListenerContainerFactory.class));
     }

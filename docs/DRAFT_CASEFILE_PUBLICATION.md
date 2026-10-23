@@ -127,27 +127,32 @@ policy. Dashboard age filtering must not delete those references.
 
 ## Configuration and rollout
 
-`SERVICEBUS_RM_PUBLISH_DRAFT_CASEFILE_CONSUMER_ENABLED` defaults to `false` in
+`SERVICEBUS_RM_PUBLISH_DRAFT_CASEFILE_CONSUMER_ENABLED` defaults to `true` in
 application and Helm configuration. `SERVICEBUS_RM_PUBLISH_DRAFT_CASEFILE_QUEUE_NAME`
 continues to select the existing queue. Connection credentials use the existing
 Service Bus secret configuration. The consumer follows Fines' idle timeout,
 transacted-session and default concurrency/prefetch configuration; it adds no
 custom query timeout or prefetch tuning.
 
-Before enabling an agreed non-live environment:
+Keep this change in draft until the provider merges, then rebase the stack and
+verify using normal repository migrations. Deploy the prerequisites before this
+consumer; it starts consuming on deployment. An explicit `false` override remains
+available for rollback or local runs without Service Bus.
+
+Deployment order:
 
 1. Resolve the provider migration foundation and deploy PO-10655/#300 with all
    its helpers. The Java and provider heads inspected during implementation
-   allocate Flyway `1.33` to different migrations (Java dev reference data and
-   the creditor procedure). DB ownership must resolve the combined history;
+   allocate Flyway `1.33` and `1.34` to different migrations (Java reference data
+   and provider helper procedures). DB ownership must resolve the combined history;
    do not edit or renumber applied migrations locally.
 2. Deploy logging-service #319 so `RM_DRAFT_CASEFILE` can persist.
 3. Confirm queue provision/permissions under PO-10627. Record actual maximum
    deliveries, lock duration, TTL, dead-letter access and monitoring from the
    target environment. Local emulator configuration is not cloud evidence.
-4. Deploy the extended producer with consumption disabled. Inventory legacy
-   pending work and quarantine incompatible messages for authorised recovery.
-5. Enable the consumer and submit a synthetic approval. Verify the real account
+4. Inventory legacy pending work and quarantine incompatible messages for
+   authorised recovery before deploying the consumer.
+5. Deploy the stack with the enabled default and submit a synthetic approval. Verify the real account
    graph, snapshot identities, preserved timeline/approval, version and final
    state, then verify persisted PDPO rows in the logging service.
 6. Verify `/`, `/health`, `/prometheus`, duplicate delivery, transient recovery,

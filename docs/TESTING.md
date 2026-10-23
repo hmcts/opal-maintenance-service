@@ -676,6 +676,10 @@ suite also needs all other documented reference-data prerequisites.
 
 ## Publication consumer tests
 
+The application and Helm defaults enable consumption. `BaseIntegrationTest`
+explicitly disables the automatic listener so database tests cannot consume from
+a local or shared queue. The opt-in broker tests create their own isolated listener.
+
 The publication repository, processing and concurrency integration suites require
 the real `p_process_draft_casefiles` provider and its helpers (PO-10655/#300).
 They run on disposable PostgreSQL 17 and deliberately do not substitute a test
