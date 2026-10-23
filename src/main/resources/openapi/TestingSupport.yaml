@@ -2,18 +2,27 @@ openapi: 3.1.1
 info:
   title: Opal Maintenance Service
   version: 1.0.0
-  description: Explicitly enabled synthetic Draft Casefile test cleanup
+  description: Explicitly enabled synthetic Draft Casefile testing support
 paths:
   /testing-support/draft-casefiles/{draft_casefile_id}:
     delete:
       tags: [Testing Support]
       operationId: cleanupDraftCasefile
-      summary: Deletes the authenticated submitter's synthetic submitted Draft Casefile
+      summary: Deletes the authenticated submitter's synthetic unlinked Draft Casefile
       description: >-
         Registered when testing-support is enabled. Deployments must disable testing-support in production.
-        Requires permission 21 in the stored draft's Maintenance Business Unit and a matching authenticated submitter.
+        Requires permission 21 in the stored draft's Maintenance Business Unit and the latest authenticated submitter.
         Existing rows must match the exact run reference in respondent_account.remo_reference.
-        Only unvalidated SUBMITTED rows without published account links can be deleted.
+        Unlinked SUBMITTED, REJECTED, RESUBMITTED, DELETED and PUBLISHING_FAILED rows can be deleted.
+        SUBMITTED rows must have no validation metadata; the other eligible states may retain checker metadata.
+        Every eligible state must have null row and snapshot account IDs and numbers and a consistent snapshot structure.
+        PUBLISHING_PENDING and PUBLISHED remain ineligible pending verified publication-graph cleanup.
+        Cleanup and publication processing lock and reload the same draft row; delayed processing and failure
+        recording do not recreate a deleted draft. This does not enable pending or published cleanup.
+        After PUT resubmission only the latest submitter and the exact marker in the replacement payload can clean the draft.
+        Deletion removes any attached publication observation and send attempts in the same transaction,
+        including an observation carrying the previous marker after a legitimate PUT replacement.
+        Missing IDs never authorize deletion of orphan publication evidence.
         Already-absent IDs succeed after authentication; no draft remains for an ownership or BU permission check. No GET request or If-Match header is required.
       security:
         - TestingSupportBearerAuth: []
@@ -75,7 +84,210 @@ paths:
             application/problem+json:
               schema:
                 $ref: './common.yaml#/components/schemas/ProblemDetail'
+  /testing-support/draft-casefiles/{draft_casefile_id}/publication-evidence:
+    post:
+      tags: [Testing Support]
+      operationId: registerPublicationEvidence
+      summary: Registers publication send observation for an owned synthetic Draft Casefile
+      description: >-
+        Requires permission 21 in the stored draft's Business Unit, latest submitter ownership and the exact
+        stored run marker. First registration requires an unlinked SUBMITTED, REJECTED or RESUBMITTED draft
+        with null row and snapshot account IDs and numbers and a consistent snapshot structure.
+        Identical repeat registration returns the existing observation and counts unchanged, including after approval.
+        Both the current draft marker and any stored observation marker must match the header.
+        This journals the actual publisher boundary; it does not prove downstream processing or exactly-once delivery.
+        The producer forwards its existing four-field message unchanged; the journal stores no checker/IP provenance
+        or message payload.
+      security:
+        - TestingSupportBearerAuth: []
+      parameters:
+        - name: draft_casefile_id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+        - name: Test-Run-Reference
+          in: header
+          required: true
+          description: Exact scenario marker entered through the existing REMO Reference field
+          schema:
+            type: string
+            minLength: 20
+            maxLength: 20
+            pattern: '^E2E-[0-9a-f]{16}$'
+      responses:
+        '201':
+          description: New observation registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicationEvidence'
+        '200':
+          description: Existing observation and counts unchanged
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicationEvidence'
+        '400':
+          description: Invalid identifier or missing or invalid run-reference header
+          content:
+            application/problem+json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
+        '401':
+          description: Missing or invalid bearer authentication
+          content:
+            application/problem+json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
+        '403':
+          description: Caller permission, current ownership, draft marker or observation marker is not permitted
+          content:
+            application/problem+json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
+        '404':
+          description: Draft does not exist, or route is disabled
+          content:
+            application/problem+json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
+        '409':
+          description: First registration is ineligible
+          content:
+            application/problem+json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
+        '500':
+          description: Unexpected persistence failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
+        '503':
+          description: Persistence temporarily unavailable
+          content:
+            application/problem+json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
+    get:
+      tags: [Testing Support]
+      operationId: getPublicationEvidence
+      summary: Reads publication send evidence for an owned synthetic Draft Casefile
+      description: >-
+        Requires permission 21 in the stored draft's Business Unit, latest submitter ownership and the exact
+        run marker in both the current draft and stored observation. Missing drafts return 404 even if an orphan
+        observation exists. Unregistered drafts return 409. Reading never resets counters or publishes messages.
+        Acknowledged means the publisher returned successfully; uncertain and unfinished outcomes cannot prove
+        non-delivery. Evidence is complete only when uncertain and unfinished counts are both zero.
+      security:
+        - TestingSupportBearerAuth: []
+      parameters:
+        - name: draft_casefile_id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+        - name: Test-Run-Reference
+          in: header
+          required: true
+          description: Exact scenario marker entered through the existing REMO Reference field
+          schema:
+            type: string
+            minLength: 20
+            maxLength: 20
+            pattern: '^E2E-[0-9a-f]{16}$'
+      responses:
+        '200':
+          description: Current observation and aggregate send evidence
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicationEvidence'
+        '400':
+          description: Invalid identifier or missing or invalid run-reference header
+          content:
+            application/problem+json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
+        '401':
+          description: Missing or invalid bearer authentication
+          content:
+            application/problem+json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
+        '403':
+          description: Caller permission, current ownership, draft marker or observation marker is not permitted
+          content:
+            application/problem+json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
+        '404':
+          description: Draft does not exist, or route is disabled
+          content:
+            application/problem+json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
+        '409':
+          description: Publication evidence has not been registered
+          content:
+            application/problem+json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
+        '500':
+          description: Unexpected persistence failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
+        '503':
+          description: Persistence temporarily unavailable
+          content:
+            application/problem+json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ProblemDetail'
 components:
+  schemas:
+    PublicationEvidence:
+      type: object
+      additionalProperties: false
+      required:
+        - observation_id
+        - registered_at
+        - send_attempt_count
+        - acknowledged_send_count
+        - uncertain_send_count
+        - unfinished_send_count
+        - evidence_complete
+      properties:
+        observation_id:
+          type: string
+          format: uuid
+        registered_at:
+          type: string
+          format: date-time
+        send_attempt_count:
+          type: integer
+          format: int64
+          minimum: 0
+        acknowledged_send_count:
+          type: integer
+          format: int64
+          minimum: 0
+        uncertain_send_count:
+          type: integer
+          format: int64
+          minimum: 0
+        unfinished_send_count:
+          type: integer
+          format: int64
+          minimum: 0
+        evidence_complete:
+          type: boolean
   securitySchemes:
     TestingSupportBearerAuth:
       type: http

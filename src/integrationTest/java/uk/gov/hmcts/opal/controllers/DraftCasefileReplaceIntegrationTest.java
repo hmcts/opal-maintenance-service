@@ -53,6 +53,8 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.context.jdbc.Sql.ExecutionPhase.AFTER_TEST_METHOD;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -65,7 +67,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
     "spring.flyway.locations=classpath:db/migration/ddl", "opal.redis.enabled=false",
     "management.health.redis.enabled=false", "spring.jpa.open-in-view=false",
     "logging.level.opal.DraftCasefileApiController=DEBUG", "logging.level.opal.DraftCasefileService=DEBUG",
-    "opal.openapi.max-request-body-bytes=4096"
+    "opal.openapi.max-request-body-bytes=4096", "opal.testing-support-endpoints.enabled=true"
 })
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @Sql("/draft-casefile/reference-fixtures.sql")
@@ -142,6 +144,51 @@ class DraftCasefileReplaceIntegrationTest extends BaseIntegrationTest {
             .andExpect(status().isConflict());
         assertThat(row(id)).isEqualTo(after);
         verifyNoInteractions(logging);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void realReplacementHandsCleanupToLatestOwnerAndMarker(boolean changedMarker) throws Exception {
+        String originalMarker = "E2E-0123456789abcdef";
+        String replacementMarker = changedMarker ? "E2E-fedcba9876543210" : originalMarker;
+        ObjectNode initial = (ObjectNode) JSON.readTree(DraftCasefileHttpFixture.requestBody());
+        ((ObjectNode) initial.at("/casefile/respondent_account")).put("remo_reference", originalMarker);
+        var created = mockMvc.perform(post("/draft-casefiles").contentType(MediaType.APPLICATION_JSON)
+                .content(initial.toString()).with(authentication(DraftCasefileHttpFixture.token((short) 1))))
+            .andExpect(status().isCreated()).andReturn().getResponse();
+        long id = JSON.readTree(created.getContentAsString()).get("draft_casefile_id").longValue();
+        var checker = DraftCasefileHttpFixture.token((short) 1, 125L, "BUU-CHECKER",
+            Set.of(new Permission(22L, "Check and validate draft Casefiles")));
+        var rejected = mockMvc.perform(patch("/draft-casefiles/{id}", id).with(authentication(checker))
+                .header("If-Match", created.getHeader("ETag")).contentType(MediaType.APPLICATION_JSON)
+                .content(JSON.createObjectNode().put("business_unit_id", 1).put("casefile_status", "REJECTED")
+                    .put("status_message", "Synthetic handover rejection").toString()))
+            .andExpect(status().isOk()).andReturn().getResponse();
+        ObjectNode replacement = replacement();
+        ((ObjectNode) replacement.at("/casefile/respondent_account")).put("remo_reference", replacementMarker);
+        var resubmitter = DraftCasefileHttpFixture.token((short) 1, 124L, "BUU-2",
+            Set.of(new Permission(21L, "Create and Manage Draft Casefiles")));
+        var replacementRequest = request(id, replacement).with(authentication(resubmitter));
+        replacementRequest.headers(headers -> headers.set("If-Match", rejected.getHeader("ETag")));
+        mockMvc.perform(replacementRequest).andExpect(status().isOk())
+            .andExpect(jsonPath("$.casefile_status").value("RESUBMITTED"))
+            .andExpect(jsonPath("$.submitted_by").value("BUU-2"));
+        Map<String, Object> beforeCleanup = row(id);
+        mockMvc.perform(delete("/testing-support/draft-casefiles/{id}", id)
+                .with(authentication(DraftCasefileHttpFixture.token((short) 1)))
+                .header("Test-Run-Reference", replacementMarker))
+            .andExpect(status().isForbidden());
+        assertThat(row(id)).isEqualTo(beforeCleanup);
+        if (changedMarker) {
+            mockMvc.perform(delete("/testing-support/draft-casefiles/{id}", id)
+                    .with(authentication(resubmitter)).header("Test-Run-Reference", originalMarker))
+                .andExpect(status().isForbidden());
+            assertThat(row(id)).isEqualTo(beforeCleanup);
+        }
+        mockMvc.perform(delete("/testing-support/draft-casefiles/{id}", id)
+                .with(authentication(resubmitter)).header("Test-Run-Reference", replacementMarker))
+            .andExpect(status().isNoContent());
+        assertThat(repository.findById(id)).isEmpty();
     }
 
     @ParameterizedTest
