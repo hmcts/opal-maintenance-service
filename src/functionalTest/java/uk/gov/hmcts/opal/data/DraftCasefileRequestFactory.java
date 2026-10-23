@@ -2,11 +2,48 @@ package uk.gov.hmcts.opal.data;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 public final class DraftCasefileRequestFactory {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
+    public String withMinorCreditors(String marker) {
+        try {
+            ObjectNode root = (ObjectNode) OBJECT_MAPPER.readTree(valid(marker));
+            ArrayNode creditors = ((ObjectNode) root.path("casefile")).putArray("minor_creditors");
+            ArrayNode terms = (ArrayNode) root.at("/casefile/respondent_account/order_details/order_terms");
+            addMinor(root, creditors, terms, 7, "MinorSeven", "25.00");
+            addMinor(root, creditors, terms, 23, "MinorTwentyThree", "35.00");
+            return OBJECT_MAPPER.writeValueAsString(root);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Unable to build the synthetic Draft Casefile request");
+        }
+    }
+
+    public String unpublishable(String marker) {
+        try {
+            ObjectNode root = (ObjectNode) OBJECT_MAPPER.readTree(withMinorCreditors(marker));
+            ((ObjectNode) root.at("/casefile/respondent_account/order_details/order_terms/0/result_responses/0"))
+                .put("response", "not-an-amount");
+            return OBJECT_MAPPER.writeValueAsString(root);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Unable to build the synthetic Draft Casefile request");
+        }
+    }
+
+    private static void addMinor(ObjectNode root, ArrayNode creditors, ArrayNode terms, int sequence,
+                                 String surname, String amount) {
+        ObjectNode creditor = root.path("casefile").path("applicant").deepCopy();
+        creditor.put("creditor_sequence", sequence);
+        ((ObjectNode) creditor.at("/party_details/individual_details")).put("surname", surname);
+        creditors.add(creditor);
+        ObjectNode term = terms.get(0).deepCopy();
+        term.put("creditor_type", "Minor Creditor").put("minor_creditor_sequence", sequence);
+        ((ObjectNode) term.at("/result_responses/0")).put("response", amount);
+        terms.add(term);
+    }
 
     public String valid(String marker) {
         try {
