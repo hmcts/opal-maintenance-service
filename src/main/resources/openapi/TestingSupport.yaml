@@ -16,7 +16,9 @@ paths:
         Unlinked SUBMITTED, REJECTED, RESUBMITTED, DELETED and PUBLISHING_FAILED rows can be deleted.
         SUBMITTED rows must have no validation metadata; the other eligible states may retain checker metadata.
         Every eligible state must have null row and snapshot account IDs and numbers and a consistent snapshot structure.
-        PUBLISHING_PENDING and PUBLISHED remain ineligible.
+        PUBLISHING_PENDING and PUBLISHED remain ineligible pending verified publication-graph cleanup.
+        Cleanup and publication processing lock and reload the same draft row; delayed processing and failure
+        recording do not recreate a deleted draft. This does not enable pending or published cleanup.
         After PUT resubmission only the latest submitter and the exact marker in the replacement payload can clean the draft.
         Deletion removes any attached publication observation and send attempts in the same transaction,
         including an observation carrying the previous marker after a legitimate PUT replacement.
@@ -94,6 +96,8 @@ paths:
         Identical repeat registration returns the existing observation and counts unchanged, including after approval.
         Both the current draft marker and any stored observation marker must match the header.
         This journals the actual publisher boundary; it does not prove downstream processing or exactly-once delivery.
+        The producer forwards its existing four-field message unchanged; the journal stores no checker/IP provenance
+        or message payload.
       security:
         - TestingSupportBearerAuth: []
       parameters:

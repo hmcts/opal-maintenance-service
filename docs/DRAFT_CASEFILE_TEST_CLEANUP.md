@@ -94,7 +94,12 @@ no send; successful broker acceptance may precede a lost acknowledgment. An
 unfinished attempt can follow process exit or failure to store the outcome.
 The decorator records the start before delegating once and stores the outcome
 in independent transactions; evidence can survive rollback of the draft mutation.
-It does not automatically retry or replay a send.
+It does not automatically retry or replay a send. The existing queue message is
+forwarded unchanged, including draft ID, checker user ID, originating IP and
+approval timestamp. The journal observes only the draft ID; it does not persist
+that audit provenance or the message payload. The consumer compares the approval
+timestamp to the saved approval, so a delayed delivery from a rolled-back approval
+cannot publish a later approval of the same draft.
 
 | Status | Registration/read meaning and action |
 | --- | --- |
@@ -121,15 +126,20 @@ the attached old-marker observation, as described below.
 ### Support-enabled concurrency
 
 When support is enabled, all public Draft Casefile service operations and the
-cleanup, registration and evidence-read operations share admission before their
-transactions begin. The per-replica bound is the actual configured Hikari maximum
+cleanup, registration and evidence-read operations share admission with
+`DraftCasefileQueueProcessingService.processPendingDraft` and
+`DraftCasefilePublicationFailureService.markFailed` before their transactions begin. The per-replica bound is the actual configured Hikari maximum
 pool size minus one: the default pool of 10 permits at most 9 active operations.
 Further calls wait without an outer transaction or connection. The permit covers
 commit or rollback and connection cleanup. The remaining pool capacity allows
 the independent journal transactions to run without all connections being retained
 by outer draft operations or draft-lock contenders. No separate pool is created.
 
-This contract supports the existing nontransactional controller entry points.
+This contract supports the existing nontransactional controller and queue
+consumer entry points. The JMS listener uses a local JMS transaction; it does
+not start a Spring database transaction around the callback. Admission wraps
+each processing/failure transaction independently, leaving the consumer wrapper
+and independent journal writer outside the guard.
 A service call with an existing transaction or transaction synchronization fails
 immediately, including nested calls; it must never queue while retaining an outer
 connection. Callers must enter through these guarded service boundaries before
@@ -143,8 +153,8 @@ pool and may briefly borrow its remaining capacity, but do not hold draft locks
 or require nested journal transactions. This is a bound on guarded draft work,
 not reserved physical connections or a guarantee against unrelated slow queries.
 All replicas must run the same instrumented revision for the whole observation
-interval. Future consumer or direct repository writers must reconcile their own
-connection/lock protocol through `WP-CONSUMER` before this assumption is extended.
+interval. Any additional direct repository writers must reconcile their own
+connection and locking protocol before this assumption is extended.
 
 ## Cleanup request and responses
 
@@ -274,19 +284,44 @@ through the normal deployment process disables support; preserve outstanding
 IDs for an authorised retry. Disabling does not restore deleted data or remove
 journal rows.
 
-Published-account cleanup remains **Not Agent Complete** under `WP-CONSUMER`.
-The actual PO-10629 consumer and its cooperating writer protocol are absent from
-the selected baseline. The separate PO-10655 publication-procedure
-[PR #300](https://github.com/hmcts/opal-maintenance-service/pull/300) does not supply
-that consumer protocol. Delivery must reconcile actual consumer/procedure/writer
-revisions and graph ownership, implement locked cleanup with missing/stale-draft
-no-op handling including failure transactions, and verify real publication and
-cleanup races before expanding the current 409 policy. Keep failed cleanup
-entries until that support is delivered; queue purging or guessed graph deletion
-is not a substitute.
+Pending and published cleanup remain **Not Agent Complete**. The PO-10629 Java
+consumer now takes the same pessimistic draft-row lock as cleanup, reloads the
+row and no-ops when missing. Its separately transacted failure recording also
+reloads and never recreates a removed draft. Consistent non-pending rows no-op;
+inconsistent account identities still fail validation. The support tests prove
+these Java transaction and PostgreSQL lock behaviors for eligible unlinked
+cleanup, including rollback and a controlled publication-repository failure.
+They do not prove actual publication SQL or complete account-graph deletion.
+
+The selected migration tree does not define `public.p_process_draft_casefiles`.
+Before expanding the 409 policy, pin the real routine/helper revisions and review
+every created/read/reused table, FK and polymorphic target, respondent marker,
+applicant/minor/major creditor account mapping, snapshot identities, exclusive
+versus shared party/contact/debtor rows and financial records. Confirm every
+writer's lock protocol for polymorphic references; a target lock plus a snapshot
+absence check cannot prevent an unrelated writer inserting an untyped reference.
+
+The complete approved-case cleanup gate still requires all six checks:
+
+1. Pending cleanup commits first; accepted delivery and redelivery settle as
+   no-ops without live rows, failure recreation, PDPL or retry/dead-letter loops.
+2. Publication locks first and commits a real graph; blocked cleanup reloads and
+   removes only that synthetic graph, with no live rows appearing after 204.
+3. Publication rolls back while cleanup waits; pending cleanup then succeeds and
+   redelivery no-ops against the removed draft.
+4. Concurrent separate failure recording cannot recreate a deleted draft.
+5. Duplicate and rollback checks preserve the actual four-field message,
+   exception behavior and PDPL commit timing.
+6. Real applicant/minor/major creditor publication is completely cleaned while
+   reference Major Creditors and another case survive.
+
+The new unlinked tests supply bounded evidence for parts of this gate; they do
+not replace its pending and real-graph cases. Keep both PUBLISHING_PENDING and
+PUBLISHED at 409 and retain failed cleanup ledger entries until the whole gate
+passes. Queue purging or guessed graph deletion is not a substitute.
 
 The migration's DB-03 predecessor-upgrade verification also remains unmet. The
-current selected predecessor is `1.33`; the maintained task on this branch is
+current selected predecessor is `1.34`; the maintained task on this branch is
 fresh-only. Separately delivered framework
 [PR #271](https://github.com/hmcts/opal-maintenance-service/pull/271) uses
 `OPAL-DB-UPGRADE` registration and

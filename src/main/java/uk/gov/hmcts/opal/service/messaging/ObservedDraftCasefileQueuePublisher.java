@@ -20,10 +20,10 @@ public class ObservedDraftCasefileQueuePublisher implements DraftCasefileQueuePu
     private final PublicationEvidenceWriter writer;
 
     @Override
-    public void publish(Long draftCasefileId) {
-        Optional<UUID> attempt = writer.begin(draftCasefileId);
+    public void publish(DraftCasefileQueueMessage message) {
+        Optional<UUID> attempt = writer.begin(message.draftCasefileId());
         try {
-            delegate.publish(draftCasefileId);
+            delegate.publish(message);
         } catch (RuntimeException exception) {
             attempt.ifPresent(id -> complete(id, false));
             throw exception;

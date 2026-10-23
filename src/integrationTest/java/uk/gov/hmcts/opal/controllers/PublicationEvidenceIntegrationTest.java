@@ -41,6 +41,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
@@ -108,7 +109,7 @@ class PublicationEvidenceIntegrationTest extends BaseIntegrationTest {
         assertThat(repeated.get("registered_at")).isEqualTo(registered.get("registered_at"));
         assertThat(repeated.get("acknowledged_send_count").longValue()).isEqualTo(1L);
         decision(id, "PUBLISHING_PENDING", "\"0\"").andExpect(status().isConflict());
-        verify(delegate, times(1)).publish(id);
+        verify(delegate, times(1)).publish(argThat(message -> message.draftCasefileId().equals(id)));
         assertThat(repeated.fieldNames()).toIterable().containsExactlyInAnyOrder("observation_id", "registered_at",
             "send_attempt_count", "acknowledged_send_count", "uncertain_send_count", "unfinished_send_count",
             "evidence_complete");
@@ -128,13 +129,13 @@ class PublicationEvidenceIntegrationTest extends BaseIntegrationTest {
                 }
             });
             return null;
-        }).when(delegate).publish(id);
+        }).when(delegate).publish(argThat(message -> message.draftCasefileId().equals(id)));
         decision(id, "PUBLISHING_PENDING", "\"0\"").andExpect(status().isInternalServerError());
         assertThat(drafts.findById(id).orElseThrow()).usingRecursiveComparison().isEqualTo(before);
         read(id).andExpect(status().isOk()).andExpect(jsonPath("$.acknowledged_send_count").value(1))
             .andExpect(jsonPath("$.send_attempt_count").value(1));
         register(id).andExpect(status().isOk()).andExpect(jsonPath("$.acknowledged_send_count").value(1));
-        verify(delegate, times(1)).publish(id);
+        verify(delegate, times(1)).publish(argThat(message -> message.draftCasefileId().equals(id)));
         verifyNoInteractions(logging);
     }
 
@@ -143,14 +144,15 @@ class PublicationEvidenceIntegrationTest extends BaseIntegrationTest {
         long id = submit();
         register(id).andExpect(status().isCreated());
         final DraftCasefileEntity before = drafts.findById(id).orElseThrow();
-        doThrow(new UncategorizedJmsException("Synthetic transport uncertainty")).when(delegate).publish(id);
+        doThrow(new UncategorizedJmsException("Synthetic transport uncertainty"))
+            .when(delegate).publish(argThat(message -> message.draftCasefileId().equals(id)));
         decision(id, "PUBLISHING_PENDING", "\"0\"").andExpect(status().isServiceUnavailable());
         assertThat(drafts.findById(id).orElseThrow()).usingRecursiveComparison().isEqualTo(before);
         read(id).andExpect(status().isOk()).andExpect(jsonPath("$.send_attempt_count").value(1))
             .andExpect(jsonPath("$.acknowledged_send_count").value(0))
             .andExpect(jsonPath("$.uncertain_send_count").value(1))
             .andExpect(jsonPath("$.evidence_complete").value(false));
-        verify(delegate, times(1)).publish(id);
+        verify(delegate, times(1)).publish(argThat(message -> message.draftCasefileId().equals(id)));
     }
 
     @Test
@@ -163,7 +165,7 @@ class PublicationEvidenceIntegrationTest extends BaseIntegrationTest {
             .andExpect(jsonPath("$.unfinished_send_count").value(1))
             .andExpect(jsonPath("$.acknowledged_send_count").value(0))
             .andExpect(jsonPath("$.evidence_complete").value(false));
-        verify(delegate, times(1)).publish(id);
+        verify(delegate, times(1)).publish(argThat(message -> message.draftCasefileId().equals(id)));
     }
 
     @Test

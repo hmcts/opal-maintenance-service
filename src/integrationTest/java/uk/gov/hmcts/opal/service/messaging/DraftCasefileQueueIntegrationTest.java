@@ -4,6 +4,7 @@ import jakarta.jms.DeliveryMode;
 import jakarta.jms.TextMessage;
 import org.apache.qpid.jms.JmsConnectionFactory;
 import org.junit.jupiter.api.BeforeEach;
+import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -59,7 +60,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @TestPropertySource(properties = {"spring.flyway.locations=classpath:db/migration/ddl", "opal.redis.enabled=false",
     "management.health.redis.enabled=false", "spring.jpa.open-in-view=false",
-    "opal.testing-support-endpoints.enabled=true"})
+    "opal.testing-support-endpoints.enabled=true", "opal.draft-casefile.service-bus.consumer-enabled=false"})
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @Sql("/draft-casefile/reference-fixtures.sql")
 @Sql(scripts = "/draft-casefile/reference-cleanup.sql", executionPhase = AFTER_TEST_METHOD)
@@ -111,8 +112,9 @@ class DraftCasefileQueueIntegrationTest extends BaseIntegrationTest {
 
     @Test
     void publishesPersistentApprovalMessageToConfiguredQueue() throws Exception {
-        publisher.publish(new DraftCasefileQueueMessage(900001L, 123L, "192.0.2.1", "2024-01-02T00:00:00Z"));
-        assertMessage(900001L);
+        var message = new DraftCasefileQueueMessage(900001L, 123L, "192.0.2.1", "2024-01-02T00:00:00Z");
+        publisher.publish(message);
+        assertMessage(message);
     }
 
     @Test
@@ -120,7 +122,7 @@ class DraftCasefileQueueIntegrationTest extends BaseIntegrationTest {
         long id = registeredDraft();
         assertThat(observed).isInstanceOf(ObservedDraftCasefileQueuePublisher.class);
         approve(id).andExpect(status().isOk());
-        assertMessage(id);
+        assertMessage(sentMessage(id));
         assertAcknowledged(id);
         approve(id).andExpect(status().isConflict());
         assertAcknowledged(id);
@@ -146,7 +148,7 @@ class DraftCasefileQueueIntegrationTest extends BaseIntegrationTest {
         approve(id).andExpect(status().isInternalServerError());
         assertThat(drafts.findById(id).orElseThrow()).usingRecursiveComparison().isEqualTo(before);
         verifyNoInteractions(logging);
-        assertMessage(id);
+        assertMessage(sentMessage(id));
         assertAcknowledged(id);
         verify(publisher, times(1)).publish(argThat(message -> message.draftCasefileId().equals(id)));
         assertNoReplay();
@@ -165,13 +167,24 @@ class DraftCasefileQueueIntegrationTest extends BaseIntegrationTest {
         }
     }
 
-    private void assertMessage(long id) throws Exception {
+    private DraftCasefileQueueMessage sentMessage(long id) {
+        var captured = ArgumentCaptor.forClass(DraftCasefileQueueMessage.class);
+        verify(publisher, times(1)).publish(captured.capture());
+        assertThat(captured.getValue().draftCasefileId()).isEqualTo(id);
+        assertThat(captured.getValue().checkerUserId()).isEqualTo(124L);
+        return captured.getValue();
+    }
+
+    private void assertMessage(DraftCasefileQueueMessage expected) throws Exception {
         var message = template.receive(queue);
         assertThat(message).isInstanceOf(TextMessage.class);
         var body = JSON.readTree(((TextMessage) message).getText());
-        assertThat(body.get("draft_casefile_id").longValue()).isEqualTo(id);
-        assertThat(body.get("checker_user_id").longValue()).isPositive();
-        assertThat(body.get("originating_ip_address").asString()).isNotBlank();
+        assertThat(body.propertyNames()).containsExactlyInAnyOrder("draft_casefile_id", "checker_user_id",
+            "originating_ip_address", "approval_timestamp");
+        assertThat(body.get("draft_casefile_id").longValue()).isEqualTo(expected.draftCasefileId());
+        assertThat(body.get("checker_user_id").longValue()).isEqualTo(expected.checkerUserId());
+        assertThat(body.get("originating_ip_address").asString()).isEqualTo(expected.originatingIpAddress());
+        assertThat(body.get("approval_timestamp").asString()).isEqualTo(expected.approvalTimestamp());
         assertThat(message.getJMSDeliveryMode()).isEqualTo(DeliveryMode.PERSISTENT);
     }
 
@@ -194,6 +207,7 @@ class DraftCasefileQueueIntegrationTest extends BaseIntegrationTest {
         var checker = DraftCasefileHttpFixture.token((short) 1, 124L, "BUU-CHECKER",
             Set.of(new Permission(22L, "Check and validate draft Casefiles")));
         return mockMvc.perform(patch("/draft-casefiles/{id}", id).header("If-Match", "\"0\"")
+            .header("X-User-IP", "192.0.2.1")
             .contentType(MediaType.APPLICATION_JSON)
             .content("{\"business_unit_id\":1,\"casefile_status\":\"PUBLISHING_PENDING\"}")
             .with(authentication(checker)));

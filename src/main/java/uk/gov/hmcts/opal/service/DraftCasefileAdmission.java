@@ -35,7 +35,10 @@ public class DraftCasefileAdmission {
 
     @Around("execution(public * uk.gov.hmcts.opal.service.DraftCasefileService.*(..))"
         + " || execution(public * uk.gov.hmcts.opal.service.DraftCasefileCleanupService.*(..))"
-        + " || execution(public * uk.gov.hmcts.opal.service.PublicationEvidenceService.*(..))")
+        + " || execution(public * uk.gov.hmcts.opal.service.PublicationEvidenceService.*(..))"
+        + " || execution(public * uk.gov.hmcts.opal.service.messaging."
+        + "DraftCasefileQueueProcessingService.processPendingDraft(..))"
+        + " || execution(public * uk.gov.hmcts.opal.service.DraftCasefilePublicationFailureService.markFailed(..))")
     public Object admit(ProceedingJoinPoint operation) throws Throwable {
         // Reject ambient/nested transactions before waiting: they may already own a pool connection.
         if (TransactionSynchronizationManager.isActualTransactionActive()

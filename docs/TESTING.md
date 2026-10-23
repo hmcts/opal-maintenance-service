@@ -140,8 +140,14 @@ connection settings. For a disposable emulator exposed on a mapped port,
 ./gradlew integration --tests '*DraftCasefileQueueIntegrationTest'
 ```
 
-These tests consume their synthetic messages from the dedicated queue. They prove
-persistent ID-only publication, bounded connection failure, and that an accepted
+These tests stop the application listener and consume their synthetic messages
+from the dedicated queue. `DraftCasefileQueueConsumerIntegrationTest` starts its
+own correlation-filtered listener and also requires
+`TEST_SERVICEBUS_MAX_DELIVERIES` to match the provisioned dead-letter limit.
+Its missing-draft test runs with support enabled and verifies that the real JMS
+callback has no ambient Spring database transaction or synchronization before
+entering guarded processing. They prove
+persistent four-field publication (draft ID, checker user ID, originating IP and approval timestamp), bounded connection failure, and that an accepted
 message survives a later database rollback without successful-decision logging.
 Do not point them at an application queue. Remove the test queue or disposable
 emulator after the run; keep credentials out of files and command arguments.
@@ -332,11 +338,12 @@ prove runtime validation or security.
 | Observe exactly one real producer invocation | `ObservedDraftCasefileQueuePublisherTest` checks delegation/ordering/failure; `PublicationEvidenceIntegrationTest` checks actual approval, non-approval, outer rollback and no automatic replay; `DraftCasefileQueueIntegrationTest` checks a dedicated real broker | Cypress captures every PATCH/PUT, loses the response after server-side completion, recovers with the existing GET journey, and asserts one mutation/one expected timeline entry |
 | Complete, correctly scoped response-loss evidence | API tests cover acknowledged, uncertain and unfinished outcomes; `PublicationEvidenceRepositoryIntegrationTest` and `PublicationEvidenceWriterIntegrationTest` cover durable counters and independent transactions | Same observation, `evidence_complete=true`, approval counts `1/1/0/0` or reject/delete/PUT `0/0/0/0`; no service upgrade or undecorated producer during the interval |
 | Consistent evidence during cleanup | `PublicationEvidenceConcurrencyIntegrationTest` pauses GET after the real observation lookup, commits DELETE, then verifies the original uncertain/unfinished snapshot | Capture and retain evidence before initiating cleanup |
-| Bounded support-enabled approval concurrency | The same suite holds 9 real outer transactions in the configured pool of 10, proves a tenth caller waits before transaction/connection acquisition, and checks scoped durable outcomes after success or failure; it repeats the queue check during transaction completion and verifies advice order and ambient-transaction rejection | Every replica uses the instrumented revision and fixed configured pool size; future consumer/direct writers reconcile their own protocol |
+| Bounded support-enabled approval concurrency | The same suite holds 9 real outer transactions in the configured pool of 10, proves an additional approval, processing and failure-recording caller all wait before transaction/connection acquisition, and checks scoped durable outcomes after success or failure; it repeats the queue check during transaction completion and verifies advice order and ambient-transaction rejection | Every replica uses the instrumented revision and fixed configured pool size; processing and failure-recording callers share the same admission; additional direct writers must reconcile their protocol |
 | Atomic eligible cleanup and safe retries | `DraftCasefileCleanupIntegrationTest` covers POST-ID-to-DELETE, scope, lifecycle, embedded-data deletion, sibling/reference retention, rollback, repeats and PostgreSQL lock contention; `PublicationEvidenceIntegrationTest` covers journal/attempt rollback, old-marker cleanup after current-owner PUT, and orphan retention | Durable ID/marker/environment/scenario ledger; remove entries only after 204 and retain every failed cleanup |
 | Default-off/disabled security and operational endpoints | Cleanup availability and disabled HTTP/runtime-doc suites check default-off, authenticated 404/anonymous 401; publication/API and operational suites cover `/`, `/health`, `/prometheus` | Verify resolved non-live flag and production-disabled values through normal deployment controls |
 | Journal schema and fresh migration path | `draft_casefile_test_observations_pgtap_tests.sql` and `draft_casefile_test_send_attempts_pgtap_tests.sql` own V1_49 direct PostgreSQL boundaries through `dbUnitTest` | Deploy V1_49 before enabling support; predecessor-upgrade verification remains unmet below |
-| Pending/published cleanup and actual consumer races | Current integration guards require 409 and preserve draft, graph and journal | `WP-CONSUMER` must deliver the actual consumer/writer protocol and verified cleanup/race behavior; this requirement is Not Agent Complete |
+| Actual consumer and unlinked cleanup races | `DraftCasefileCleanupConsumerIntegrationTest` exercises real processing/failure services, observed PostgreSQL lock waits, cleanup commit/rollback, accepted approval followed by rollback/uncertain send, and a controlled publication-repository timeout | This proves Java orchestration, not publication SQL or real graph deletion |
+| Pending/published cleanup | Current integration guards require 409 and preserve draft, graph and journal | The six-check gate in the support guide requires the real provider, graph/writer inventory and complete publication/cleanup races; this requirement is Not Agent Complete |
 
 The admission tests use short test-only connection timeouts and latch/transaction
 coordination, with the existing PostgreSQL Testcontainers infrastructure. They
@@ -366,7 +373,7 @@ PostgreSQL version and owned cleanup evidence in `build/reports/dbUnitTest`;
 do not infer execution from compilation or task presence.
 
 The journal's DB-03 upgrade check remains unmet with selected predecessor
-`1.33`. Integrate the separately delivered framework PR #271 and the journal's
+`1.34`. Integrate the separately delivered framework PR #271 and the journal's
 owning suites through the reviewed `OPAL-DB-UPGRADE` and
 `dbUnitTestComparisonRef` / `dbUnitTestUpgradeMode` interfaces before executing
 and recording predecessor preservation, candidate migration, assertions,
@@ -374,13 +381,17 @@ validation, repeat/no-op and owned cleanup. No standalone upgrade recipe or
 harness is provided. Fresh migration and integration-test success do not close
 this requirement.
 
-Pending/published cleanup also remains **Not Agent Complete** under
-`WP-CONSUMER`: the actual PO-10629 consumer is absent, and the separate PO-10655
-procedure [PR #300](https://github.com/hmcts/opal-maintenance-service/pull/300)
-does not establish the consumer protocol. Preserve 409 and retain outstanding
-IDs/markers until actual graph ownership, missing/stale-draft handling and real
-publication/cleanup races have been verified. There is no journal TTL or
-background sweeper; scoped eligible DELETE is the retention mechanism.
+Pending/published cleanup also remains **Not Agent Complete**. The PO-10629 Java
+consumer and separate failure transaction now share cleanup's row lock and
+missing-row no-op protocol. The current migration tree does not supply
+`public.p_process_draft_casefiles`; positive real-provider integration tests
+require separately delivered, pinned SQL. A test-only provider or controlled
+repository failure is not real graph-publication evidence. Do not blanket-skip
+these upstream checks or treat a focused support run as a passing whole baseline.
+Preserve both 409 responses and outstanding IDs/markers until the reviewed graph
+and writer inventory and all six [cleanup gate checks](DRAFT_CASEFILE_TEST_CLEANUP.md#deployment-retention-and-outstanding-prerequisites)
+have passed. There is no journal TTL or background sweeper; scoped eligible DELETE
+is the retention mechanism.
 
 Functional/smoke suites require a separately running agreed non-live service,
 User Service permission 21 inputter, a distinct checker with its normal decision

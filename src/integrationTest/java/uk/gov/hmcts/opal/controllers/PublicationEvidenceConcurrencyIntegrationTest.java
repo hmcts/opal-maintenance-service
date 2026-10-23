@@ -29,6 +29,10 @@ import org.springframework.transaction.support.TransactionTemplate;
 import uk.gov.hmcts.opal.BaseIntegrationTest;
 import uk.gov.hmcts.opal.common.user.authorisation.model.Permission;
 import uk.gov.hmcts.opal.dto.PublicationEvidenceCounts;
+import uk.gov.hmcts.opal.exception.DraftCasefilePublicationException.Attempt;
+import uk.gov.hmcts.opal.service.DraftCasefilePublicationFailureService;
+import uk.gov.hmcts.opal.service.messaging.DraftCasefileQueueMessage;
+import uk.gov.hmcts.opal.service.messaging.DraftCasefileQueueProcessingService;
 import uk.gov.hmcts.opal.entity.DraftCasefileStatus;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileUpdateRequest;
 import uk.gov.hmcts.opal.logging.integration.service.LoggingService;
@@ -58,8 +62,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mockingDetails;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.context.jdbc.Sql.ExecutionPhase.AFTER_TEST_METHOD;
@@ -87,8 +93,12 @@ class PublicationEvidenceConcurrencyIntegrationTest extends BaseIntegrationTest 
     private HikariDataSource pool;
     @Autowired
     private DraftCasefileService service;
-    @Autowired
+    @MockitoSpyBean
     private DraftCasefileRepository drafts;
+    @Autowired
+    private DraftCasefileQueueProcessingService processing;
+    @Autowired
+    private DraftCasefilePublicationFailureService failures;
     @Autowired
     private DraftCasefileCleanupService cleanup;
     @Autowired
@@ -173,7 +183,7 @@ class PublicationEvidenceConcurrencyIntegrationTest extends BaseIntegrationTest 
         }
         if (failOne) {
             doThrow(new UncategorizedJmsException("Synthetic transport uncertainty"))
-                .when(delegate).publish(ids.getFirst());
+                .when(delegate).publish(argThat(message -> message.draftCasefileId().equals(ids.getFirst())));
         }
         CountDownLatch outerConnectionsHeld = new CountDownLatch(maximum - 1);
         CountDownLatch beginJournal = new CountDownLatch(1);
@@ -196,9 +206,11 @@ class PublicationEvidenceConcurrencyIntegrationTest extends BaseIntegrationTest 
             }
             return invocation.callRealMethod();
         }).when(mapper).toResponse(any());
-        var executor = Executors.newFixedThreadPool(maximum);
+        var executor = Executors.newFixedThreadPool(maximum + 2);
         List<Future<RuntimeException>> approvals = new ArrayList<>();
         AtomicReference<Thread> queued = new AtomicReference<>();
+        AtomicReference<Thread> queuedProcessing = new AtomicReference<>();
+        AtomicReference<Thread> queuedFailure = new AtomicReference<>();
         try {
             for (int index = 0; index < maximum - 1; index++) {
                 long id = ids.get(index);
@@ -210,6 +222,16 @@ class PublicationEvidenceConcurrencyIntegrationTest extends BaseIntegrationTest 
                 return approve(ids.getLast());
             }));
             await().atMost(Duration.ofSeconds(5)).until(() -> waitingForAdmission(queued.get()));
+            final var processingResult = executor.submit(() -> {
+                queuedProcessing.set(Thread.currentThread());
+                return processing.processPendingDraft(new DraftCasefileQueueMessage(ids.getFirst(), null, null, null));
+            });
+            final var failureResult = executor.submit(() -> {
+                queuedFailure.set(Thread.currentThread());
+                return failures.markFailed(new Attempt(ids.getFirst(), 0L, null, null), "Synthetic failure");
+            });
+            await().atMost(Duration.ofSeconds(5)).until(() -> waitingForAdmission(queuedProcessing.get())
+                && waitingForAdmission(queuedFailure.get()));
             assertThat(entered).hasValue(maximum - 1);
             assertThat(pool.getHikariPoolMXBean().getActiveConnections()).isEqualTo(maximum - 1);
             assertThat(pool.getHikariPoolMXBean().getThreadsAwaitingConnection()).isZero();
@@ -229,6 +251,19 @@ class PublicationEvidenceConcurrencyIntegrationTest extends BaseIntegrationTest 
                 assertThat(drafts.findById(id).orElseThrow().getCasefileStatus()).isEqualTo(
                     failOne && index == 0 ? DraftCasefileStatus.SUBMITTED : DraftCasefileStatus.PUBLISHING_PENDING);
             }
+            if (failOne) {
+                assertThat(processingResult.get(10, TimeUnit.SECONDS))
+                    .isEqualTo(DraftCasefileQueueProcessingService.Outcome.NO_OP);
+                assertThat(failureResult.get(10, TimeUnit.SECONDS)).isFalse();
+            } else {
+                assertThatThrownBy(() -> processingResult.get(10, TimeUnit.SECONDS))
+                    .hasCauseInstanceOf(IllegalArgumentException.class);
+                assertThatThrownBy(() -> failureResult.get(10, TimeUnit.SECONDS))
+                    .hasCauseInstanceOf(IllegalStateException.class);
+            }
+            assertThat(processing.processPendingDraft(new DraftCasefileQueueMessage(Long.MAX_VALUE, null, null, null)))
+                .isEqualTo(DraftCasefileQueueProcessingService.Outcome.NO_OP);
+            assertThat(failures.markFailed(new Attempt(Long.MAX_VALUE, 0L, null, null), "Synthetic failure")).isFalse();
             assertThat(entered).hasValue(maximum);
             assertThat(pool.getHikariPoolMXBean().getActiveConnections()).isZero();
         } finally {
@@ -238,9 +273,85 @@ class PublicationEvidenceConcurrencyIntegrationTest extends BaseIntegrationTest 
         }
     }
 
+    @ParameterizedTest
+    @CsvSource({"false,false", "true,false", "false,true", "true,true"})
+    void consumerAdmissionRetainsCapacityThroughTransactionCleanup(boolean recordFailure, boolean rollback)
+        throws Exception {
+        int maximum = pool.getMaximumPoolSize();
+        var completing = new CountDownLatch(maximum - 1);
+        var release = new CountDownLatch(1);
+        var entered = new AtomicInteger();
+        var repositoryDelegate = mockingDetails(drafts).getMockCreationSettings().getDefaultAnswer();
+        doAnswer(invocation -> {
+            Object result = repositoryDelegate.answer(invocation);
+            if (entered.incrementAndGet() < maximum) {
+                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                    @Override
+                    public void afterCompletion(int status) {
+                        completing.countDown();
+                        awaitRelease(release);
+                    }
+                });
+                if (rollback) {
+                    throw new IllegalStateException("Synthetic consumer transaction rollback");
+                }
+            }
+            return result;
+        }).when(drafts).findForPublicationById(Long.MAX_VALUE);
+        var executor = Executors.newFixedThreadPool(maximum);
+        var operations = new ArrayList<Future<RuntimeException>>();
+        var queued = new AtomicReference<Thread>();
+        try {
+            for (int index = 0; index < maximum - 1; index++) {
+                operations.add(executor.submit(() -> missingOperation(recordFailure)));
+            }
+            assertThat(completing.await(10, TimeUnit.SECONDS)).isTrue();
+            final var next = executor.submit(() -> {
+                queued.set(Thread.currentThread());
+                return missingOperation(recordFailure);
+            });
+            await().atMost(Duration.ofSeconds(5)).until(() -> waitingForAdmission(queued.get()));
+            assertThat(entered).hasValue(maximum - 1);
+            assertThat(pool.getHikariPoolMXBean().getActiveConnections()).isEqualTo(maximum - 1);
+            assertThat(pool.getHikariPoolMXBean().getThreadsAwaitingConnection()).isZero();
+            release.countDown();
+            for (var operation : operations) {
+                RuntimeException failure = operation.get(10, TimeUnit.SECONDS);
+                if (rollback) {
+                    assertThat(failure).isInstanceOf(IllegalStateException.class)
+                        .hasMessage("Synthetic consumer transaction rollback");
+                } else {
+                    assertThat(failure).isNull();
+                }
+            }
+            assertThat(next.get(10, TimeUnit.SECONDS)).isNull();
+            assertThat(pool.getHikariPoolMXBean().getActiveConnections()).isZero();
+        } finally {
+            release.countDown();
+            executor.shutdownNow();
+            assertThat(executor.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
+        }
+    }
+
+    private RuntimeException missingOperation(boolean recordFailure) {
+        try {
+            if (recordFailure) {
+                assertThat(failures.markFailed(new Attempt(Long.MAX_VALUE, 0L, null, null), "Synthetic failure"))
+                    .isFalse();
+            } else {
+                assertThat(processing.processPendingDraft(
+                    new DraftCasefileQueueMessage(Long.MAX_VALUE, null, null, null)))
+                    .isEqualTo(DraftCasefileQueueProcessingService.Outcome.NO_OP);
+            }
+            return null;
+        } catch (RuntimeException failure) {
+            return failure;
+        }
+    }
+
     @Test
     void admissionPrecedesTransactionAdviceForEveryGuardedService() {
-        for (Object guarded : List.of(service, cleanup, reads)) {
+        for (Object guarded : List.of(service, cleanup, reads, processing, failures)) {
             var advisors = ((Advised) guarded).getAdvisors();
             int admission = -1;
             int transaction = -1;
@@ -266,7 +377,9 @@ class PublicationEvidenceConcurrencyIntegrationTest extends BaseIntegrationTest 
             // This caller genuinely retains an outer connection before entering the service.
             drafts.findById(id).orElseThrow();
             for (Runnable operation : List.<Runnable>of(() -> service.getDraftCasefile(id),
-                () -> cleanup.cleanup(id, RUN), () -> reads.read(id, RUN), () -> reads.register(id, RUN))) {
+                () -> cleanup.cleanup(id, RUN), () -> reads.read(id, RUN), () -> reads.register(id, RUN),
+                () -> processing.processPendingDraft(new DraftCasefileQueueMessage(id, null, null, null)),
+                () -> failures.markFailed(new Attempt(id, 0L, null, null), "Synthetic failure"))) {
                 assertThatThrownBy(operation::run).isInstanceOf(IllegalStateException.class)
                     .hasMessage("Testing-support draft operations must enter outside a transaction");
             }
