@@ -15,6 +15,39 @@ import org.mockito.MockedStatic;
 class DraftCasefileActionsTest {
 
     @Test
+    void retrievalUsesBearerAndExactDraftPath() {
+        assertRequest("GET", null, null);
+    }
+
+    @Test
+    void approvalUsesPatchBodyAndStrongIfMatch() {
+        assertRequest("PATCH", "{\"decision\":\"APPROVE\"}", "\"4\"");
+    }
+
+    private void assertRequest(String method, String body, String etag) {
+        AtomicBoolean requested = new AtomicBoolean();
+        RequestSpecification request = RestAssured.given().filter((outgoing, response, context) -> {
+            requested.set(true);
+            assertThat(outgoing.getMethod()).isEqualTo(method);
+            assertThat(outgoing.getURI()).endsWith("/draft-casefiles/321");
+            assertThat(outgoing.getHeaders().getValue("Authorization")).isEqualTo("Bearer synthetic-test-token");
+            assertThat(outgoing.getHeaders().getValue("If-Match")).isEqualTo(etag);
+            if (body != null) {
+                assertThat((String) outgoing.getBody()).isEqualTo(body);
+            }
+            return new ResponseBuilder().setStatusCode(200).setBody("{}").build();
+        });
+        try (MockedStatic<SerenityRest> http = mockStatic(SerenityRest.class)) {
+            http.when(SerenityRest::given).thenReturn(request);
+            DraftCasefileActions actions = new DraftCasefileActions();
+            Response result = body == null ? actions.get("synthetic-test-token", 321L)
+                : actions.decide("synthetic-test-token", 321L, body, etag);
+            assertThat(requested).isTrue();
+            assertThat(result.statusCode()).isEqualTo(200);
+        }
+    }
+
+    @Test
     void cleanupSendsTheCreatorTokenAndExactRunReferenceToTheMergedEndpoint() {
         String marker = "E2E-550e8400e29b41d4";
         AtomicBoolean requested = new AtomicBoolean();
