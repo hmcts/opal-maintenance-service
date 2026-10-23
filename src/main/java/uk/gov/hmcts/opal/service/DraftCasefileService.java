@@ -6,11 +6,14 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.transaction.annotation.Transactional;
 import uk.gov.hmcts.opal.exception.ResourceConflictException;
 import uk.gov.hmcts.opal.entity.DraftCasefileStatus;
 import uk.gov.hmcts.opal.generated.model.CasefileType;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileReplaceRequest;
+import uk.gov.hmcts.opal.generated.model.DraftCasefileUpdateRequest;
+import uk.gov.hmcts.opal.service.messaging.DraftCasefileQueuePublisher;
 import uk.gov.hmcts.opal.validator.IfMatchValidator;
 import uk.gov.hmcts.opal.authorisation.MaintenanceUser;
 import uk.gov.hmcts.opal.authorisation.MaintenanceUserService;
@@ -61,12 +64,14 @@ public class DraftCasefileService {
     private final IfMatchValidator ifMatchValidator;
     private final DraftCasefileRepository repository;
     private final DraftCasefileMapper mapper;
+    private final DraftCasefileUpdater updater;
     private final DraftCasefileAddResponseMapper addResponseMapper;
     private final DraftCasefileGetMapper getMapper;
     private final DraftCasefileSummaryMapper summaryMapper;
     private final DraftCasefileParticipantCategoryResolver participantCategoryResolver;
     private final ApplicationEventPublisher eventPublisher;
     private final Clock clock;
+    private final DraftCasefileQueuePublisher queuePublisher;
 
     @Transactional
     public VersionedResponse<DraftCasefileAddResponse> addDraftCasefile(DraftCasefileAddRequest request) {
@@ -92,7 +97,7 @@ public class DraftCasefileService {
         final MaintenanceUser user = maintenanceUserService.requireAuthorisedUser(
             existing.getBusinessUnitId(), CREATE_MANAGE_DRAFT_CASEFILES);
         if (!existing.getBusinessUnitId().equals(request.getBusinessUnitId())) {
-            throw new ResourceConflictException("Business Unit must match the stored owner");
+            throw new ResourceConflictException("Business unit must match the draft casefile's business unit");
         }
         if (existing.getCasefileStatus() != DraftCasefileStatus.REJECTED) {
             throw new ResourceConflictException("Only a rejected Draft Casefile can be replaced");
@@ -107,12 +112,57 @@ public class DraftCasefileService {
             request.getCasefile());
         Instant resubmittedAt = clock.instant().truncatedTo(ChronoUnit.MICROS);
         DraftCasefileEntity saved = repository.saveAndFlush(
-            mapper.toResubmittedEntity(existing, request, user, resubmittedAt));
+            updater.applyResubmission(existing, request, user, resubmittedAt));
         DraftCasefileGetResponse response = getMapper.toResponse(saved);
         eventPublisher.publishEvent(new DraftCasefilePersonalDataEvent(Operation.RESUBMISSION,
             saved.getDraftCasefileId(), user.userId(), user.ipAddress(), resubmittedAt,
             participantCategoryResolver.resolve(request.getCasefile())));
         return new VersionedResponse<>(response, saved.getVersionNumber());
+    }
+
+    @Transactional
+    public VersionedResponse<DraftCasefileGetResponse> updateDraftCasefile(
+        Long id, DraftCasefileUpdateRequest request, String ifMatch
+    ) {
+        final long expectedVersion = ifMatchValidator.parseIfMatch(ifMatch);
+        DraftCasefileEntity existing = repository.findById(id)
+            .orElseThrow(() -> new EntityNotFoundException("Draft Casefile not found"));
+        MaintenanceUser user = maintenanceUserService.requireAuthorisedUser(
+            existing.getBusinessUnitId(), CHECK_VALIDATE_DRAFT_CASEFILES);
+        if (user.businessUnitUserId().equals(existing.getSubmittedBy())) {
+            throw new AccessDeniedException("A Draft Casefile must be checked by a different user");
+        }
+        if (!existing.getBusinessUnitId().equals(request.getBusinessUnitId())) {
+            throw new ResourceConflictException("Business unit must match the draft casefile's business unit");
+        }
+        if (existing.getCasefileStatus() != DraftCasefileStatus.SUBMITTED
+            && existing.getCasefileStatus() != DraftCasefileStatus.RESUBMITTED) {
+            throw new ResourceConflictException("Only a submitted or resubmitted Draft Casefile can be checked");
+        }
+        if (existing.getVersionNumber() == null) {
+            throw new IllegalStateException("Stored Draft Casefile version is unavailable");
+        }
+        if (existing.getVersionNumber() != expectedVersion) {
+            throw new ObjectOptimisticLockingFailureException(DraftCasefileEntity.class, id);
+        }
+        Instant decidedAt = clock.instant().truncatedTo(ChronoUnit.MICROS);
+        DraftCasefileEntity saved = repository.saveAndFlush(updater.applyDecision(existing, request, user, decidedAt));
+        DraftCasefileGetResponse response = getMapper.toResponse(saved);
+        Operation operation = switch (request.getCasefileStatus()) {
+            case PUBLISHING_PENDING -> Operation.APPROVAL;
+            case REJECTED -> Operation.REJECTION;
+            case DELETED -> Operation.DELETION;
+        };
+        DraftCasefilePersonalDataEvent event = new DraftCasefilePersonalDataEvent(
+            operation, id, user.userId(), user.ipAddress(), decidedAt,
+            participantCategoryResolver.resolveDecision(response.getCasefile()));
+        VersionedResponse<DraftCasefileGetResponse> result =
+            new VersionedResponse<>(response, saved.getVersionNumber());
+        if (saved.getCasefileStatus() == DraftCasefileStatus.PUBLISHING_PENDING) {
+            queuePublisher.publish(id);
+        }
+        eventPublisher.publishEvent(event);
+        return result;
     }
 
     @Transactional(readOnly = true)

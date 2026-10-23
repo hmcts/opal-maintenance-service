@@ -54,6 +54,7 @@ java:
     RELEASE_1C_AUTO_ENFORCEMENT_CONFIG_ENABLED: true
     APPLICATIONINSIGHTS_ROLE_NAME: "opal-maintenance-service-pr-${CHANGE_ID}"
     SERVICEBUS_LOGGING_PDPL_QUEUE_NAME: "{{ .Release.Name}}-servicebus-logging-pdpl"
+    SERVICEBUS_RM_PUBLISH_DRAFT_CASEFILE_QUEUE_NAME: "{{ .Release.Name}}-servicebus-rm-publish-draft-casefile-queue"
     SERVICEBUS_LOGGING_PDPL_PROTOCOL: amqps
     SERVICEBUS_PROTOCOL: amqps
   postgresql:
@@ -156,6 +157,7 @@ servicebus:
   setup:
     queues:
       - name: "logging-pdpl"
+      - name: "rm-publish-draft-casefile-queue"
 hmcts-redis:
   enabled: true
   master:

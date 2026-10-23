@@ -137,6 +137,9 @@ opal:
   test-user:
     email: ${OPAL_TEST_USER_EMAIL:opal-test@HMCTS.NET}
     password: ${OPAL_TEST_USER_PASSWORD:}
+  draft-casefile:
+    service-bus:
+      queue-name: ${SERVICEBUS_RM_PUBLISH_DRAFT_CASEFILE_QUEUE_NAME:rm-publish-draft-casefile-queue}
   common:
     domain: maintenance
     system-users:

@@ -52,8 +52,11 @@ class DraftCasefileParticipantCategoryResolverTest {
     })
     void selectsRelatedPartiesWithoutMutatingInput(String source) {
         JsonNode casefile = json.readTree(source);
-        JsonNode before = casefile.deepCopy();
+        final JsonNode before = casefile.deepCopy();
         assertThat(resolver.resolve(casefile)).contains(ParticipantCategory.RELATED_PARTIES);
+        Set<ParticipantCategory> expectedDecisionCategories = EnumSet.copyOf(resolver.resolve(casefile));
+        expectedDecisionCategories.remove(ParticipantCategory.RELATED_PARTIES);
+        assertThat(resolver.resolveDecision(casefile)).containsExactlyInAnyOrderElementsOf(expectedDecisionCategories);
         assertThat(casefile).isEqualTo(before);
     }
 
