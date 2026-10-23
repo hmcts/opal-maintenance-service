@@ -16,31 +16,41 @@
  * 15/10/2026  Frankie Moran  PO-10643  Adopt shared contract and prove full failure diagnostics.
  * 15/10/2026  Frankie Moran  PO-10643  Verify the forward unchanged-rethrow replacement boundary.
  * 22/10/2026  Frankie Moran  PO-10655      Port reviewed coverage to the Stage 3 migration lineage.
+ * 23/10/2026  Frankie Moran  PO-10643  Reject unused supplied bank groups before allocation.
  */
 -- OPAL-DB-UPGRADE {"id":"p_insert_creditor_accounts.create","candidate":"ddl/V1_49__create_p_insert_creditor_accounts_procedure.sql","scope":"both","data":"migration-created-only","contract":{"type":"additive","objects":{"created":[{"kind":"routine","identity":"public.p_insert_creditor_accounts(smallint,json,bigint,bigint,bigint)"}],"replaced":[]},"preserve":{"rows":["public.creditor_accounts","public.account_number_index","public.business_units","public.major_creditors","public.parties","public.third_party_contact","public.draft_casefiles"],"tables":["public.creditor_accounts","public.account_number_index"],"routines":["public.f_get_check_letter(character varying)","public.f_get_account_number(smallint,public.t_associated_record_type_enum)"],"enums":[],"sequences":["public.creditor_account_id_seq","public.account_number_index_id_seq"]},"assertion":"creditor.create"}}
 -- OPAL-DB-UPGRADE {"id":"p_insert_creditor_accounts.rethrow","candidate":"ddl/V1_53__replace_p_insert_creditor_accounts_procedure.sql","scope":"both","data":"migration-created-only","contract":{"type":"replacement","objects":{"created":[],"replaced":[{"kind":"routine","identity":"public.p_insert_creditor_accounts(smallint,json,bigint,bigint,bigint)"}]},"preserve":{"rows":["public.creditor_accounts","public.account_number_index","public.business_units","public.major_creditors","public.parties","public.third_party_contact","public.draft_casefiles"],"tables":["public.creditor_accounts","public.account_number_index"],"routines":["public.f_get_check_letter(character varying)","public.f_get_account_number(smallint,public.t_associated_record_type_enum)"],"enums":[],"sequences":["public.creditor_account_id_seq","public.account_number_index_id_seq"]},"assertion":"creditor.rethrow"}}
+-- OPAL-DB-UPGRADE {"id":"p_insert_creditor_accounts.bank_groups","candidate":"ddl/V1_65__replace_p_insert_creditor_accounts_bank_group_integrity.sql","scope":"both","data":"migration-created-only","contract":{"type":"replacement","objects":{"created":[],"replaced":[{"kind":"routine","identity":"public.p_insert_creditor_accounts(smallint,json,bigint,bigint,bigint)"}]},"preserve":{"rows":["public.creditor_accounts","public.account_number_index","public.business_units","public.major_creditors","public.parties","public.third_party_contact","public.draft_casefiles"],"tables":["public.creditor_accounts","public.account_number_index"],"routines":["public.f_get_check_letter(character varying)","public.f_get_account_number(smallint,public.t_associated_record_type_enum)","public.p_process_draft_casefiles(bigint)"],"enums":[],"sequences":["public.creditor_account_id_seq","public.account_number_index_id_seq"]},"assertion":"creditor.bank_groups"},"inputs":["src/main/resources/db/migration/ddl/V1_64__create_p_process_draft_casefiles_procedure.sql"]}
 -- DB-04/DB-06: routine catalogue, direct outcomes, errors, row scope and rollback.
 -- DB-01 fresh and DB-03 predecessor paths are both applicable.
 -- Shared support owns real predecessor preservation, lifecycle and cleanup.
--- Bank request validation is owned upstream; this suite proves accepted-value mapping.
+-- The helper owns supplied unused/conflicting bank-group mapping integrity.
+-- Selected-group completeness, format and fields remain upstream-owned dependencies.
 \set ON_ERROR_STOP 1
 \if :{?opal_assertion_group}
 \else
     \set opal_assertion_group creditor.current
 \endif
-SELECT :'opal_assertion_group' IN ('creditor.current','creditor.create','creditor.rethrow') AS valid_creditor_group
+SELECT :'opal_assertion_group' IN ('creditor.current','creditor.create','creditor.rethrow','creditor.bank_groups')
+    AS valid_creditor_group
 \gset
 \if :valid_creditor_group
 \else
     DO $group$ BEGIN RAISE EXCEPTION 'Unknown creditor assertion group'; END; $group$;
 \endif
+SELECT :'opal_assertion_group' IN ('creditor.current','creditor.bank_groups') AS creditor_bank_groups
+\gset
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap;
 SET LOCAL search_path = public, pg_catalog;
 SET LOCAL TIME ZONE 'UTC';
 SET LOCAL statement_timeout = '30s';
--- Creation, replacement and current groups share behaviour; V1_49 needs no later routine.
+-- Historical create/rethrow keep their 229 checks; current mapping adds 154x7 + 6x6.
+\if :creditor_bank_groups
+SELECT plan(1343);
+\else
 SELECT plan(229);
+\endif
 
 -- -----------------------------------------------------------------------------
 -- Scenario: Synthetic reference fixtures establish supported identity paths.
@@ -960,6 +970,169 @@ BEGIN
     END IF;
 END;
 $cleanup$;
+
+\if :creditor_bank_groups
+-- -----------------------------------------------------------------------------
+-- Scenario: Supplied unused bank groups fail before either allocation sequence.
+-- Setup: Applicant/Minor, valid selected groups and seven supplied member shapes;
+--        no-bank coverage includes the full two-group Cartesian product.
+-- Expected: Fixed P0001, no success OUT pair, byte-exact row scope and unchanged
+--           sequence (last_value,is_called); JSON null counts as supplied.
+-- -----------------------------------------------------------------------------
+CREATE TEMP TABLE ca_bank_group_values (
+    label TEXT PRIMARY KEY,uk JSONB,nonuk JSONB
+);
+INSERT INTO ca_bank_group_values VALUES
+    ('populated',
+     '{"account_name":"Synthetic bank","sort_code":"001234","account_number":"00012345","payment_reference":"Synthetic ref"}',
+     '{"account_name":"Synthetic bank","payment_reference":"Synthetic ref","bic_or_swift_code":"ABCDEFGH","iban":"GB82WEST12345698765432","bank_name":"Synthetic bank","branch_code_or_sort_code":"001234","account_number":"00012345"}'),
+    ('json-null','null','null'),
+    ('empty-object','{}','{}'),
+    ('array','[]','[]'),
+    ('string','"Synthetic"','"Synthetic"'),
+    ('number','7','7'),
+    ('boolean','true','true');
+CREATE TEMP TABLE ca_bank_group_cases (
+    label TEXT PRIMARY KEY,party_id BIGINT,payload JSON,state TEXT,message TEXT
+);
+INSERT INTO ca_bank_group_cases
+SELECT p.role||': UK / unused Non-UK / '||v.label,p.id,
+    JSONB_BUILD_OBJECT('bank_account_details',JSONB_BUILD_OBJECT(
+        'bank_account_type','UK Bank','uk_bank_details',selected.uk,'non_uk_bank_details',v.nonuk))::JSON,
+    'P0001','p_insert_creditor_accounts: UK Bank mapping forbids non_uk_bank_details'
+FROM ca_party p CROSS JOIN ca_bank_group_values v
+CROSS JOIN ca_bank_group_values selected
+WHERE p.role IN ('Applicant','Minor') AND selected.label='populated'
+UNION ALL
+SELECT p.role||': Non-UK / unused UK / '||v.label,p.id,
+    JSONB_BUILD_OBJECT('bank_account_details',JSONB_BUILD_OBJECT(
+        'bank_account_type','Non-UK Bank','non_uk_bank_details',selected.nonuk,'uk_bank_details',v.uk))::JSON,
+    'P0001','p_insert_creditor_accounts: Non-UK Bank mapping forbids uk_bank_details'
+FROM ca_party p CROSS JOIN ca_bank_group_values v
+CROSS JOIN ca_bank_group_values selected
+WHERE p.role IN ('Applicant','Minor') AND selected.label='populated'
+UNION ALL
+SELECT p.role||': None / UK only / '||v.label,p.id,
+    JSONB_BUILD_OBJECT('bank_account_details',JSONB_BUILD_OBJECT(
+        'bank_account_type','None or not applicable','uk_bank_details',v.uk))::JSON,
+    'P0001','p_insert_creditor_accounts: no-bank mapping forbids bank detail groups'
+FROM ca_party p CROSS JOIN ca_bank_group_values v
+WHERE p.role IN ('Applicant','Minor')
+UNION ALL
+SELECT p.role||': None / Non-UK only / '||v.label,p.id,
+    JSONB_BUILD_OBJECT('bank_account_details',JSONB_BUILD_OBJECT(
+        'bank_account_type','None or not applicable','non_uk_bank_details',v.nonuk))::JSON,
+    'P0001','p_insert_creditor_accounts: no-bank mapping forbids bank detail groups'
+FROM ca_party p CROSS JOIN ca_bank_group_values v
+WHERE p.role IN ('Applicant','Minor')
+UNION ALL
+SELECT p.role||': None / UK '||uk.label||' / Non-UK '||nonuk.label,p.id,
+    JSONB_BUILD_OBJECT('bank_account_details',JSONB_BUILD_OBJECT(
+        'bank_account_type','None or not applicable','uk_bank_details',uk.uk,
+        'non_uk_bank_details',nonuk.nonuk))::JSON,
+    'P0001','p_insert_creditor_accounts: no-bank mapping forbids bank detail groups'
+FROM ca_party p CROSS JOIN ca_bank_group_values uk CROSS JOIN ca_bank_group_values nonuk
+WHERE p.role IN ('Applicant','Minor');
+
+-- -----------------------------------------------------------------------------
+-- Scenario: Invalid selectors retain native CASE_NOT_FOUND with supplied groups.
+-- Setup: Missing, unsupported and JSON-null selectors, both groups populated.
+-- Expected: Native 20000 takes precedence without allocation, outputs or rows.
+-- -----------------------------------------------------------------------------
+INSERT INTO ca_bank_group_cases
+SELECT p.role||': selector '||v.label||' / both groups',p.id,
+    JSONB_BUILD_OBJECT('bank_account_details',v.selector||JSONB_BUILD_OBJECT(
+        'uk_bank_details',selected.uk,'non_uk_bank_details',selected.nonuk))::JSON,
+    '20000',NULL
+FROM ca_party p CROSS JOIN ca_bank_group_values selected
+CROSS JOIN (VALUES
+    ('unsupported','{"bank_account_type":"Unsupported"}'::JSONB),
+    ('missing','{}'::JSONB),
+    ('json-null','{"bank_account_type":null}'::JSONB)
+) v(label,selector)
+WHERE p.role IN ('Applicant','Minor') AND selected.label='populated';
+-- Supply each role's required object fields around the intentional bank failures.
+UPDATE ca_bank_group_cases c
+SET payload=(c.payload::JSONB||JSONB_BUILD_OBJECT('party_details',JSONB_BUILD_OBJECT(
+        'organisation',party.organisation,
+        'organisation_details',JSONB_BUILD_OBJECT('organisation_name',party.organisation_name)
+            ||CASE WHEN p.role='Applicant' THEN
+                JSONB_BUILD_OBJECT('foreign_authority_reference','SYNTHETICF1') ELSE '{}'::JSONB END,
+        'address',JSONB_BUILD_OBJECT('address_line_1',party.address_line_1,'cjs_code',country.cjs_code)))
+    ||CASE WHEN p.role='Minor' THEN JSONB_BUILD_OBJECT('creditor_sequence',7) ELSE '{}'::JSONB END)::JSON
+FROM ca_party p JOIN public.parties party ON party.party_id=p.id
+JOIN public.countries country ON country.country_id=party.country_id
+WHERE c.party_id=p.id;
+DO $case_count$
+BEGIN
+    IF (SELECT COUNT(*) FROM ca_bank_group_values)<>7
+       OR (SELECT COUNT(*) FROM ca_bank_group_cases WHERE state='P0001')<>154
+       OR (SELECT COUNT(*) FROM ca_bank_group_cases WHERE state='20000')<>6 THEN
+        RAISE EXCEPTION 'Creditor bank-group inventory differs from exact TAP plan';
+    END IF;
+END;
+$case_count$;
+CREATE FUNCTION pg_temp.ca_bank_group_tests() RETURNS SETOF TEXT LANGUAGE plpgsql AS $bank_groups$
+DECLARE
+    v_case ca_bank_group_cases%ROWTYPE;
+    v_result JSONB;
+    v_accounts TEXT[];
+    v_allocations TEXT[];
+    v_actual_accounts TEXT[];
+    v_actual_allocations TEXT[];
+    v_creditor_sequence JSONB;
+    v_allocation_sequence JSONB;
+    v_actual_creditor_sequence JSONB;
+    v_actual_allocation_sequence JSONB;
+
+BEGIN
+    FOR v_case IN SELECT * FROM ca_bank_group_cases ORDER BY label LOOP
+        v_accounts := ARRAY(SELECT ROW_TO_JSON(c)::TEXT FROM public.creditor_accounts c
+            ORDER BY creditor_account_id);
+        v_allocations := ARRAY(SELECT ROW_TO_JSON(a)::TEXT FROM public.account_number_index a
+            ORDER BY account_number_index_id);
+        SELECT JSONB_BUILD_ARRAY(last_value,is_called) INTO v_creditor_sequence
+        FROM public.creditor_account_id_seq;
+        SELECT JSONB_BUILD_ARRAY(last_value,is_called) INTO v_allocation_sequence
+        FROM public.account_number_index_id_seq;
+
+        BEGIN
+            v_result := pg_temp.ca_probe(31981::SMALLINT,v_case.payload,
+                NULL::BIGINT,v_case.party_id,NULL::BIGINT);
+            v_actual_accounts := ARRAY(SELECT ROW_TO_JSON(c)::TEXT FROM public.creditor_accounts c
+                ORDER BY creditor_account_id);
+            v_actual_allocations := ARRAY(SELECT ROW_TO_JSON(a)::TEXT FROM public.account_number_index a
+                ORDER BY account_number_index_id);
+            SELECT JSONB_BUILD_ARRAY(last_value,is_called) INTO v_actual_creditor_sequence
+            FROM public.creditor_account_id_seq;
+            SELECT JSONB_BUILD_ARRAY(last_value,is_called) INTO v_actual_allocation_sequence
+            FROM public.account_number_index_id_seq;
+            -- Capture before restoring any unexpected RED success; sequences never rewind.
+            RAISE EXCEPTION USING ERRCODE='P5599',MESSAGE='Restore private bank-group attempt';
+
+        EXCEPTION WHEN SQLSTATE 'P5599' THEN
+            NULL;
+        END;
+
+        RETURN NEXT is(v_result->>'state',v_case.state,v_case.label||': expected SQLSTATE');
+
+        IF v_case.message IS NOT NULL THEN
+            RETURN NEXT is(v_result->>'message',v_case.message,v_case.label||': fixed value-free message');
+        END IF;
+
+        RETURN NEXT is(JSONB_BUILD_ARRAY(v_result->'succeeded',v_result->'id',v_result->'number'),
+            '[false,null,null]'::JSONB,v_case.label||': no successful output pair');
+        RETURN NEXT ok(v_actual_accounts=v_accounts,v_case.label||': exact creditor rows unchanged');
+        RETURN NEXT ok(v_actual_allocations=v_allocations,v_case.label||': exact reservation rows unchanged');
+        RETURN NEXT is(v_actual_creditor_sequence,v_creditor_sequence,
+            v_case.label||': creditor sequence state unchanged before any allocation');
+        RETURN NEXT is(v_actual_allocation_sequence,v_allocation_sequence,
+            v_case.label||': allocation sequence state unchanged before any allocation');
+    END LOOP;
+END;
+$bank_groups$;
+SELECT * FROM pg_temp.ca_bank_group_tests();
+\endif
 
 SELECT * FROM finish();
 ROLLBACK;
