@@ -56,12 +56,15 @@ approved allEnvs data suites retain ownership of their contracts. Expected
 values are not read from the candidate SQL. Failure cases execute the actual
 migration via `pg_read_file` inside rolled-back test-only subtransactions.
 
-Assertions apply to both fresh DB-01 and V1_32-to-V1_33 DB-03 upgrades. Run
-`./gradlew dbUnitTest` for the supported disposable fresh PostgreSQL 17 path.
-The maintained DB-03 predecessor phase is not yet available in this branch;
-upgrade verification remains unmet until its supported framework is delivered.
-Do not replace it with an ad hoc Python or shell database runner. Tests never
-modify a developer-owned database.
+Assertions apply to both fresh DB-01 and V1_32-to-V1_33 DB-03 upgrades.
+`./gradlew dbUnitTest` runs both fixed fresh PostgreSQL 17 profiles and selected
+registered predecessor upgrades through the maintained framework. The existing
+DEV suite owns the compact `major-creditors.dev-seed` registration; the existing
+flat NLE suite owns the compact `major-creditors.nle-seed` registration. Both suites still run their ordinary
+fresh assertions in both profiles. The DEV upgrade is explicitly outside the
+common-NLE profile because that profile does not select V1_33; its fresh DEV
+boundary assertions continue to exercise the historical SQL against V1_34's
+identical seeded values. Tests never modify a developer-owned database.
 
 Flyway applies V1_33 once and its normal second migrate is a no-op. A direct
 SQL rerun intentionally fails on the unique business key rather than masking
@@ -97,34 +100,63 @@ may now identify unrelated DDL. If an earlier seed was applied there, stop
 and agree a database-owner recovery plan; do not rename applied history,
 repair it, reinsert duplicate creditors or delete records to force a pass.
 
-## Current verification and required framework dependency
+## Maintained fresh and predecessor verification
 
-Run `bash bin/ci/flyway-dupe-checker.sh --mode=check-only` and
-`./gradlew build` on the resolved tree. The fresh `dbUnitTest` gate checks
-all 33 selected migrations and the existing direct PostgreSQL contracts.
-The verifier uses Flyway 13.10.0 to match the application and Gradle plugin.
-Exact execution results are recorded in the current implementation handoff.
+Run the complete-tree duplicate check and the maintained full registered replay:
 
-The V1_32-to-V1_33 predecessor path is applicable and remains unmet in the
-current fresh-only framework. The independently reviewable framework package
-is [PO-10643 framework PR #271](https://github.com/hmcts/opal-maintenance-service/pull/271).
-Delivery role: database test-framework maintainer; assignment and integration
-into this branch are not confirmed. The current task accepts no predecessor
-target. PR #271 proposes the `OPAL-DB-UPGRADE` registration and
-`dbUnitTestComparisonRef`/`dbUnitTestUpgradeMode` selection interface; it must
-be integrated and reviewed here before this consumer can use it. The inspected
-framework head is `ed3c9dc913855cea362e72ceb7acc0ea97ec2ada`.
+```bash
+bash bin/ci/flyway-dupe-checker.sh --mode=check-only
+./gradlew dbUnitTest --no-daemon -PdbUnitTestUpgradeMode=full
+./gradlew build --no-daemon -PdbUnitTestUpgradeMode=full
+```
 
-Required consumer integration, after that package is available: use its
-reviewed predecessor declaration to migrate an owned disposable database
-through V1_32, establish the normal seeded prerequisites and absent T901/T902/T903
-keys, apply V1_33, then execute this suite's nine assertions through `dbUnitTest`.
-Record preservation of predecessor history and existing creditors, Flyway
-validation, a no-op rerun, command-failing assertion behavior and owned cleanup.
-The database framework package must land before this verification can be
-claimed complete. The seed's fresh verification and stack reconciliation can
-proceed independently, but full DB-03 readiness remains blocked on that package
-and its executed consumer evidence.
+The framework introduced by [PO-10643 PR #271](https://github.com/hmcts/opal-maintenance-service/pull/271)
+is reconciled here with the two fixed profiles and the resolved application
+Flyway runtime. `non-live-dev` selects 34 migrations: the DEV registration
+exercises V1_32-to-V1_33 (32 to 33 migrations), and NLE exercises
+V1_33-to-V1_34 (33 to 34). `non-live` selects 31 migrations and its NLE
+registration exercises V1_32-to-V1_34 (30 to 31); it excludes the two historical
+DEV Country migrations as well as V1_33. The predecessor is resolved from each
+profile's selected numerical inventory. No migration is added to the fixed
+32-migration adoption foundation to exempt these new boundaries.
+
+Both new registrations use compact data contracts and shared dispatch. Their
+exact `preserve` scope covers unchanged Countries and Business Units rows,
+relevant Major Creditor/reference table metadata, both account-number routines,
+scoped enums and the other reference sequences. Their bounded `observe`
+scope captures Major Creditor rows and `major_creditor_id_seq` for explicit
+candidate outcome checks; observing data does not exempt it from those checks.
+Shared preparation commits only guarded test observations outside application
+objects. Shared verification checks the exact preservation scope before owner
+verification. Shared dispatch alone owns preparation and cleanup; owners commit no state.
+
+Each owner is its own constrained custom verifier (`custom.verify = owner`).
+Its six assertions check the expected predecessor seed count, exact unrelated
+creditor row text and multiplicity, inserted keys or retained seed IDs/text,
+total row delta, unchanged sequence metadata, and exact sequence state. DEV
+V1_33 and common-NLE V1_34 insert exactly three rows and allocate three IDs.
+NLE V1_34 following DEV V1_33 preserves the existing row text, generated IDs
+and sequence state exactly. The verifier parses copies of observed row strings
+only to classify the three BU 44 keys; it compares the original strings.
+
+The custom verification phase has plan six and rolls back before the runner
+invokes the owner's ordinary fresh phase. The original nine DEV and 23 NLE
+assertions then execute unchanged, with their existing fresh plans and rollback.
+This keeps direct rerun/failure probes, which may consume sequence values, after
+the preservation checks. Each boundary has shared prepare/verify plans of
+three, custom verify six, owner fresh nine or 23, and shared cleanup two.
+Shared cleanup commits guarded observation removal and confirms absence from a
+distinct backend. The framework separately verifies native Flyway validation,
+exact history, zero-applied repeat migration and owned target/container/volume
+cleanup.
+
+Execution receipts belong in the implementation handoff and
+`build/reports/dbUnitTest`; the declarations and counts above describe the
+maintained checks and do not establish an unexecuted run. A fresh-only or
+manually selected-owner run does not replace the required full replay for a
+framework change. Disposable verification does not establish actual shared
+deployment history, live functional execution, CI, SQL peer review or QA sign-off.
+The deployment-history and recovery gates above remain applicable.
 
 ## Historical V1_31 allocation and verification (12 October 2026)
 

@@ -11,13 +11,94 @@
  * Date        Author          Ticket    Nature of Change
  * ----------  --------------  --------  ---------------------------------------------
  * 21/10/2026  Jonathan Duffy  PO-10297  Initial pgTAP test suite.
+ * 22/10/2026  Frankie Moran  PO-10643  Verify compact seed observations through shared dispatch.
  */
+-- OPAL-DB-UPGRADE {"id":"major-creditors.nle-seed","candidate":"data/nle/V1_34__insert_major_creditors_nle_data.sql","scope":"both","data":"migration-created-only","contract":{"type":"data","objects":{"created":[],"replaced":[]},"preserve":{"rows":["public.countries","public.business_units"],"tables":["public.major_creditors","public.countries","public.business_units"],"routines":["public.f_get_check_letter(character varying)","public.f_get_account_number(smallint,public.t_associated_record_type_enum)"],"enums":["public.t_business_unit_type_enum","public.t_associated_record_type_enum"],"sequences":["public.country_id_seq","public.account_number_index_id_seq"]},"observe":{"rows":["public.major_creditors"],"sequences":["public.major_creditor_id_seq"]},"assertion":"major-creditors.nle-seed","custom":{"verify":"owner"}}}
 
 -- PO-10297 / V1_34: fresh DB-01 contract for DEV and common NLE profiles.
--- The same SQL boundary checks also apply to a future DB-03 upgrade path.
+-- Assertions apply to both fresh DB-01 and registered DB-03 upgrade paths.
+\set ON_ERROR_STOP 1
+\ir support/upgrade_contract.sql
+SELECT :'opal_phase' IN ('fresh', 'verify') AS supported_owner_phase \gset
+\if :supported_owner_phase
+\else
+    DO $phase$ BEGIN RAISE EXCEPTION 'Compact seed owner supports only fresh and custom verify phases'; END; $phase$;
+\endif
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap;
-SELECT plan(23);
+SET LOCAL search_path = public, pg_catalog;
+SET LOCAL TIME ZONE 'UTC';
+SET LOCAL statement_timeout = '30s';
+\if :is_verify
+    SELECT plan(6);
+    DO $predecessor$
+    BEGIN
+        IF CURRENT_SETTING('opal.upgrade_predecessor') NOT IN ('1.32', '1.33') THEN
+            RAISE EXCEPTION 'NLE seed requires its selected 1.32 or 1.33 predecessor';
+        END IF;
+    END;
+    $predecessor$;
+    SELECT pg_temp.opal_upgrade_require_identity('major-creditors.nle-seed', '1.34', :'opal_predecessor_version');
+    SELECT CASE WHEN :'opal_predecessor_version' = '1.33' THEN 0 ELSE 3 END AS seed_insert_count \gset
+    \if :{?opal_assertion_group}
+        SELECT :'opal_assertion_group' = 'major-creditors.nle-seed' AS valid_seed_assertion_group \gset
+    \else
+        DO $group$ BEGIN RAISE EXCEPTION 'Compact seed verification requires its assertion group'; END; $group$;
+    \endif
+    \if :valid_seed_assertion_group
+    \else
+        DO $group$ BEGIN RAISE EXCEPTION 'Unknown compact seed assertion group'; END; $group$;
+    \endif
+    -- -------------------------------------------------------------------------
+    -- Scenario: Interpret the shared observation without rewriting its row text.
+    -- Setup: Shared preservation passed; exact predecessor data crossed sessions.
+    -- Expected: Only a parsed copy classifies keys; original strings retain IDs,
+    --           representation and multiplicity for every preservation comparison.
+    -- -------------------------------------------------------------------------
+    CREATE FUNCTION pg_temp.major_creditor_seed_upgrade_rows(original_rows JSONB, seed_keys BOOLEAN)
+    RETURNS JSONB LANGUAGE sql AS $rows$
+        SELECT COALESCE(JSONB_AGG(row_text ORDER BY row_text), '[]'::JSONB)
+          FROM JSONB_ARRAY_ELEMENTS_TEXT(original_rows) AS observed(row_text)
+         WHERE ((row_text::JSONB->>'business_unit_id')::SMALLINT = 44
+                AND row_text::JSONB->>'major_creditor_code' IN ('T901', 'T902', 'T903')) = seed_keys;
+    $rows$;
+    SELECT pg_temp.opal_contract_load(:'opal_contract_json'::JSONB, 'major-creditors.nle-seed', '1.34', :'opal_predecessor_version') AS seed_saved \gset
+    SELECT :'seed_saved'::JSONB->'observed'->'rows'->'public.major_creditors' AS seed_before_rows,
+           :'seed_saved'::JSONB->'observed'->'sequences'->'public.major_creditor_id_seq' AS seed_before_sequence
+    \gset
+    SELECT COALESCE(JSONB_AGG(ROW_TO_JSON(m)::TEXT ORDER BY ROW_TO_JSON(m)::TEXT), '[]'::JSONB) AS seed_after_rows
+      FROM public.major_creditors m \gset
+    SELECT pg_temp.opal_contract_object('sequence', 'public.major_creditor_id_seq') AS seed_after_sequence \gset
+    -- -------------------------------------------------------------------------
+    -- Scenario: Verify the precise candidate data delta before functional probes.
+    -- Setup: The selected candidate alone migrated after the captured predecessor.
+    -- Expected: Exact unrelated rows, seed IDs and allowed three-row or no-op delta;
+    --           only three generated allocations may change creditor sequence state.
+    -- -------------------------------------------------------------------------
+    SELECT is(JSONB_ARRAY_LENGTH(pg_temp.major_creditor_seed_upgrade_rows(:'seed_before_rows'::JSONB, TRUE)),
+              3 - :seed_insert_count, 'predecessor has exactly its selected-profile seed keys');
+    SELECT is(pg_temp.major_creditor_seed_upgrade_rows(:'seed_after_rows'::JSONB, FALSE),
+              pg_temp.major_creditor_seed_upgrade_rows(:'seed_before_rows'::JSONB, FALSE),
+        'candidate preserves every unrelated creditor row text and its multiplicity');
+    SELECT ok(CASE WHEN :seed_insert_count = 0 THEN
+                  pg_temp.major_creditor_seed_upgrade_rows(:'seed_after_rows'::JSONB, TRUE)
+                      = pg_temp.major_creditor_seed_upgrade_rows(:'seed_before_rows'::JSONB, TRUE)
+              ELSE JSONB_ARRAY_LENGTH(pg_temp.major_creditor_seed_upgrade_rows(:'seed_after_rows'::JSONB, TRUE)) = 3 END,
+        'candidate inserts three seed keys or preserves exact existing row text and IDs');
+    SELECT is(JSONB_ARRAY_LENGTH(:'seed_after_rows'::JSONB),
+              JSONB_ARRAY_LENGTH(:'seed_before_rows'::JSONB) + :seed_insert_count,
+        'candidate changes the total creditor count only by the declared seed delta');
+    SELECT is(:'seed_after_sequence'::JSONB - 'value', :'seed_before_sequence'::JSONB - 'value',
+        'candidate preserves creditor sequence definition, ownership and privileges');
+    SELECT ok((:'seed_before_sequence'::JSONB->'value'->>1)::BOOLEAN
+              AND (:'seed_before_sequence'::JSONB->'definition'->>'seqincrement')::BIGINT = 1
+              AND :'seed_after_sequence'::JSONB->'value' = JSONB_BUILD_ARRAY(
+                  (:'seed_before_sequence'::JSONB->'value'->>0)::BIGINT + :seed_insert_count, TRUE),
+        'candidate creditor sequence advances exactly three or remains an exact no-op');
+    SELECT * FROM finish();
+    ROLLBACK;
+\else
+    SELECT plan(23);
 
 CREATE TEMP TABLE expected_nle_major_creditors (
     business_unit_id SMALLINT,
@@ -307,3 +388,4 @@ SELECT ok(pg_temp.nle_failure_is_atomic(
 
 SELECT * FROM finish();
 ROLLBACK;
+\endif
