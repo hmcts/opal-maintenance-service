@@ -276,7 +276,7 @@ account is required for those automated checks. Real broker checks require the
 isolated queue prerequisites [above](#draft-casefile-publication-tests).
 
 ```bash
-./gradlew test --tests '*DraftCasefileCleanup*' --tests '*PublicationEvidence*' --tests '*ObservedDraftCasefileQueuePublisherTest'
+./gradlew test --tests '*DraftCasefileAdmission*' --tests '*DraftCasefileCleanup*' --tests '*PublicationEvidence*' --tests '*ObservedDraftCasefileQueuePublisherTest'
 ./gradlew integration --tests '*DraftCasefileCleanup*' --tests '*DisabledDraftCasefileCleanup*' --tests '*PublicationEvidence*'
 ./gradlew processResources openApiGenerate compileJava --no-daemon
 ./gradlew test --tests '*OpenApiSchemaValidatorTest' --tests '*OpenApiRequestBodyAdviceTest'
@@ -302,10 +302,22 @@ prove runtime validation or security.
 | Current BU permission 21, latest inputter and both draft/observation markers | `PublicationEvidenceAuthenticationIntegrationTest` uses signed JWT/User Service fixtures; `PublicationEvidenceIntegrationTest` covers scope denial and actual PUT handover | Environment credentials must resolve the current inputter; checker actions retain inputter ownership |
 | Observe exactly one real producer invocation | `ObservedDraftCasefileQueuePublisherTest` checks delegation/ordering/failure; `PublicationEvidenceIntegrationTest` checks actual approval, non-approval, outer rollback and no automatic replay; `DraftCasefileQueueIntegrationTest` checks a dedicated real broker | Cypress captures every PATCH/PUT, loses the response after server-side completion, recovers with the existing GET journey, and asserts one mutation/one expected timeline entry |
 | Complete, correctly scoped response-loss evidence | API tests cover acknowledged, uncertain and unfinished outcomes; `PublicationEvidenceRepositoryIntegrationTest` and `PublicationEvidenceWriterIntegrationTest` cover durable counters and independent transactions | Same observation, `evidence_complete=true`, approval counts `1/1/0/0` or reject/delete/PUT `0/0/0/0`; no service upgrade or undecorated producer during the interval |
+| Consistent evidence during cleanup | `PublicationEvidenceConcurrencyIntegrationTest` pauses GET after the real observation lookup, commits DELETE, then verifies the original uncertain/unfinished snapshot | Capture and retain evidence before initiating cleanup |
+| Bounded support-enabled approval concurrency | The same suite holds 9 real outer transactions in the configured pool of 10, proves a tenth caller waits before transaction/connection acquisition, and checks scoped durable outcomes after success or failure; it repeats the queue check during transaction completion and verifies advice order and ambient-transaction rejection | Every replica uses the instrumented revision and fixed configured pool size; future consumer/direct writers reconcile their own protocol |
 | Atomic eligible cleanup and safe retries | `DraftCasefileCleanupIntegrationTest` covers POST-ID-to-DELETE, scope, lifecycle, embedded-data deletion, sibling/reference retention, rollback, repeats and PostgreSQL lock contention; `PublicationEvidenceIntegrationTest` covers journal/attempt rollback, old-marker cleanup after current-owner PUT, and orphan retention | Durable ID/marker/environment/scenario ledger; remove entries only after 204 and retain every failed cleanup |
 | Default-off/disabled security and operational endpoints | Cleanup availability and disabled HTTP/runtime-doc suites check default-off, authenticated 404/anonymous 401; publication/API and operational suites cover `/`, `/health`, `/prometheus` | Verify resolved non-live flag and production-disabled values through normal deployment controls |
 | Journal schema and fresh migration path | `draft_casefile_test_observations_pgtap_tests.sql` and `draft_casefile_test_send_attempts_pgtap_tests.sql` own V1_49 direct PostgreSQL boundaries through `dbUnitTest` | Deploy V1_49 before enabling support; predecessor-upgrade verification remains unmet below |
 | Pending/published cleanup and actual consumer races | Current integration guards require 409 and preserve draft, graph and journal | `WP-CONSUMER` must deliver the actual consumer/writer protocol and verified cleanup/race behavior; this requirement is Not Agent Complete |
+
+The admission tests use short test-only connection timeouts and latch/transaction
+coordination, with the existing PostgreSQL Testcontainers infrastructure. They
+exercise real approval service transactions and the real evidence decorator/writer;
+the external publisher is controlled. They do not replace the isolated real broker
+checks. `DraftCasefileAdmissionTest` checks insufficient-capacity startup,
+default-off behavior, interruption and permit release. Existing default-off
+decision transaction tests retain their enclosing-transaction behavior. See the
+[support concurrency contract](DRAFT_CASEFILE_TEST_CLEANUP.md#support-enabled-concurrency)
+for the pool-derived per-replica bound and supported caller/deployment assumptions.
 
 Counts above are attempts / acknowledged / uncertain / unfinished. Unregistered,
 uncertain or unfinished evidence fails the recovery test's precondition, as do

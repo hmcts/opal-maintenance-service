@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import uk.gov.hmcts.opal.common.exception.OpalApiException;
 import uk.gov.hmcts.opal.dto.PublicationEvidenceCounts;
@@ -44,7 +45,7 @@ public class PublicationEvidenceService {
         return new RegisteredPublicationEvidence(response(evidence.register(id, testRunReference)), true);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public TestingSupportPublicationEvidence read(Long id, String testRunReference) {
         DraftCasefileEntity draft = drafts.findById(id)
             .orElseThrow(() -> new EntityNotFoundException("Draft Casefile not found"));

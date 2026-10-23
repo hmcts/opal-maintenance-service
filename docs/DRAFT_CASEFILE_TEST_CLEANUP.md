@@ -66,6 +66,11 @@ structure. Identical repeat registration returns **200** with the same
 `observation_id` and `registered_at` and the current counts, including after
 approval. It does not reset counters, start a new interval or send a message.
 GET returns **200** for an existing scoped observation and never sends a message.
+Its draft scope, observation and counts are read from one PostgreSQL repeatable-read
+snapshot. If eligible cleanup commits during that read, GET can return the valid
+pre-cleanup snapshot, including uncertain or unfinished attempts. It cannot turn
+deleted attempts into a successful zero baseline. Later GETs see the missing
+draft and return 404. Capture the evidence before requesting cleanup.
 
 The [OpenAPI source](../src/main/resources/openapi/TestingSupport.yaml) owns the
 response-only `PublicationEvidence` schema, generated as
@@ -112,6 +117,34 @@ the new marker fails the stored-observation check, so registration and GET
 return 403. Preserve the marker throughout an observed recovery scenario. An
 eligible cleanup by the current owner with the current marker can still remove
 the attached old-marker observation, as described below.
+
+### Support-enabled concurrency
+
+When support is enabled, all public Draft Casefile service operations and the
+cleanup, registration and evidence-read operations share admission before their
+transactions begin. The per-replica bound is the actual configured Hikari maximum
+pool size minus one: the default pool of 10 permits at most 9 active operations.
+Further calls wait without an outer transaction or connection. The permit covers
+commit or rollback and connection cleanup. The remaining pool capacity allows
+the independent journal transactions to run without all connections being retained
+by outer draft operations or draft-lock contenders. No separate pool is created.
+
+This contract supports the existing nontransactional controller entry points.
+A service call with an existing transaction or transaction synchronization fails
+immediately, including nested calls; it must never queue while retaining an outer
+connection. Callers must enter through these guarded service boundaries before
+acquiring draft connections or locks. Support-disabled/default-off operation has
+no admission guard and retains the existing transaction behavior.
+
+The bound is fixed from Hikari configuration at startup; support-enabled startup
+fails clearly for a maximum below 2. Do not resize the pool while the application
+is running. Unrelated short reference reads and health checks share the same
+pool and may briefly borrow its remaining capacity, but do not hold draft locks
+or require nested journal transactions. This is a bound on guarded draft work,
+not reserved physical connections or a guarantee against unrelated slow queries.
+All replicas must run the same instrumented revision for the whole observation
+interval. Future consumer or direct repository writers must reconcile their own
+connection/lock protocol through `WP-CONSUMER` before this assumption is extended.
 
 ## Cleanup request and responses
 

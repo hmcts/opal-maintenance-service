@@ -1,6 +1,7 @@
 package uk.gov.hmcts.opal.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -13,6 +14,7 @@ import uk.gov.hmcts.opal.controllers.TestingSupportDraftCasefileController;
 import uk.gov.hmcts.opal.repository.DraftCasefileRepository;
 import uk.gov.hmcts.opal.repository.PublicationEvidenceRepository;
 import uk.gov.hmcts.opal.service.DraftCasefileCleanupService;
+import uk.gov.hmcts.opal.service.DraftCasefileAdmission;
 import uk.gov.hmcts.opal.service.DraftCasefileTestEligibility;
 import uk.gov.hmcts.opal.service.DraftCasefileTestScope;
 import uk.gov.hmcts.opal.service.PublicationEvidenceService;
@@ -35,6 +37,11 @@ class DraftCasefileCleanupAvailabilityTest {
         .withBean(ObjectMapper.class, ObjectMapper::new)
         .withBean(JdbcTemplate.class, () -> mock(JdbcTemplate.class))
         .withBean(Clock.class, Clock::systemUTC)
+        .withBean(HikariDataSource.class, () -> {
+            HikariDataSource pool = new HikariDataSource();
+            pool.setMaximumPoolSize(10);
+            return pool;
+        })
         .withBean(DraftCasefileQueuePublisherImpl.class, () -> mock(DraftCasefileQueuePublisherImpl.class));
 
     @ParameterizedTest
@@ -47,6 +54,7 @@ class DraftCasefileCleanupAvailabilityTest {
                     .hasSize(enabled ? 1 : 0);
                 assertThat(context.getBeansOfType(DraftCasefileCleanupService.class)).hasSize(enabled ? 1 : 0);
                 assertThat(context.getBeansOfType(DraftCasefileTestScope.class)).hasSize(enabled ? 1 : 0);
+                assertThat(context.getBeansOfType(DraftCasefileAdmission.class)).hasSize(enabled ? 1 : 0);
                 assertThat(context.getBeansOfType(PublicationEvidenceService.class)).hasSize(enabled ? 1 : 0);
                 assertThat(context.getBeansOfType(PublicationEvidenceRepository.class)).hasSize(enabled ? 1 : 0);
                 assertThat(context.getBeansOfType(PublicationEvidenceWriter.class)).hasSize(enabled ? 1 : 0);
@@ -64,6 +72,7 @@ class DraftCasefileCleanupAvailabilityTest {
             assertThat(context).doesNotHaveBean(TestingSupportDraftCasefileController.class);
             assertThat(context).doesNotHaveBean(DraftCasefileCleanupService.class);
             assertThat(context).doesNotHaveBean(DraftCasefileTestScope.class);
+            assertThat(context).doesNotHaveBean(DraftCasefileAdmission.class);
             assertThat(context).doesNotHaveBean(PublicationEvidenceService.class);
             assertThat(context).doesNotHaveBean(PublicationEvidenceRepository.class);
             assertThat(context).doesNotHaveBean(PublicationEvidenceWriter.class);
@@ -75,7 +84,7 @@ class DraftCasefileCleanupAvailabilityTest {
     @Import({TestingSupportDraftCasefileController.class, DraftCasefileCleanupService.class,
         DraftCasefileTestScope.class, DraftCasefileTestEligibility.class, PublicationEvidenceService.class,
         PublicationEvidenceRepository.class, PublicationEvidenceWriter.class,
-        ObservedDraftCasefileQueuePublisher.class})
+        ObservedDraftCasefileQueuePublisher.class, DraftCasefileAdmission.class})
     static class TestConfiguration {
     }
 }
