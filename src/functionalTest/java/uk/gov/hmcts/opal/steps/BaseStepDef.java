@@ -59,6 +59,16 @@ public abstract class BaseStepDef {
             .post(TEST_URL + path);
     }
 
+    protected static Response getWithBearerAndRunReference(String path, String token, String reference) {
+        return jsonRequest().header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+            .header("Test-Run-Reference", reference).when().get(TEST_URL + path);
+    }
+
+    protected static Response postWithBearerAndRunReference(String path, String token, String reference) {
+        return jsonRequest().header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+            .header("Test-Run-Reference", reference).when().post(TEST_URL + path);
+    }
+
     protected static Response deleteWithBearer(String path, String token, String testRunReference) {
         return jsonRequest()
             .accept(MediaType.APPLICATION_PROBLEM_JSON_VALUE)
