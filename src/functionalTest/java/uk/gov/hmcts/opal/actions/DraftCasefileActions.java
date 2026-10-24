@@ -2,45 +2,53 @@ package uk.gov.hmcts.opal.actions;
 
 import io.restassured.response.Response;
 import java.util.Map;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import uk.gov.hmcts.opal.steps.BaseStepDef;
 
 public final class DraftCasefileActions extends BaseStepDef {
 
     public Response replace(String token, long id, String body, String etag) {
-        return putWithBearer("/draft-casefiles/" + id, token, body, etag);
+        return authenticatedRequestWithoutReporting(token).header(HttpHeaders.IF_MATCH, etag).body(body)
+            .when().put(testServiceUrl() + "/draft-casefiles/" + id);
     }
 
     public Response registerPublicationEvidence(String token, long id, String marker) {
-        return postWithBearerAndRunReference(
-            "/testing-support/draft-casefiles/" + id + "/publication-evidence", token, marker);
+        return authenticatedRequestWithoutReporting(token).header("Test-Run-Reference", marker)
+            .when().post(testServiceUrl() + "/testing-support/draft-casefiles/" + id + "/publication-evidence");
     }
 
     public Response publicationEvidence(String token, long id, String marker) {
-        return getWithBearerAndRunReference(
-            "/testing-support/draft-casefiles/" + id + "/publication-evidence", token, marker);
+        return authenticatedRequestWithoutReporting(token).header("Test-Run-Reference", marker)
+            .when().get(testServiceUrl() + "/testing-support/draft-casefiles/" + id + "/publication-evidence");
     }
 
     public Response userState(String token) {
-        return getWithBearer(userServiceUrl(), "/v2/users/0/state", token);
+        return authenticatedRequestWithoutReporting(token).when().get(userServiceUrl() + "/v2/users/0/state");
     }
 
     public Response list(String token, Map<String, String> filters) {
-        return getWithBearer("/draft-casefiles", token, filters);
+        return authenticatedRequestWithoutReporting(token).queryParams(filters).when()
+            .get(testServiceUrl() + "/draft-casefiles");
     }
 
     public Response get(String token, long id) {
-        return getWithBearer("/draft-casefiles/" + id, token);
+        return authenticatedRequestWithoutReporting(token).when().get(testServiceUrl() + "/draft-casefiles/" + id);
     }
 
     public Response decide(String token, long id, String body, String etag) {
-        return patchWithBearer("/draft-casefiles/" + id, token, body, etag);
+        return authenticatedRequestWithoutReporting(token).header(HttpHeaders.IF_MATCH, etag).body(body)
+            .when().patch(testServiceUrl() + "/draft-casefiles/" + id);
     }
 
     public Response create(String token, String requestBody) {
-        return postWithBearer("/draft-casefiles", token, requestBody);
+        return authenticatedRequestWithoutReporting(token).body(requestBody).when()
+            .post(testServiceUrl() + "/draft-casefiles");
     }
 
     public Response delete(String token, long draftCasefileId, String marker) {
-        return deleteWithBearer("/testing-support/draft-casefiles/" + draftCasefileId, token, marker);
+        return authenticatedRequestWithoutReporting(token).accept(MediaType.APPLICATION_PROBLEM_JSON_VALUE)
+            .header("Test-Run-Reference", marker).when()
+            .delete(testServiceUrl() + "/testing-support/draft-casefiles/" + draftCasefileId);
     }
 }
