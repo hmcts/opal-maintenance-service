@@ -43,6 +43,64 @@ class DraftCasefileActionsTest {
         assertListRequest(Map.of());
     }
 
+    @Test
+    void replacementUsesInputterBodyAndIfMatch() {
+        assertNewRequest("PUT", "/draft-casefiles/321", "synthetic-inputter-token", "{\"casefile\":{}}",
+            "\"4\"", null);
+    }
+
+    @Test
+    void evidenceRegistrationUsesCreatorAndRunReferenceWithoutBodyOrIfMatch() {
+        assertNewRequest("POST", "/testing-support/draft-casefiles/321/publication-evidence",
+            "synthetic-creator-token", null, null, "E2E-550e8400e29b41d4");
+    }
+
+    @Test
+    void evidenceReadUsesCreatorAndRunReferenceWithoutBodyOrIfMatch() {
+        assertNewRequest("GET", "/testing-support/draft-casefiles/321/publication-evidence",
+            "synthetic-creator-token", null, null, "E2E-550e8400e29b41d4");
+    }
+
+    @Test
+    void userStateUsesConfiguredUserServiceAndExplicitCheckerToken() {
+        assertNewRequest("GET", "/v2/users/0/state", "synthetic-checker-token", null, null, null);
+    }
+
+    private void assertNewRequest(String method, String path, String token, String body, String etag, String marker) {
+        AtomicBoolean requested = new AtomicBoolean();
+        RequestSpecification request = RestAssured.given().filter((outgoing, response, context) -> {
+            requested.set(true);
+            assertThat(outgoing.getMethod()).isEqualTo(method);
+            URI uri = URI.create(outgoing.getURI());
+            assertThat(uri.getPath()).isEqualTo(path);
+            if (path.startsWith("/v2/")) {
+                String configured = System.getenv().getOrDefault("OPAL_USER_SERVICE_API_URL", "http://localhost:4555");
+                assertThat(outgoing.getURI()).isEqualTo(configured.replaceFirst("/$", "") + path);
+            }
+            assertThat(outgoing.getHeaders().getValues("Authorization")).containsExactly("Bearer " + token);
+            assertThat(outgoing.getHeaders().getValues("Accept")).containsExactly("application/json");
+            assertThat(outgoing.getHeaders().getValue("Content-Type")).startsWith("application/json");
+            assertThat(outgoing.getHeaders().getValue("If-Match")).isEqualTo(etag);
+            assertThat(outgoing.getHeaders().getValue("Test-Run-Reference")).isEqualTo(marker);
+            assertThat((String) outgoing.getBody()).isEqualTo(body);
+            return new ResponseBuilder().setStatusCode(200).setBody("{}").build();
+        });
+        try (MockedStatic<SerenityRest> http = mockStatic(SerenityRest.class)) {
+            http.when(SerenityRest::given).thenReturn(request);
+            DraftCasefileActions actions = new DraftCasefileActions();
+            if ("PUT".equals(method)) {
+                actions.replace(token, 321L, body, etag);
+            } else if ("POST".equals(method)) {
+                actions.registerPublicationEvidence(token, 321L, marker);
+            } else if (marker != null) {
+                actions.publicationEvidence(token, 321L, marker);
+            } else {
+                actions.userState(token);
+            }
+            assertThat(requested).isTrue();
+        }
+    }
+
     private void assertListRequest(Map<String, String> filters) {
         AtomicBoolean requested = new AtomicBoolean();
         RequestSpecification request = RestAssured.given().filter((outgoing, response, context) -> {

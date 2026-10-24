@@ -6,6 +6,24 @@ import uk.gov.hmcts.opal.steps.BaseStepDef;
 
 public final class DraftCasefileActions extends BaseStepDef {
 
+    public Response replace(String token, long id, String body, String etag) {
+        return putWithBearer("/draft-casefiles/" + id, token, body, etag);
+    }
+
+    public Response registerPublicationEvidence(String token, long id, String marker) {
+        return postWithBearerAndRunReference(
+            "/testing-support/draft-casefiles/" + id + "/publication-evidence", token, marker);
+    }
+
+    public Response publicationEvidence(String token, long id, String marker) {
+        return getWithBearerAndRunReference(
+            "/testing-support/draft-casefiles/" + id + "/publication-evidence", token, marker);
+    }
+
+    public Response userState(String token) {
+        return getWithBearer(userServiceUrl(), "/v2/users/0/state", token);
+    }
+
     public Response list(String token, Map<String, String> filters) {
         return getWithBearer("/draft-casefiles", token, filters);
     }
