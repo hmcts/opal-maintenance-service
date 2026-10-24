@@ -340,6 +340,8 @@ public class RecordCheckerDecisionsStepDef {
     private void corrected(JsonNode body) {
         require("RESUBMITTED".equals(body.path("casefile_status").textValue()),
             "Corrected lifecycle must be RESUBMITTED");
+        require("Resubmitted".equals(body.path("casefile_status_name").textValue()),
+            "Corrected lifecycle display label must be Resubmitted");
         JsonNode correction = parse(owned.correctedRequest);
         require(body.path("casefile").equals(correction.path("casefile"))
             && owned.marker.equals(body.at("/casefile/respondent_account/remo_reference").textValue()),
@@ -347,8 +349,8 @@ public class RecordCheckerDecisionsStepDef {
         ObjectNode expectedSnapshot = owned.baseline.path("casefile_snapshot").deepCopy();
         ((ObjectNode) expectedSnapshot.path("respondent_account")).put("respondent_name", "RESPONDENT, " + CORRECTED);
         require(body.path("casefile_snapshot").equals(expectedSnapshot), "Corrected snapshot differs");
-        Set<String> changed = Set.of("casefile_status", "casefile_status_date", "casefile", "casefile_snapshot",
-            "timeline_data");
+        Set<String> changed = Set.of("casefile_status", "casefile_status_name", "casefile_status_date", "casefile",
+            "casefile_snapshot", "timeline_data");
         ObjectNode before = owned.baseline.deepCopy();
         ObjectNode after = body.deepCopy();
         before.remove(changed);
