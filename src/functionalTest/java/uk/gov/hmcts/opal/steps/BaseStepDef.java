@@ -1,5 +1,6 @@
 package uk.gov.hmcts.opal.steps;
 
+import io.restassured.RestAssured;
 import io.restassured.config.HttpClientConfig;
 import io.restassured.config.LogConfig;
 import io.restassured.config.RestAssuredConfig;
@@ -86,9 +87,20 @@ public abstract class BaseStepDef {
         return USER_SERVICE_URL;
     }
 
+    protected static RequestSpecification authenticatedRequestWithoutReporting(String token) {
+        return jsonRequest(RestAssured.given()).header(HttpHeaders.AUTHORIZATION, "Bearer " + token);
+    }
+
+    protected static String testServiceUrl() {
+        return TEST_URL;
+    }
+
     private static RequestSpecification jsonRequest() {
-        return SerenityRest.given()
-            .config(requestConfig())
+        return jsonRequest(SerenityRest.given());
+    }
+
+    private static RequestSpecification jsonRequest(RequestSpecification request) {
+        return request.config(requestConfig())
             .accept(MediaType.APPLICATION_JSON_VALUE)
             .contentType(MediaType.APPLICATION_JSON_VALUE);
     }
