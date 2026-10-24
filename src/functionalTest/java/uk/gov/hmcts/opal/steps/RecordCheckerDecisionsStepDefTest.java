@@ -92,7 +92,8 @@ class RecordCheckerDecisionsStepDefTest {
         when(actions.replace(anyString(), eq(123L), anyString(), anyString())).thenAnswer(call -> {
             JsonNode request = JSON.readTree(call.getArgument(2, String.class));
             current.set("casefile", request.path("casefile"));
-            current.put("casefile_status", "RESUBMITTED").put("casefile_status_date", DATE);
+            current.put("casefile_status", "RESUBMITTED").put("casefile_status_name", "Resubmitted")
+                .put("casefile_status_date", DATE);
             ((ObjectNode) current.at("/casefile_snapshot/respondent_account"))
                 .put("respondent_name", "RESPONDENT, " + CORRECTED);
             event(current, "Resubmitted", "Synthetic Inputter", null);
@@ -264,6 +265,22 @@ class RecordCheckerDecisionsStepDefTest {
                 default -> body.put("casefile_status", "SUBMITTED");
             }
         };
+        assertThatThrownBy(() -> steps.readyForChecking("RESUBMITTED")).isInstanceOf(AssertionError.class);
+        verify(actions, never()).registerPublicationEvidence(anyString(), anyLong(), anyString());
+    }
+
+    @Test
+    void resubmittedSetupAcceptsDerivedStatusLabelChange() {
+        steps.readyForChecking("RESUBMITTED");
+        assertThat(current.path("casefile_status_name").asText()).isEqualTo("Resubmitted");
+        assertThat(current.at("/timeline_data/1/status").asText()).isEqualTo("Rejected");
+        assertThat(current.at("/timeline_data/2/status").asText()).isEqualTo("Resubmitted");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"Rejected", "Submitted", "RESUBMITTED", ""})
+    void resubmittedSetupRejectsIncorrectDerivedStatusLabel(String label) {
+        replaceChange = body -> body.put("casefile_status_name", label);
         assertThatThrownBy(() -> steps.readyForChecking("RESUBMITTED")).isInstanceOf(AssertionError.class);
         verify(actions, never()).registerPublicationEvidence(anyString(), anyLong(), anyString());
     }
@@ -662,7 +679,8 @@ class RecordCheckerDecisionsStepDefTest {
 
     private ObjectNode submitted(JsonNode request, boolean self) {
         ObjectNode body = JSON.createObjectNode().put("draft_casefile_id", 123).put("business_unit_id", 44)
-            .put("casefile_type", "REMO In").put("casefile_status", "SUBMITTED").put("created_date", DATE)
+            .put("casefile_type", "REMO In").put("casefile_status", "SUBMITTED")
+            .put("casefile_status_name", "Submitted").put("created_date", DATE)
             .put("casefile_status_date", DATE).put("submitted_by", self ? "checker-id" : "owner-id")
             .put("submitted_by_name", self ? "Synthetic Checker" : "Synthetic Inputter");
         body.set("casefile", request.path("casefile").deepCopy());
@@ -678,7 +696,9 @@ class RecordCheckerDecisionsStepDefTest {
     }
 
     private ObjectNode decision(ObjectNode before, String target, String reason) {
-        ObjectNode after = before.deepCopy().put("casefile_status", target).put("casefile_status_date", DATE);
+        ObjectNode after = before.deepCopy().put("casefile_status", target).put("casefile_status_date", DATE)
+            .put("casefile_status_name", "PUBLISHING_PENDING".equals(target) ? "Publishing pending"
+                : "REJECTED".equals(target) ? "Rejected" : "Deleted");
         if ("PUBLISHING_PENDING".equals(target)) {
             after.put("validated_by", "checker-id").put("validated_by_name", "Synthetic Checker")
                 .put("validated_date", DATE).putNull("status_message");
@@ -691,7 +711,8 @@ class RecordCheckerDecisionsStepDefTest {
     }
 
     private void terminal(String target) {
-        current.put("casefile_status", target).put("casefile_status_date", DATE);
+        current.put("casefile_status", target).put("casefile_status_date", DATE)
+            .put("casefile_status_name", "PUBLISHING_FAILED".equals(target) ? "Publishing failed" : "Published");
         version++;
         if ("PUBLISHING_FAILED".equals(target)) {
             current.put("status_message", "Synthetic publication unsuccessful");
