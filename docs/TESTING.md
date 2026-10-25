@@ -468,6 +468,125 @@ Compilation, dry-run discovery, skipped checks and mocked action-boundary glue
 regressions do not establish live functional coverage. A local runtime of
 unknown source revision does not verify this branch.
 
+### Approved casefile publication journeys (PO-10621)
+
+`draftCasefiles/publish/PublishDraftCasefile.feature` contains exactly three live
+journey instances tagged `@Opal`, `@PO10621` and `@JIRA-STORY:PO-10621`. Each
+creates a fresh synthetic draft, obtains a real independent checker approval,
+polls the ordinary owner GET for the real consumer outcome, applies the strict
+`DraftCasefilePublicationAssertions` contract and repeats GET with the exact
+terminal JSON body and ETag. The success examples use zero minor creditors and
+minor creditor sequences 7 and 23. The failure example uses the existing
+`unpublishable` fixture: a nonnumeric Amount accepted by POST but rejected by
+publication validation. Live glue never sends a JMS message, invokes a fake
+provider, or registers a publication-evidence observation. Ordinary GET does
+not require publication-journal registration.
+
+| Acceptance criterion | Live HTTP journeys (3 instances) | Real-provider orchestration integration (6 instances) | Opt-in real broker (5 instances) |
+| --- | --- | --- | --- |
+| AC1: publish all account identities and preserve approval details | Two success examples assert complete snapshot identities, independent account-number checksum, exact minor sequences, immutable input/approval/history, advanced strong ETag and stable read | `publishesCompleteGraph` with zero/two minors verifies the complete committed graph, typed children and reservations | `fullGraphIsCommittedBeforeActualJmsCommit` reads committed graph before the real session commit |
+| AC2: terminal failure preserves approval without partial publication | One failure example asserts the exact original null-identity snapshot, safe fixed message, top-level `validated_date`, immutable input/history and stable read | `terminalFailureCommitsAfterProcessingRollback` and `failureRecordingOutageRetriesUntilTerminalCommit` require a real provider return before injected failure, no partial graph and a separately committed failed draft | `terminalRollbackAndDistinctFailureCommitPrecedeJmsCommit` verifies rollback and committed failure before settlement |
+| AC3: transient failures retry and duplicate delivery is idempotent | No live failure injection or broker-delivery assertion | `transientFailureRetriesThenDuplicateIsNoOp` and `separatePublishedDeliveryIsIdempotent` verify rollback/retry and one committed graph | `onePostProviderTransientRollsBackThenHigherDeliveryCountPublishes`, `databaseCommitBeforeCallbackFaultRollsBackJmsAndDuplicateCreatesOneGraph` and `repeatedPostProviderTransientReachesExactDeadLetterLimitWithNoGraph` verify real rollback/redelivery, the DB-committed/JMS-uncommitted duplicate window and exact configured dead-letter limit |
+
+The six controlled instances are in `DraftCasefilePublicationQaIntegrationTest`;
+the five actual-broker cases are in
+`DraftCasefilePublicationBrokerQaIntegrationTest`. Helper JUnit tests prove glue,
+assertion, graph-observation or settlement-container boundaries only. They do
+not count as deployed functional, database-provider or broker acceptance
+passes. An API `PUBLISHING_FAILED` outcome from the nonnumeric fixture does not
+prove the real procedure ran or that a partially created graph rolled back.
+Full graph, rollback and delivery-count claims require the corresponding
+integration/broker evidence.
+
+Use compatible existing non-live Maintenance and User Service deployments via
+`TEST_URL` and `OPAL_USER_SERVICE_API_URL`, real publication producer/consumer
+connectivity, and enabled scoped testing-support cleanup. Existing reference
+data must include Business Unit 44, active application `AP00001`, active country
+CJS code `1` and result `MAT`. The default inputter is
+`opal-test@dev.platform.hmcts.net`; the independent checker is
+`opal-test-10@dev.platform.hmcts.net`. Overrides are
+`RM_DRAFT_CASEFILE_INPUTTER_USER` and `RM_DRAFT_CASEFILE_CHECKER_USER`. Tests
+resolve the actual User Service name and unique owning Business Unit user ID.
+The inputter requires permission 21; the checker requires permission 22. Equal
+display names are allowed. Configured inputter/checker users must differ
+case-insensitively before any token/state request; equal resolved identities
+also fail setup even when configured emails differ. Missing/malformed user state, duplicate owning-unit
+entries, invalid/duplicate positive integer permission IDs and missing role
+permissions fail setup. Tests never provision or change users or reference data.
+
+The provider prerequisite remains PO-10655. Align its delivered routine with
+the existing consumer call `public.p_process_draft_casefiles` using four
+arguments: draft ID input, respondent ID output, respondent account-number
+output and published-accounts JSON output (including sequence-mapped creditor
+identities). The actual message has `draft_casefile_id`, `checker_user_id`,
+`originating_ip_address` and `approval_timestamp`; earlier ID-only/two-output
+TDIA wording does not establish this consumed contract. Pin the delivered
+provider revision and execute its owning pgTAP plus these consumer checks.
+Missing-provider and post-provider-hook failures remain strict failures; never
+invert or skip them to produce a pass. This QA work supplies no SQL, procedure,
+runtime fix or deployment. Earlier design text describes a third-party country
+as text; actual `third_party_contact` uses a numeric country foreign key. The
+typed graph checks follow the actual schema. The agreed API `validated_date`
+remains top-level and unchanged from approval.
+
+The broker suite requires an existing otherwise unused dedicated
+`TEST_SERVICEBUS_QUEUE` matching `test-[A-Za-z0-9._-]+`, an explicit positive
+`TEST_SERVICEBUS_MAX_DELIVERIES` matching that queue's actual configured limit,
+and normal secret-managed `SERVICEBUS_CONNECTION_STRING`/`SERVICEBUS_PROTOCOL`
+settings. Optional `TEST_SERVICEBUS_AMQP_URI` is a credential-free AMQP endpoint
+without query/fragment options. `RUN_SERVICE_BUS_TESTS=true` opts in; when absent,
+all five cases are unverified skips. Invalid opt-in configuration fails setup.
+The test's normal application listener stays stopped; only an owned listener
+with the scenario correlation selector may consume. Correlation-scoped main
+queue and DLQ checks follow stop/join. Queue provisioning, application-queue
+consumption and queue purge are outside this work. Do not print credentials,
+message bodies, User Service state, PDPL or encrypted/PII dumps in evidence.
+
+Cleanup uses one DELETE with the original creator token, captured positive Long
+ID and fresh `E2E-` plus 16 lowercase hex marker, even after later POST metadata,
+approval, polling or assertion failures. There is no GET or ETag prerequisite.
+Only HTTP 204 succeeds. Pending/published lifecycle 409s remain an external
+PO-10626 cleanup prerequisite: a 409 fails an otherwise passing scenario; a
+primary failure retains a separate safe ID/marker/numeric-status ledger.
+Transport errors retain a fixed request-error category. Ambiguous POSTs
+(transport/null/5xx/malformed 201/no recoverable ID) are never replayed or found
+through guessed IDs/search. The marker-only ledger explicitly records no
+captured ID, no replay and required manual recovery; non-201 outcomes are
+conservatively retained as unknown ownership. Attachment failures fall back to
+a safe assertion containing the complete ledger. Scenario credentials and
+state clear in `finally`; repeated after hooks do nothing. No deployed DB
+cleanup, graph deletion or lifecycle bypass is authorised.
+
+Run Java boundary tests without a Cucumber tag property: the build restricts
+tag-filtered execution to `OpalTestRunner`. Dry-run suppresses HTTP scenario
+actions while JUnit helpers run normally. Preserve helper XML from
+`build/test-results/functional/opal` before the discovery run replaces it:
+
+```bash
+./gradlew --offline functionalOpal --tests 'uk.gov.hmcts.opal.steps.PublishDraftCasefileStepDefTest' -Dcucumber.execution.dry-run=true
+./gradlew --offline checkstyleFunctionalTest
+./gradlew --offline functionalOpal -Dcucumber.filter.tags=@PO10621 -Dcucumber.execution.dry-run=true
+```
+
+Discovery must find exactly three instances without undefined/ambiguous steps;
+a dry run is not live acceptance evidence. Once the existing runtime and cleanup
+prerequisites are available, execute the real journeys separately:
+
+```bash
+TEST_URL=http://localhost:4551 OPAL_USER_SERVICE_API_URL=http://localhost:4555 ./gradlew --offline functionalOpal -Dcucumber.filter.tags=@PO10621
+./gradlew --offline integration --tests 'uk.gov.hmcts.opal.service.messaging.DraftCasefilePublicationQaIntegrationTest'
+RUN_SERVICE_BUS_TESTS=true ./gradlew --offline integration --tests 'uk.gov.hmcts.opal.service.messaging.DraftCasefilePublicationBrokerQaIntegrationTest'
+```
+
+Supply the dedicated queue, actual delivery limit and managed connection
+settings through the environment before the broker command. Offline controls
+dependency resolution, not HTTP or broker execution. Record exact helper counts,
+three live results, six provider results and five broker results separately,
+including failed stages, skips, safe retained cleanup ledger and prerequisites.
+Common and Backend Definition of Done remain **Not Agent Complete** until all
+applicable required checks actually pass. Authored tests, dry discovery and
+unavailable-provider failures do not establish acceptance completion.
+
 ### Rejected casefile resubmission journeys (PO-10622)
 
 `draftCasefiles/replace/ResubmitRejectedCasefile.feature` contains exactly five
