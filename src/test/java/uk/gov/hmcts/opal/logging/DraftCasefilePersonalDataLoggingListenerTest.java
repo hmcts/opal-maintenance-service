@@ -147,14 +147,16 @@ class DraftCasefilePersonalDataLoggingListenerTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = Operation.class, names = {"SUBMISSION", "VIEW", "RESUBMISSION", "PUBLICATION"})
+    @EnumSource(value = Operation.class,
+        names = {"SUBMISSION", "VIEW", "RESUBMISSION", "APPROVAL", "REJECTION", "DELETION", "PUBLICATION"})
     void falseResultsDoNotEscapeOrPreventLaterCategoriesAndDiagnosticsAreSafe(Operation operation) {
         when(logging.personalDataAccessLogAsync(any())).thenReturn(false);
         assertSafeFailureDiagnostics(operation);
     }
 
     @ParameterizedTest
-    @EnumSource(value = Operation.class, names = {"SUBMISSION", "VIEW", "RESUBMISSION", "PUBLICATION"})
+    @EnumSource(value = Operation.class,
+        names = {"SUBMISSION", "VIEW", "RESUBMISSION", "APPROVAL", "REJECTION", "DELETION", "PUBLICATION"})
     void exceptionsDoNotEscapeOrPreventLaterCategoriesAndDiagnosticsAreSafe(Operation operation) {
         when(logging.personalDataAccessLogAsync(any())).thenThrow(new IllegalStateException(
             "SYNTHETIC_CASEFILE SYNTHETIC_NAME SYNTHETIC_BANK 192.0.2.1"));
@@ -208,8 +210,9 @@ class DraftCasefilePersonalDataLoggingListenerTest {
     @org.junit.jupiter.params.provider.CsvSource({"APPROVAL,Approve", "REJECTION,Reject", "DELETION,Delete"})
     void checkerDecisionsUseAlterationAndExactAction(Operation operation, String action) {
         when(logging.personalDataAccessLogAsync(any())).thenReturn(true);
+        Instant decidedAt = Instant.parse("2026-10-19T10:00:00.123456Z");
         listener.onPersonalDataAccess(new DraftCasefilePersonalDataEvent(operation, 42L, 123L, "192.0.2.1",
-            Instant.EPOCH, EnumSet.of(ParticipantCategory.RESPONDENT, ParticipantCategory.APPLICANT_BENEFICIARY,
+            decidedAt, EnumSet.of(ParticipantCategory.RESPONDENT, ParticipantCategory.APPLICANT_BENEFICIARY,
             ParticipantCategory.MINOR_CREDITOR)));
         var payloads = ArgumentCaptor.forClass(PersonalDataProcessingLogDetails.class);
         verify(logging, times(3)).personalDataAccessLogAsync(payloads.capture());
@@ -220,6 +223,13 @@ class DraftCasefilePersonalDataLoggingListenerTest {
         assertThat(payloads.getAllValues()).allSatisfy(payload -> {
             assertThat(payload.getCategory()).isEqualTo(PersonalDataProcessingCategory.ALTERATION);
             assertThat(payload.getCreatedBy().getIdentifier()).isEqualTo("123");
+            assertThat(payload.getCreatedBy().getType().getType()).isEqualTo("OPAL_USER_ID");
+            assertThat(payload.getCreatedAt()).isEqualTo(decidedAt.atOffset(ZoneOffset.UTC));
+            assertThat(payload.getIpAddress()).isEqualTo("192.0.2.1");
+            assertThat(payload.getIndividuals()).singleElement().satisfies(identifier -> {
+                assertThat(identifier.getIdentifier()).isEqualTo("42");
+                assertThat(identifier.getType().getType()).isEqualTo("RM_DRAFT_CASEFILE");
+            });
             assertThat(payload.getRecipient()).isNull();
         });
     }
