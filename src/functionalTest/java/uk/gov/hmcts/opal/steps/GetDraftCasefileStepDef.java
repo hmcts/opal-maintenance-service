@@ -113,6 +113,7 @@ public class GetDraftCasefileStepDef {
         String checker = configuredUser("RM_DRAFT_CASEFILE_CHECKER_USER", "opal-test-10@dev.platform.hmcts.net");
         assertTrue(!checker.equalsIgnoreCase(ownerUser), "Checker must differ from the inputter");
         Response beforeResponse = call(() -> actions.get(ownerToken, capturedId));
+        check(() -> DraftCasefileRetrievalAssertions.submitted(beforeResponse, request, created));
         JsonNode before = read(beforeResponse);
         String etag = beforeResponse.header("ETag");
         String checkerToken = token(checker);
