@@ -202,7 +202,6 @@ public class ListDraftCasefilesStepDef {
         draft.unknownCreate = true;
         Response response = call(() -> actions.create(draft.ownerToken, draft.request));
         if (response.statusCode() != 201) {
-            draft.unknownCreate = false;
             throw new AssertionError("Scenario Draft Casefile creation requires HTTP 201");
         }
         JsonNode body = parse(response);
