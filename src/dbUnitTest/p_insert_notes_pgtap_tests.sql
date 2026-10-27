@@ -11,18 +11,22 @@
  * Date        Author         Ticket        Nature of Change
  * ----------  -------------  ------------  ----------------------------------------
  * 13/10/2026  Frankie Moran  PO-10645      Initial pgTAP test suite.
+ * 23/10/2026  Frankie Moran  PO-10645      Verify original author widths before Note allocation.
  */
 -- OPAL-DB-UPGRADE {"id":"p_insert_notes.create","candidate":"ddl/V1_52__create_p_insert_notes_procedure.sql","scope":"both","data":"migration-created-only","contract":{"type":"additive","objects":{"created":[{"kind":"routine","identity":"public.p_insert_notes(bigint,character varying,character varying,json)"}],"replaced":[]},"preserve":{"rows":["public.notes","public.respondent_accounts","public.business_units","public.maintenance_applications","public.draft_casefiles"],"tables":["public.notes","public.respondent_accounts"],"routines":[],"enums":["public.t_note_type_enum","public.t_associated_record_type_enum"],"sequences":["public.note_id_seq","public.respondent_account_id_seq"]},"assertion":"notes.current"}}
--- DB-04/DB-06: creation and fresh runs verify the final validation/error contract.
+-- OPAL-DB-UPGRADE {"id":"p_insert_notes.author_widths","candidate":"ddl/V1_66__replace_p_insert_notes_author_widths.sql","scope":"both","data":"migration-created-only","contract":{"type":"replacement","objects":{"created":[],"replaced":[{"kind":"routine","identity":"public.p_insert_notes(bigint,character varying,character varying,json)"}]},"preserve":{"rows":["public.notes","public.respondent_accounts","public.business_units","public.maintenance_applications","public.draft_casefiles"],"tables":["public.notes","public.respondent_accounts"],"routines":[],"enums":["public.t_note_type_enum","public.t_associated_record_type_enum"],"sequences":["public.note_id_seq","public.respondent_account_id_seq"]},"assertion":"notes.author_width"}}
+-- DB-04/DB-06: consolidated creation retains the baseline; author widths are a forward correction.
 -- Current assertions prove database integrity and unchanged diagnostic propagation.
 -- Request validation and caller response/log safety require separate backend evidence.
 -- Shared support owns predecessor preservation, lifecycle and independent cleanup.
 \set ON_ERROR_STOP 1
 \if :{?opal_assertion_group}
 \else
-    \set opal_assertion_group notes.current
+    \set opal_assertion_group notes.author_width
 \endif
-SELECT :'opal_assertion_group' = 'notes.current' AS valid_notes_group \gset
+SELECT :'opal_assertion_group' IN ('notes.current','notes.author_width') AS valid_notes_group,
+       :'opal_assertion_group' = 'notes.current' AS legacy_current_contract,
+       :'opal_assertion_group' = 'notes.author_width' AS author_width_contract \gset
 \if :valid_notes_group
 \else
     DO $group$ BEGIN RAISE EXCEPTION 'Unknown Notes assertion group'; END; $group$;
@@ -50,7 +54,11 @@ END;
 $state$;
 
 
+\if :author_width_contract
+    SELECT plan(843);
+\else
     SELECT plan(212);
+\endif
 
 -- -----------------------------------------------------------------------------
 -- Scenario: Create independent synthetic publication targets and lifecycle sentinel.
@@ -292,9 +300,9 @@ END;
 $input$;
 
 -- -----------------------------------------------------------------------------
--- Scenario: Missing Note text and genuine overwidth authors retain native failures.
--- Setup: PostgreSQL extraction supplies NULL or assignment exceeds the table width.
--- Expected: Native 23502/22001 and original diagnostics; no replacement request error.
+-- Scenario: Missing Note text retains native failures.
+-- Setup: PostgreSQL extraction supplies NULL to the required table column.
+-- Expected: Native 23502 and original diagnostics; no replacement request error.
 -- Generated IDs differ across independent probes, so failing-row IDs are not compared.
 -- -----------------------------------------------------------------------------
 CREATE TEMP TABLE notes_native_nulls(label TEXT,payload JSON);
@@ -304,6 +312,12 @@ INSERT INTO notes_native_nulls VALUES
     ('scalar string request','"synthetic"'),('scalar numeric request','1'),('scalar boolean request','true');
 SELECT e.* FROM notes_native_nulls c CROSS JOIN LATERAL pg_temp.notes_native_input(
     c.label,'synthetic','Synthetic fixture',c.payload,'23502') e;
+\if :legacy_current_contract
+-- -----------------------------------------------------------------------------
+-- Scenario: Historical overwidth authors retain native assignment failures.
+-- Setup: Original ASCII and multibyte authors exceed their table column widths.
+-- Expected: V1_55 retains native 22001 and original diagnostics.
+-- -----------------------------------------------------------------------------
 SELECT * FROM pg_temp.notes_native_input('author identifier width',REPEAT('x',21)::VARCHAR,
     'Synthetic fixture','{"note_text":"A"}','22001');
 SELECT * FROM pg_temp.notes_native_input('author identifier multibyte width',REPEAT('界',21)::VARCHAR,
@@ -330,6 +344,7 @@ SELECT ok(EXISTS(SELECT 1 FROM public.notes n,notes_trailing_result r
     WHERE n.note_id=(r.result->>'id')::BIGINT AND n.posted_by=REPEAT('x',20)
         AND n.posted_by_name=REPEAT('y',100) AND n.note_text='Native trailing spaces'),
     'native VARCHAR semantics retain prefixes within table widths');
+\endif
 
 -- -----------------------------------------------------------------------------
 -- Scenario: The polymorphic respondent-account target remains database-owned.
@@ -341,6 +356,137 @@ SELECT * FROM pg_temp.notes_error('null integrity target',NULL,NULL,NULL,'{}',
 SELECT * FROM pg_temp.notes_error('missing integrity target',-1064598,'synthetic','Synthetic fixture','{"note_text":"A"}',
     'P0001','respondent_account target does not exist');
 
+
+\if :author_width_contract
+-- -----------------------------------------------------------------------------
+-- Scenario: Independently nullable, empty and exact-width authors preserve originals.
+-- Setup: Seven unbounded TEXT classes per author; cross all 49 pairs without narrowing.
+-- Expected: One exact Note per pair, including spaces and decomposed Unicode characters.
+-- -----------------------------------------------------------------------------
+CREATE TEMP TABLE notes_width_accepted(field TEXT,class TEXT,value TEXT,PRIMARY KEY(field,class));
+INSERT INTO notes_width_accepted
+SELECT f.field,c.class,c.value
+FROM (VALUES ('posted_by',20),('posted_by_name',100)) f(field,lim)
+CROSS JOIN LATERAL (VALUES
+    ('null',NULL::TEXT),('empty',''),('all spaces',REPEAT(' ',f.lim)),
+    ('ASCII',REPEAT('x',f.lim)),('multibyte',REPEAT('界',f.lim)),
+    ('trailing spaces',REPEAT('x',f.lim-2)||'  '),
+    ('decomposed',REPEAT('e'||CHR(769),f.lim/2))
+) c(class,value);
+
+-- -----------------------------------------------------------------------------
+-- Scenario: Any original overwidth author fails before Note-ID allocation.
+-- Setup: Six invalid TEXT classes per author; independently valid peers and both invalid.
+-- Expected: 84 failures with fixed 22001; posted_by wins when both exceed their limits.
+-- -----------------------------------------------------------------------------
+CREATE TEMP TABLE notes_width_invalid(field TEXT,class TEXT,value TEXT,PRIMARY KEY(field,class));
+INSERT INTO notes_width_invalid
+SELECT f.field,c.class,c.value
+FROM (VALUES ('posted_by',20),('posted_by_name',100)) f(field,lim)
+CROSS JOIN LATERAL (VALUES
+    ('ASCII plus one',REPEAT('x',f.lim+1)),('multibyte plus one',REPEAT('界',f.lim+1)),
+    ('one excess space',REPEAT('x',f.lim)||' '),
+    ('three excess spaces',REPEAT('x',f.lim)||'   '),
+    ('multibyte excess spaces',REPEAT('界',f.lim)||'   '),
+    ('all spaces plus one',REPEAT(' ',f.lim+1))
+) c(class,value);
+CREATE TEMP TABLE notes_width_errors(
+    label TEXT PRIMARY KEY,kind TEXT,target BIGINT,posted_by TEXT,posted_by_name TEXT,state TEXT,message TEXT
+);
+INSERT INTO notes_width_errors
+SELECT i.field||' '||i.class||' with '||v.class,'single',-1064501,
+    CASE WHEN i.field='posted_by' THEN i.value ELSE v.value END,
+    CASE WHEN i.field='posted_by_name' THEN i.value ELSE v.value END,
+    '22001','p_insert_notes: '||i.field||' exceeds '||
+        CASE WHEN i.field='posted_by' THEN '20' ELSE '100' END||' characters'
+FROM notes_width_invalid i
+CROSS JOIN (VALUES ('null',NULL::TEXT),('empty',''),('one space',' '),('ordinary','synthetic')) v(class,value);
+INSERT INTO notes_width_errors
+SELECT 'both '||b.class||' and '||n.class,'both',-1064501,b.value,n.value,
+    '22001','p_insert_notes: posted_by exceeds 20 characters'
+FROM notes_width_invalid b CROSS JOIN notes_width_invalid n
+WHERE b.field='posted_by' AND n.field='posted_by_name';
+
+-- -----------------------------------------------------------------------------
+-- Scenario: NULL and absent targets precede either author-width failure.
+-- Setup: Each invalid target crosses identifier-only, name-only and both overwidth.
+-- Expected: Six fixed P0001 failures with no successful result, rows or sequence effects.
+-- -----------------------------------------------------------------------------
+INSERT INTO notes_width_errors
+SELECT t.class||' target with '||a.class,'target',t.id,a.posted_by,a.posted_by_name,
+    'P0001','p_insert_notes: respondent_account target does not exist'
+FROM (VALUES ('null',NULL::BIGINT),('absent',-1064598::BIGINT)) t(class,id)
+CROSS JOIN (VALUES
+    ('identifier only',REPEAT('x',21),'synthetic'),
+    ('name only','synthetic',REPEAT('x',101)),
+    ('both',REPEAT('x',21),REPEAT('x',101))
+) a(class,posted_by,posted_by_name);
+
+DO $width_inventory$
+BEGIN
+    IF (SELECT COUNT(*) FROM notes_width_accepted)<>14
+       OR (SELECT COUNT(*) FROM notes_width_accepted WHERE field='posted_by')<>7
+       OR (SELECT COUNT(*) FROM notes_width_accepted WHERE field='posted_by_name')<>7
+       OR (SELECT COUNT(*) FROM notes_width_accepted b CROSS JOIN notes_width_accepted n
+           WHERE b.field='posted_by' AND n.field='posted_by_name')<>49
+       OR (SELECT COUNT(*) FROM notes_width_invalid)<>12
+       OR (SELECT COUNT(*) FROM notes_width_invalid WHERE field='posted_by')<>6
+       OR (SELECT COUNT(*) FROM notes_width_invalid WHERE field='posted_by_name')<>6
+       OR (SELECT COUNT(*) FROM notes_width_errors)<>90
+       OR (SELECT COUNT(*) FROM notes_width_errors WHERE kind='single')<>48
+       OR (SELECT COUNT(*) FROM notes_width_errors WHERE kind='both')<>36
+       OR (SELECT COUNT(*) FROM notes_width_errors WHERE kind='target')<>6 THEN
+        RAISE EXCEPTION 'Notes author-width inventory differs from exact TAP plan';
+    END IF;
+END;
+$width_inventory$;
+
+SELECT e.* FROM notes_width_accepted b CROSS JOIN notes_width_accepted n
+CROSS JOIN LATERAL pg_temp.notes_success('author pair '||b.class||' and '||n.class,
+    -1064501,b.value::VARCHAR,n.value::VARCHAR,'{"note_text":"Original author widths"}') e
+WHERE b.field='posted_by' AND n.field='posted_by_name';
+
+CREATE FUNCTION pg_temp.notes_width_errors() RETURNS SETOF TEXT LANGUAGE plpgsql AS $width_errors$
+DECLARE
+    v_case notes_width_errors%ROWTYPE;
+    v_payload CONSTANT JSON:='{"note_text":"__payload__"}';
+    v_result JSONB;
+    v_rows JSONB;
+    v_actual_rows JSONB;
+    v_sequence JSONB;
+    v_actual_sequence JSONB;
+BEGIN
+    FOR v_case IN SELECT * FROM notes_width_errors ORDER BY label LOOP
+        v_rows:=pg_temp.notes_state()->'rows';
+        SELECT JSONB_BUILD_ARRAY(last_value,is_called) INTO v_sequence FROM public.note_id_seq;
+        BEGIN
+            v_result:=pg_temp.notes_probe(v_case.target,v_case.posted_by::VARCHAR,
+                v_case.posted_by_name::VARCHAR,v_payload);
+            v_actual_rows:=pg_temp.notes_state()->'rows';
+            SELECT JSONB_BUILD_ARRAY(last_value,is_called) INTO v_actual_sequence FROM public.note_id_seq;
+            -- Observe before restoring any unexpected RED success; never rewind a sequence.
+            RAISE EXCEPTION USING ERRCODE='P5599',MESSAGE='Restore private author-width attempt';
+        EXCEPTION WHEN SQLSTATE 'P5599' THEN
+            NULL;
+        END;
+        RETURN NEXT ok(v_result->>'state' IS NOT DISTINCT FROM v_case.state,
+            v_case.label||': expected SQLSTATE');
+        RETURN NEXT ok(v_result->>'message' IS NOT DISTINCT FROM v_case.message
+            AND v_result->>'detail'='' AND v_result->>'hint'='' AND v_result->>'schema'=''
+            AND v_result->>'table'='' AND v_result->>'column'='' AND v_result->>'constraint'=''
+            AND v_result->>'datatype'='' AND POSITION('__payload__' IN v_result::TEXT)=0,
+            v_case.label||': fixed value-free message and diagnostics');
+        RETURN NEXT ok((v_result->>'succeeded')::BOOLEAN=false AND v_result->>'id' IS NULL,
+            v_case.label||': no successful result or identifier');
+        RETURN NEXT ok(v_actual_rows IS NOT DISTINCT FROM v_rows,
+            v_case.label||': exact five-table rows unchanged');
+        RETURN NEXT ok(v_actual_sequence IS NOT DISTINCT FROM v_sequence,
+            v_case.label||': exact Note sequence state unchanged before allocation');
+    END LOOP;
+END;
+$width_errors$;
+SELECT * FROM pg_temp.notes_width_errors();
+\endif
 
 CREATE TEMP SEQUENCE notes_attempt_seq START WITH 1;
 CREATE FUNCTION pg_temp.notes_attempts() RETURNS BIGINT LANGUAGE sql AS $attempts$

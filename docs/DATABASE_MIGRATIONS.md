@@ -721,12 +721,18 @@ before allocation. Detailed selected-group completeness, formatting and field
 validation remain upstream-owned; this guard does not establish backend coverage.
 
 For Notes, the agreed split assigns required/non-null input values, JSON shape
-and types, blank/whitespace rules, and applicable input lengths to the backend,
-with UI checks where appropriate. Retain the respondent-account existence check
-in the procedure because the polymorphic Notes association has no foreign key
-enforcing it. Keep standard-note assignment, author mapping, timestamp semantics
-and one-row insertion in the helper; account comments and optional-note selection
-remain caller concerns.
+and types, blank/whitespace rules, and other request-format checks to the backend,
+with UI checks where appropriate. The helper checks the original author arguments
+against the stored limits: `posted_by` is at most 20 characters and
+`posted_by_name` at most 100. It rejects excess characters, including trailing
+spaces, with SQLSTATE `22001` and fixed, value-free, field-labelled messages after
+the respondent-target check and before insertion or Note-ID allocation. Accepted
+author values, including independent null, empty and in-range whitespace values,
+are preserved exactly. This integrity guard does not establish backend validation
+coverage. Retain the respondent-account existence check because the polymorphic
+Notes association has no foreign key enforcing it. Keep standard-note assignment,
+author mapping, timestamp semantics and one-row insertion in the helper; account
+comments and optional-note selection remain caller concerns.
 
 This split is a delivery requirement, not evidence that backend validation has
 already been implemented. Identify the actual endpoint/service, the path from
