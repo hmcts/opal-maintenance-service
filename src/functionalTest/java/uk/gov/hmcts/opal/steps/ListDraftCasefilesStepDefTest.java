@@ -289,6 +289,28 @@ class ListDraftCasefilesStepDefTest {
         verify(actions).delete(eq(OWNER), eq(909L), anyString());
     }
 
+    @ParameterizedTest
+    @ValueSource(ints = {400, 403, 409, 500, 502, 503, 504})
+    void non201CreateRetainsRecoveryMarker(int status) throws Exception {
+        when(actions.create(anyString(), anyString())).thenReturn(new ResponseBuilder()
+            .setStatusCode(status).setContentType("application/json")
+            .setBody("private response owner-token").build());
+        assertThatThrownBy(steps::prepareEmpty).isInstanceOf(AssertionError.class)
+            .hasMessage("Scenario Draft Casefile creation requires HTTP 201").hasNoCause();
+        ArgumentCaptor<String> request = ArgumentCaptor.forClass(String.class);
+        verify(actions, times(1)).create(eq(OWNER), request.capture());
+        final String marker = JSON.readTree(request.getValue())
+            .at("/casefile/respondent_account/remo_reference").textValue();
+        when(scenario.isFailed()).thenReturn(true);
+        steps.deleteCreatedDrafts(scenario);
+        assertThat(attachment()).contains("Unknown owned create ID", marker, "operator follow-up")
+            .doesNotContain("private", OWNER, CHECKER);
+        verify(actions, never()).delete(anyString(), anyLong(), anyString());
+        steps.deleteCreatedDrafts(scenario);
+        verify(scenario, times(1)).attach(anyString(), anyString(), anyString());
+        verify(actions, times(1)).create(anyString(), anyString());
+    }
+
     @Test
     void malformed201ReportsUnknownMarkerWithoutGuessingIdOrRepeatingPost() {
         when(actions.create(anyString(), anyString())).thenReturn(new ResponseBuilder().setStatusCode(201)
