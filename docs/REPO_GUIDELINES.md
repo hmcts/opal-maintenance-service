@@ -22,8 +22,14 @@ the same change.
   HTTP tests, and `src/smokeTest/java` for smoke tests.
 - Place new database-owned pgTAP suites directly under `src/dbUnitTest`, named
   `*_pgtap_tests.sql` for the database object they verify. Each function or
-  procedure has one self-contained suite. Do not add subdirectories, support
-  SQL or shell test scripts. Follow the authoritative
+  procedure has one owning suite containing its functional assertions, fixtures
+  and real-session coordination. Shared `support/` SQL is loaded only through the
+  fixed manifest and owns upgrade lifecycle/preservation; optional `upgradeCases/`
+  SQL is explicitly declared for risk-specific transitions. Fixed regressions
+  remain under `framework/`; these paths are excluded from fresh suite discovery.
+  Do not create a directory or phase implementation per migration, or add a
+  separate shell/Python database test runner.
+  Follow the authoritative
   [pgTAP suite layout](TESTING.md#pgtap-suite-layout).
 - Keep Helm deployment configuration under `charts/`, quality and security-tool
   configuration under `config/`, supporting assets under `lib/`, and local or
@@ -142,6 +148,13 @@ sufficient validation.
 - Follow [Database Migrations](DATABASE_MIGRATIONS.md) for naming, version
   discovery, connection safety, routine scope, validation ownership, native
   PostgreSQL failures, design evidence, and release requirements.
+- Follow the canonical
+  [procedure exception contract](DATABASE_MIGRATIONS.md#exception-messages-and-defaults)
+  and [INSERT layout](DATABASE_MIGRATIONS.md#sql-readability). New Maintenance
+  procedures use the common explicit catch/rethrow block. Preserve the original
+  SQLSTATE and diagnostics; unchanged rethrow does not sanitise errors. Keep
+  backend validation, response handling and safe logging ownership evidenced
+  under [Validation ownership and integrity](DATABASE_MIGRATIONS.md#validation-ownership-and-integrity).
 
 ## Configuration and operations
 
@@ -177,6 +190,16 @@ sufficient validation.
   for routine suite ownership, SQL/pgTAP assertions, test coordination, and
   required upgrade or concurrency coverage when a framework mechanism is
   unavailable. The discovery of legacy suffixes does not change that contract.
+- Use [procedure-side testing](TESTING.md#planned-db-06-procedure-side-testing)
+  for the common error/atomicity contract. Keep database integrity tests separate
+  from backend-owned request validation and propagated-error response/log tests;
+  removing a SQL check does not establish coverage in its new owner.
+- Use [compact declarations and shared dispatch](TESTING.md#compact-contract-and-shared-dispatch)
+  for new upgrade contracts, with compatible fresh/candidate assertion groups.
+  Retain existing consumer coverage and its legacy interface until separately
+  reviewed adaptation is verified. Record actual affected/full replay and
+  shared-change framework regression evidence, immutable-history validation,
+  comparison/fallback provenance and any Unverified migration locations.
 - Functional and smoke tests use `TEST_URL`, defaulting to
   `http://localhost:4551`, and require a suitable running service.
 - Assert observable behaviour rather than implementation details. Use real DTOs,
