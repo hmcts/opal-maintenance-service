@@ -85,7 +85,6 @@ public class GetDraftCasefileStepDef {
         unknownOwnedCreate = true;
         latestResponse = call(() -> actions.create(ownerToken, request));
         if (latestResponse.statusCode() != 201) {
-            unknownOwnedCreate = false;
             throw new AssertionError("Scenario Draft Casefile creation requires HTTP 201");
         }
         JsonNode parsed = parse(latestResponse);
@@ -113,6 +112,7 @@ public class GetDraftCasefileStepDef {
         String checker = configuredUser("RM_DRAFT_CASEFILE_CHECKER_USER", "opal-test-10@dev.platform.hmcts.net");
         assertTrue(!checker.equalsIgnoreCase(ownerUser), "Checker must differ from the inputter");
         Response beforeResponse = call(() -> actions.get(ownerToken, capturedId));
+        check(() -> DraftCasefileRetrievalAssertions.submitted(beforeResponse, request, created));
         JsonNode before = read(beforeResponse);
         String etag = beforeResponse.header("ETag");
         String checkerToken = token(checker);
