@@ -151,6 +151,10 @@ or a transport error fails a passing scenario; an already failed scenario keeps
 its primary failure and receives separate safe cleanup evidence. An ambiguous
 create with no recoverable ID reports an unknown-owned-create limitation and
 marker for operator follow-up, without guessing an ID or replaying the POST.
+A POST that returns any non-201 status retains unknown ownership and its
+submitted marker until operator follow-up. HTTP error status alone does not
+prove that no creation committed. Setup still fails; no POST is replayed and no
+DELETE is attempted without a captured ID.
 
 Before either publication setup approves a draft, its authoritative submitted
 GET must match the complete original request and POST metadata. The helper

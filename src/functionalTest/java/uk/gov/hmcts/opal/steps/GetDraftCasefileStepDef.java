@@ -85,7 +85,6 @@ public class GetDraftCasefileStepDef {
         unknownOwnedCreate = true;
         latestResponse = call(() -> actions.create(ownerToken, request));
         if (latestResponse.statusCode() != 201) {
-            unknownOwnedCreate = false;
             throw new AssertionError("Scenario Draft Casefile creation requires HTTP 201");
         }
         JsonNode parsed = parse(latestResponse);

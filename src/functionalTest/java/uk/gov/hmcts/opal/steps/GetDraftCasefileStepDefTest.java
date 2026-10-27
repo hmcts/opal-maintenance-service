@@ -13,6 +13,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
@@ -140,6 +141,30 @@ class GetDraftCasefileStepDefTest {
         verify(scenario).attach(evidence.capture(), eq("text/plain"), eq("PO-10618 cleanup failure"));
         assertThat(evidence.getValue()).contains("unknown", "E2E-").doesNotContain("private");
         verify(actions, never()).delete(anyString(), anyLong(), anyString());
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {400, 403, 409, 500, 502, 503, 504})
+    void non201CreateRetainsRecoveryMarker(int status) throws Exception {
+        when(actions.create(eq("owner-token"), anyString()))
+            .thenReturn(response(status, "private response owner-token"));
+        steps.resetScenario();
+        assertThatThrownBy(steps::submitComplete).isInstanceOf(AssertionError.class)
+            .hasMessage("Scenario Draft Casefile creation requires HTTP 201").hasNoCause();
+        ArgumentCaptor<String> request = ArgumentCaptor.forClass(String.class);
+        verify(actions, times(1)).create(eq("owner-token"), request.capture());
+        final String marker = JSON.readTree(request.getValue())
+            .at("/casefile/respondent_account/remo_reference").textValue();
+        when(scenario.isFailed()).thenReturn(true);
+        steps.deleteCreatedDraft(scenario);
+        ArgumentCaptor<String> evidence = ArgumentCaptor.forClass(String.class);
+        verify(scenario).attach(evidence.capture(), eq("text/plain"), eq("PO-10618 cleanup failure"));
+        assertThat(evidence.getValue()).contains("unknown", marker, "operator follow-up")
+            .doesNotContain("private", "owner-token");
+        verify(actions, never()).delete(anyString(), anyLong(), anyString());
+        steps.deleteCreatedDraft(scenario);
+        verify(scenario, times(1)).attach(anyString(), anyString(), anyString());
+        verify(actions, times(1)).create(anyString(), anyString());
     }
 
     @Test
