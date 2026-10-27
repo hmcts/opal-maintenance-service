@@ -11,6 +11,9 @@ import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
@@ -80,8 +83,7 @@ class GetDraftCasefileStepDefTest {
 
     @Test
     void approvalUsesFreshEtagAndOnlyOneMutation() {
-        prepare();
-        when(actions.get("owner-token", 123L)).thenReturn(response(200, created().toString(), "\"9\""));
+        preparePublication(false, terminal -> { });
         when(actions.decide(eq("checker-token"), eq(123L), anyString(), eq("\"9\"")))
             .thenReturn(response(200, "{}", "\"10\""));
         assertThatThrownBy(steps::approve).isInstanceOf(AssertionError.class);
@@ -141,13 +143,44 @@ class GetDraftCasefileStepDefTest {
         verify(actions, never()).delete(anyString(), anyLong(), anyString());
     }
 
+    @ParameterizedTest
+    @ValueSource(ints = {400, 403, 409, 500, 502, 503, 504})
+    void non201CreateRetainsRecoveryMarker(int status) throws Exception {
+        when(actions.create(eq("owner-token"), anyString()))
+            .thenReturn(response(status, "private response owner-token"));
+        steps.resetScenario();
+        assertThatThrownBy(steps::submitComplete).isInstanceOf(AssertionError.class)
+            .hasMessage("Scenario Draft Casefile creation requires HTTP 201").hasNoCause();
+        ArgumentCaptor<String> request = ArgumentCaptor.forClass(String.class);
+        verify(actions, times(1)).create(eq("owner-token"), request.capture());
+        final String marker = JSON.readTree(request.getValue())
+            .at("/casefile/respondent_account/remo_reference").textValue();
+        when(scenario.isFailed()).thenReturn(true);
+        steps.deleteCreatedDraft(scenario);
+        ArgumentCaptor<String> evidence = ArgumentCaptor.forClass(String.class);
+        verify(scenario).attach(evidence.capture(), eq("text/plain"), eq("PO-10618 cleanup failure"));
+        assertThat(evidence.getValue()).contains("unknown", marker, "operator follow-up")
+            .doesNotContain("private", "owner-token");
+        verify(actions, never()).delete(anyString(), anyLong(), anyString());
+        steps.deleteCreatedDraft(scenario);
+        verify(scenario, times(1)).attach(anyString(), anyString(), anyString());
+        verify(actions, times(1)).create(anyString(), anyString());
+    }
+
     @Test
     void standardSeededCheckerIsUsedWithoutAnOverride() {
         GetDraftCasefileStepDef noChecker = steps(Map.of());
-        when(actions.create(eq("owner-token"), anyString())).thenReturn(response(201, created().toString()));
+        AtomicReference<ObjectNode> submitted = new AtomicReference<>();
+        when(actions.create(eq("owner-token"), anyString())).thenAnswer(invocation -> {
+            ObjectNode full = completeSubmitted(JSON.readTree(invocation.getArgument(1, String.class)));
+            submitted.set(full);
+            ObjectNode post = full.deepCopy();
+            post.remove("casefile");
+            return response(201, post.toString());
+        });
         noChecker.resetScenario();
         noChecker.submitComplete();
-        when(actions.get("owner-token", 123L)).thenReturn(response(200, created().toString(), "\"9\""));
+        when(actions.get("owner-token", 123L)).thenReturn(response(200, submitted.get().toString(), "\"9\""));
         assertThatThrownBy(noChecker::approve).isInstanceOf(AssertionError.class);
         verify(actions).decide(eq("checker-token"), eq(123L), anyString(), eq("\"9\""));
     }
@@ -222,6 +255,28 @@ class GetDraftCasefileStepDefTest {
         verifyPublicationCalls();
     }
 
+    @ParameterizedTest
+    @CsvSource({"false,0", "false,1", "true,0", "true,1"})
+    void approvalRejectsLostMinors(boolean failed, int retained) {
+        preparePublication(failed, submitted -> {
+            for (String path : new String[] {
+                "/casefile/minor_creditors", "/casefile_snapshot/minor_creditor_accounts"
+            }) {
+                ArrayNode minors = (ArrayNode) submitted.at(path);
+                while (minors.size() > retained) {
+                    minors.remove(minors.size() - 1);
+                }
+            }
+        }, terminal -> { });
+
+        assertThatThrownBy(steps::approve).isInstanceOf(AssertionError.class)
+            .hasMessageContaining("casefile must match the request");
+        verify(actions, never()).decide(anyString(), anyLong(), anyString(), anyString());
+        when(scenario.isFailed()).thenReturn(true);
+        steps.deleteCreatedDraft(scenario);
+        verify(actions).delete(eq("owner-token"), eq(123L), anyString());
+    }
+
     @Test
     void publishedJourneyRejectsFailedTerminalAndStillCleansUp() throws Exception {
         preparePublication(true, terminal -> { });
@@ -250,6 +305,11 @@ class GetDraftCasefileStepDefTest {
     }
 
     private void preparePublication(boolean failed, Consumer<ObjectNode> changeTerminal) {
+        preparePublication(failed, submitted -> { }, changeTerminal);
+    }
+
+    private void preparePublication(boolean failed, Consumer<ObjectNode> changeSubmitted,
+                                    Consumer<ObjectNode> changeTerminal) {
         AtomicReference<ObjectNode> submitted = new AtomicReference<>();
         when(actions.create(eq("owner-token"), anyString())).thenAnswer(invocation -> {
             ObjectNode full = completeSubmitted(JSON.readTree(invocation.getArgument(1, String.class)));
@@ -264,6 +324,7 @@ class GetDraftCasefileStepDefTest {
         } else {
             steps.submitComplete();
         }
+        changeSubmitted.accept(submitted.get());
         ObjectNode approved = approval(submitted.get());
         ObjectNode terminal = approved.deepCopy().put("casefile_status", failed ? "PUBLISHING_FAILED" : "PUBLISHED")
             .put("casefile_status_date", "2026-10-23T11:01:00Z");
@@ -272,8 +333,11 @@ class GetDraftCasefileStepDefTest {
         } else {
             identity((ObjectNode) terminal.at("/casefile_snapshot/respondent_account"), 101, "R101");
             identity((ObjectNode) terminal.at("/casefile_snapshot/applicant_account"), 101, "C101");
-            identity((ObjectNode) terminal.at("/casefile_snapshot/minor_creditor_accounts/0"), 102, "C102");
-            identity((ObjectNode) terminal.at("/casefile_snapshot/minor_creditor_accounts/1"), 103, "C103");
+            int index = 0;
+            for (JsonNode minor : terminal.at("/casefile_snapshot/minor_creditor_accounts")) {
+                identity((ObjectNode) minor, 102L + index, "C" + (102 + index));
+                index++;
+            }
         }
         changeTerminal.accept(terminal);
         when(actions.get("owner-token", 123L))
