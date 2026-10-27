@@ -286,6 +286,9 @@ A passing journey fails when cleanup fails; an already failed journey keeps its
 primary failure and receives a safe retained-resource ledger of IDs, markers and
 statuses. Ambiguous POSTs retain a marker for operator follow-up, never retry or
 guess an ID. Credentials are cleared after the hook, including attachment failure.
+Every non-201 create response retains that fixture's unknown ownership and marker
+for operator follow-up. The after hook still attempts all other captured drafts.
+No POST is replayed and unknown IDs are never guessed for cleanup.
 Known support-API restrictions return 409 for `PUBLISHED` and `PUBLISHING_PENDING`;
 these are unresolved cleanup dependencies, not permission to bypass guards, delete
 database rows, rewrite lifecycle or purge queues. Shared pending drafts are never
