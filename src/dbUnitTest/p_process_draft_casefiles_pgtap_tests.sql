@@ -10,23 +10,31 @@
  * Date        Author         Ticket        Nature of Change
  * ----------  -------------  ------------  ----------------------------------------
  * 18/10/2026  Frankie Moran  PO-10655      Create Draft Casefile publication pgTAP coverage.
+ * 23/10/2026  Frankie Moran  PO-10643      Verify bank-group integrity through real publication.
  */
 -- OPAL-DB-UPGRADE {"id":"p_process_draft_casefiles.create","candidate":"ddl/V1_64__create_p_process_draft_casefiles_procedure.sql","scope":"both","data":"migration-created-only","inputs":["src/main/resources/db/migration/data/allEnvs/V1_10__insert_major_creditors_reference_data.sql","src/main/resources/db/migration/data/allEnvs/V1_12__insert_maintenance_applications_reference_data.sql","src/main/resources/db/migration/data/allEnvs/V1_13__insert_results_reference_data.sql","src/main/resources/db/migration/data/allEnvs/V1_16__refresh_results_reference_data.sql","src/main/resources/db/migration/data/allEnvs/V1_19__insert_configuration_items_data.sql","src/main/resources/db/migration/data/allEnvs/V1_5__insert_countries_reference_data.sql","src/main/resources/db/migration/data/allEnvs/V1_7__insert_business_units_reference_data.sql","src/main/resources/db/migration/data/dev/V1_33__insert_major_creditors_dev_data.sql","src/main/resources/db/migration/data/dev/V1_3__insert_countries_dev_data.sql","src/main/resources/db/migration/data/dev/V1_4__insert_inactive_country_dev_data.sql","src/main/resources/db/migration/data/nle/V1_34__insert_major_creditors_nle_data.sql","src/main/resources/db/migration/ddl/V1_11__create_maintenance_applications_table.sql","src/main/resources/db/migration/ddl/V1_14__create_draft_casefiles_table.sql","src/main/resources/db/migration/ddl/V1_15__allow_null_results_permitted_actions.sql","src/main/resources/db/migration/ddl/V1_17__create_associated_record_type_enum.sql","src/main/resources/db/migration/ddl/V1_18__create_configuration_items_table.sql","src/main/resources/db/migration/ddl/V1_20__create_parties_table.sql","src/main/resources/db/migration/ddl/V1_21__create_debtor_detail_table.sql","src/main/resources/db/migration/ddl/V1_22__create_third_party_contact_table.sql","src/main/resources/db/migration/ddl/V1_23__create_account_number_index_table.sql","src/main/resources/db/migration/ddl/V1_24__create_notes_table.sql","src/main/resources/db/migration/ddl/V1_25__create_aliases_table.sql","src/main/resources/db/migration/ddl/V1_26__create_respondent_accounts_table.sql","src/main/resources/db/migration/ddl/V1_27__create_creditor_accounts_table.sql","src/main/resources/db/migration/ddl/V1_28__create_respondent_account_parties_table.sql","src/main/resources/db/migration/ddl/V1_29__create_order_terms_table.sql","src/main/resources/db/migration/ddl/V1_2__create_countries_table.sql","src/main/resources/db/migration/ddl/V1_30__add_draft_casefiles_account_id_foreign_key.sql","src/main/resources/db/migration/ddl/V1_31__create_f_get_check_letter.sql","src/main/resources/db/migration/ddl/V1_32__create_f_get_account_number.sql","src/main/resources/db/migration/ddl/V1_49__create_p_insert_creditor_accounts_procedure.sql","src/main/resources/db/migration/ddl/V1_50__create_p_insert_debtor_detail_procedure.sql","src/main/resources/db/migration/ddl/V1_52__create_p_insert_notes_procedure.sql","src/main/resources/db/migration/ddl/V1_56__create_p_insert_parties_procedure.sql","src/main/resources/db/migration/ddl/V1_57__create_p_insert_respondent_account_parties_procedure.sql","src/main/resources/db/migration/ddl/V1_58__create_p_insert_respondent_account_procedure.sql","src/main/resources/db/migration/ddl/V1_59__create_p_insert_third_party_contacts_procedure.sql","src/main/resources/db/migration/ddl/V1_60__alter_aliases_name_columns.sql","src/main/resources/db/migration/ddl/V1_61__create_p_insert_party_aliases_procedure.sql","src/main/resources/db/migration/ddl/V1_62__add_order_terms_result_responses.sql","src/main/resources/db/migration/ddl/V1_63__create_p_insert_order_terms_procedure.sql","src/main/resources/db/migration/ddl/V1_6__create_business_units_table.sql","src/main/resources/db/migration/ddl/V1_8__create_results_table.sql","src/main/resources/db/migration/ddl/V1_9__create_major_creditors_table.sql"],"contract":{"type":"additive","objects":{"created":[{"kind":"routine","identity":"public.p_process_draft_casefiles(bigint)"}],"replaced":[]},"preserve":{"rows":["public.draft_casefiles","public.parties","public.aliases","public.third_party_contact","public.debtor_detail","public.respondent_accounts","public.creditor_accounts","public.order_terms","public.notes","public.respondent_account_parties","public.account_number_index","public.business_units","public.countries","public.major_creditors","public.maintenance_applications","public.results","public.configuration_items"],"tables":["public.draft_casefiles","public.parties","public.aliases","public.third_party_contact","public.debtor_detail","public.respondent_accounts","public.creditor_accounts","public.order_terms","public.notes","public.respondent_account_parties","public.account_number_index","public.business_units","public.countries","public.major_creditors","public.maintenance_applications","public.results","public.configuration_items"],"routines":["public.p_insert_parties(json,public.t_party_account_type_enum)","public.p_insert_party_aliases(bigint,json)","public.p_insert_third_party_contacts(json)","public.p_insert_debtor_detail(json,character varying)","public.p_insert_respondent_account(smallint,public.t_casefile_type_enum,json,bigint,bigint)","public.p_insert_creditor_accounts(smallint,json,bigint,bigint,bigint)","public.p_insert_order_terms(bigint,bigint,character varying,character varying,json)","public.p_insert_notes(bigint,character varying,character varying,json)","public.p_insert_respondent_account_parties(bigint,bigint,public.t_association_type_enum)","public.f_get_account_number(smallint,public.t_associated_record_type_enum)","public.f_get_check_letter(character varying)"],"enums":["public.t_associated_record_type_enum","public.t_association_type_enum","public.t_business_unit_type_enum","public.t_case_result_type_enum","public.t_casefile_type_enum","public.t_creditor_account_type_enum","public.t_da_account_status_enum","public.t_draft_casefile_status_enum","public.t_indexation_enum","public.t_note_type_enum","public.t_party_account_type_enum","public.t_payment_arrangement_enum","public.t_payment_frequency_enum"],"sequences":["public.account_number_index_id_seq","public.alias_id_seq","public.application_id_seq","public.configuration_item_id_seq","public.country_id_seq","public.creditor_account_id_seq","public.debtor_detail_id_seq","public.draft_casefile_id_seq","public.major_creditor_id_seq","public.note_id_seq","public.order_terms_id_seq","public.party_id_seq","public.respondent_account_id_seq","public.respondent_account_party_id_seq","public.third_party_contact_id_seq"]},"assertion":"p_process_draft_casefiles.current"}}
 
 \set ON_ERROR_STOP on
 \if :{?opal_assertion_group}
- SELECT :'opal_assertion_group'='p_process_draft_casefiles.current' AS pdc_known_group \gset
- \if :pdc_known_group
- \else
-  DO $group$ BEGIN RAISE EXCEPTION 'Unknown Draft Casefile assertion group'; END; $group$;
- \endif
+\else
+ \set opal_assertion_group p_process_draft_casefiles.bank_groups
+\endif
+SELECT :'opal_assertion_group' IN ('p_process_draft_casefiles.current','p_process_draft_casefiles.bank_groups')
+ AS pdc_known_group, :'opal_assertion_group'='p_process_draft_casefiles.bank_groups' AS pdc_bank_groups \gset
+\if :pdc_known_group
+\else
+ DO $group$ BEGIN RAISE EXCEPTION 'Unknown Draft Casefile assertion group'; END; $group$;
 \endif
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap;
 SET LOCAL search_path=public,pg_catalog;
 SET LOCAL TIME ZONE 'UTC';
 SET LOCAL DateStyle='ISO, YMD';
+\if :pdc_bank_groups
+SELECT plan(3809);
+\else
 SELECT plan(2707);
+\endif
 
 -- -----------------------------------------------------------------------------
 -- Scenario: The approved one-input, three-output orchestrator is installed.
@@ -609,6 +617,150 @@ BEGIN
 END;
 $checks$;
 SELECT * FROM pg_temp.pdc_guard_assertions();
+
+-- -----------------------------------------------------------------------------
+-- Scenario: Real publication rejects supplied unused/conflicting bank groups.
+-- Setup: Both creditor roles use complete selected bank groups and seven supplied
+--        member values; no-bank pairs cover the full seven-by-seven Cartesian set.
+--        Every attempt resets an eligible saved draft and deliberately aborts its
+--        private scope after observation, including successful calls before F1.
+-- Expected: Fixed helper errors cross the real orchestrator unchanged, all graph
+--           and reservation rows unwind, and the saved draft remains byte-exact.
+-- -----------------------------------------------------------------------------
+\if :pdc_bank_groups
+CREATE TEMP TABLE pdc_bank_values(label TEXT PRIMARY KEY,uk JSON,non_uk JSON);
+INSERT INTO pdc_bank_values (
+ label,
+ uk,
+ non_uk
+) VALUES
+ ('populated',
+  '{"account_name":"Synthetic bank","sort_code":"001234","account_number":"00012345","payment_reference":"Synthetic ref"}',
+  '{"account_name":"Synthetic bank","payment_reference":"Synthetic ref","bic_or_swift_code":"SYNTHETC","iban":"SYNTHETIC","bank_name":"Synthetic bank","branch_code_or_sort_code":"001234","account_number":"00012345"}'),
+ ('JSON null','null','null'),('{}','{}','{}'),('[]','[]','[]'),
+ ('string','"Synthetic group"','"Synthetic group"'),('number','7','7'),('boolean','true','true');
+CREATE TEMP TABLE pdc_bank_cases(role TEXT,label TEXT,details JSON,expected_message TEXT);
+INSERT INTO pdc_bank_cases (
+ role,
+ label,
+ details,
+ expected_message
+)
+SELECT role,'UK with unused Non-UK '||label,
+ JSON_BUILD_OBJECT('bank_account_type','UK Bank','uk_bank_details',
+  (SELECT uk FROM pdc_bank_values WHERE label='populated'),'non_uk_bank_details',non_uk),
+ 'p_insert_creditor_accounts: UK Bank mapping forbids non_uk_bank_details'
+FROM pdc_bank_values CROSS JOIN (VALUES('Applicant'),('Minor')) roles(role)
+UNION ALL
+SELECT role,'Non-UK with unused UK '||label,
+ JSON_BUILD_OBJECT('bank_account_type','Non-UK Bank','non_uk_bank_details',
+  (SELECT non_uk FROM pdc_bank_values WHERE label='populated'),'uk_bank_details',uk),
+ 'p_insert_creditor_accounts: Non-UK Bank mapping forbids uk_bank_details'
+FROM pdc_bank_values CROSS JOIN (VALUES('Applicant'),('Minor')) roles(role)
+UNION ALL
+SELECT role,'None with UK only '||label,
+ JSON_BUILD_OBJECT('bank_account_type','None or not applicable','uk_bank_details',uk),
+ 'p_insert_creditor_accounts: no-bank mapping forbids bank detail groups'
+FROM pdc_bank_values CROSS JOIN (VALUES('Applicant'),('Minor')) roles(role)
+UNION ALL
+SELECT role,'None with Non-UK only '||label,
+ JSON_BUILD_OBJECT('bank_account_type','None or not applicable','non_uk_bank_details',non_uk),
+ 'p_insert_creditor_accounts: no-bank mapping forbids bank detail groups'
+FROM pdc_bank_values CROSS JOIN (VALUES('Applicant'),('Minor')) roles(role)
+UNION ALL
+SELECT role,'None with both UK '||u.label||' and Non-UK '||n.label,
+ JSON_BUILD_OBJECT('bank_account_type','None or not applicable','uk_bank_details',u.uk,'non_uk_bank_details',n.non_uk),
+ 'p_insert_creditor_accounts: no-bank mapping forbids bank detail groups'
+FROM pdc_bank_values u CROSS JOIN pdc_bank_values n CROSS JOIN (VALUES('Applicant'),('Minor')) roles(role);
+
+-- Canonical omissions prove these otherwise-valid fixtures reach both real roles.
+INSERT INTO pdc_bank_cases (
+ role,
+ label,
+ details,
+ expected_message
+)
+SELECT role,'canonical '||selector,
+ CASE selector WHEN 'UK Bank' THEN JSON_BUILD_OBJECT('bank_account_type',selector,'uk_bank_details',uk)
+  WHEN 'Non-UK Bank' THEN JSON_BUILD_OBJECT('bank_account_type',selector,'non_uk_bank_details',non_uk)
+  ELSE JSON_BUILD_OBJECT('bank_account_type',selector) END,NULL
+FROM pdc_bank_values CROSS JOIN (VALUES('Applicant'),('Minor')) roles(role)
+CROSS JOIN (VALUES('UK Bank'),('Non-UK Bank'),('None or not applicable')) selectors(selector)
+WHERE label='populated';
+
+CREATE FUNCTION pg_temp.pdc_bank_assertions() RETURNS SETOF TEXT LANGUAGE plpgsql AS $checks$
+DECLARE test RECORD; payload JSON; observed JSONB; scope JSONB; saved_before JSONB; saved_after JSONB;
+ label TEXT; selected_id BIGINT; published JSONB; mapped BOOLEAN; routed BOOLEAN;
+ today DATE := (TRANSACTION_TIMESTAMP() AT TIME ZONE 'Europe/London')::DATE;
+
+BEGIN
+ FOR test IN SELECT cases.* FROM pdc_bank_cases cases ORDER BY cases.role,cases.label LOOP
+  label:=test.role||' F1 '||test.label;
+  scope:=pg_temp.pdc_scope();
+  observed:=NULL; published:=NULL; saved_before:=NULL; saved_after:=NULL; mapped:=FALSE; routed:=FALSE;
+  BEGIN
+   SELECT payloads.payload INTO payload FROM pdc_payloads payloads WHERE payloads.label='base';
+   payload:=pg_temp.pdc_put(payload,ARRAY['respondent_account','order_details','date_arrears_last_updated'],TO_JSON(today::TEXT));
+   payload:=pg_temp.pdc_put(payload,CASE test.role WHEN 'Applicant' THEN ARRAY['applicant','bank_account_details']
+    ELSE ARRAY['minor_creditors','0','bank_account_details'] END,test.details);
+   UPDATE public.draft_casefiles SET casefile=payload,casefile_type='REMO In',casefile_status='PUBLISHING_PENDING',
+    account_id=NULL,account_number=NULL,submitted_by='P55_SUBMIT',submitted_by_name='Synthetic saved submitter',
+    validated_date=TIMESTAMP '2024-01-02',validated_by='P55_APPROVE',
+    validated_by_name='Synthetic saved approver',version_number=1 WHERE draft_casefile_id=-1065501;
+   SELECT JSONB_BUILD_OBJECT('row',ROW_TO_JSON(d)::TEXT,'status',casefile_status,'snapshot',casefile_snapshot::TEXT)
+    INTO saved_before FROM public.draft_casefiles d WHERE draft_casefile_id=-1065501;
+   observed:=pg_temp.pdc_call(-1065501);
+   SELECT JSONB_BUILD_OBJECT('row',ROW_TO_JSON(d)::TEXT,'status',casefile_status,'snapshot',casefile_snapshot::TEXT)
+    INTO saved_after FROM public.draft_casefiles d WHERE draft_casefile_id=-1065501;
+
+   IF test.expected_message IS NULL AND observed->>'completed'='true' THEN
+    published:=(observed->>'published_raw')::JSONB;
+    selected_id:=CASE test.role WHEN 'Applicant' THEN (published#>>'{applicant_account,account_id}')::BIGINT
+     ELSE (published#>>'{minor_creditor_accounts,0,account_id}')::BIGINT END;
+    SELECT COUNT(*)=1 AND BOOL_AND(creditor_account_id=(published#>>'{applicant_account,account_id}')::BIGINT)
+     INTO routed FROM public.order_terms WHERE respondent_account_id=(observed->>'respondent_id')::BIGINT;
+    SELECT CASE test.details->>'bank_account_type'
+     WHEN 'UK Bank' THEN ca.pay_by_bacs AND ca.bank_account_name='Synthetic bank' AND ca.bank_sort_code='001234'
+      AND ca.bank_account_number='00012345' AND ca.bank_account_reference='Synthetic ref' AND ca.non_uk_bank_detail IS NULL
+     WHEN 'Non-UK Bank' THEN ca.pay_by_bacs AND ca.non_uk_bank_detail::TEXT=(test.details->'non_uk_bank_details')::TEXT
+      AND ca.bank_account_name IS NULL AND ca.bank_sort_code IS NULL AND ca.bank_account_number IS NULL
+      AND ca.bank_account_reference IS NULL
+     ELSE NOT ca.pay_by_bacs AND ca.non_uk_bank_detail IS NULL AND ca.bank_account_name IS NULL
+      AND ca.bank_sort_code IS NULL AND ca.bank_account_number IS NULL AND ca.bank_account_reference IS NULL END
+     INTO mapped FROM public.creditor_accounts ca JOIN public.parties p ON p.party_id=ca.minor_creditor_party_id
+     WHERE ca.creditor_account_id=selected_id AND p.surname=CASE test.role WHEN 'Applicant'
+      THEN 'Synthetic Applicant' ELSE 'Synthetic Minor Seven' END;
+   END IF;
+
+   -- A private owner-local abort restores RED successes as well as rejected calls.
+   -- Earlier orchestrator sequence consumption is deliberately not asserted away.
+   RAISE EXCEPTION USING ERRCODE='P5599',MESSAGE='pdc restore bank-group scope';
+  EXCEPTION WHEN SQLSTATE 'P5599' THEN NULL;
+  END;
+
+  IF test.expected_message IS NULL THEN
+   RETURN NEXT ok(observed->>'completed'='true' AND observed->>'code' IS NULL
+    AND observed->>'respondent_id' IS NOT NULL AND observed->>'account_number' IS NOT NULL
+    AND observed->>'published_raw' IS NOT NULL AND JSONB_ARRAY_LENGTH(published->'minor_creditor_accounts')=1
+    AND published#>>'{minor_creditor_accounts,0,creditor_sequence}'='7'
+    AND JSONB_ARRAY_LENGTH(observed->'created_ids'->'creditor_accounts')=2,label||': real complete Applicant and Minor outputs');
+   RETURN NEXT ok(mapped AND routed,label||': selected real creditor mapping and Applicant order route');
+  ELSE
+   RETURN NEXT is(observed->>'code','P0001',label||': helper SQLSTATE');
+   RETURN NEXT is(observed->>'message',test.expected_message,label||': exact fixed helper message');
+   RETURN NEXT ok(POSITION('p_insert_creditor_accounts(' IN observed->>'context')>0
+    AND POSITION('p_process_draft_casefiles(' IN observed->>'context')>0,label||': real creditor helper and orchestrator stack');
+   RETURN NEXT ok(observed->>'completed'='false' AND NOT(observed ?| ARRAY['respondent_id','account_number','published_raw']),
+    label||': no successful output tuple');
+   RETURN NEXT ok(observed->'after'=observed->'before',label||': exact whole graph and reservation rows unchanged');
+  END IF;
+  RETURN NEXT ok(saved_after=saved_before,label||': saved draft raw text status and snapshot unchanged');
+  RETURN NEXT ok(pg_temp.pdc_scope()=scope,label||': private attempt scope fully restored');
+ END LOOP;
+END;
+$checks$;
+SELECT * FROM pg_temp.pdc_bank_assertions();
+\endif
 
 
 -- -----------------------------------------------------------------------------
