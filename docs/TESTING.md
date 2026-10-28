@@ -253,9 +253,15 @@ Backend transaction and run-status orchestration tests remain outside
 `dbUnitTest` and must be tracked separately when required; backend test
 ownership is unchanged. For Notes, retain respondent-account target checks,
 standard-note mapping, author mapping, single-row insertion, and atomicity in
-the database suite. Required/non-null request values, JSON shape and types,
-blank/whitespace rules, and applicable input lengths are backend-owned under
-the revised contract. Identify the actual request-to-persisted-casefile-to-helper
+the database suite. Verify original author lengths against 20 characters for
+`posted_by` and 100 for `posted_by_name`, including multibyte characters and excess
+trailing spaces, using unbounded arguments. Rejection must retain target-check
+precedence, return SQLSTATE `22001` with a fixed, value-free field message, and
+leave rows and the Note sequence unchanged. Accepted null, empty, whitespace and
+boundary values must be preserved exactly. Keep historical predecessor contracts
+separate from this forward correction. Required/non-null request values, JSON
+shape and types, blank/whitespace rules, and other request-format checks remain
+backend-owned. Identify the actual request-to-persisted-casefile-to-helper
 path and its validation tests before claiming that moved coverage exists; UI
 checks alone are insufficient. Until that evidence exists, record the backend
 dependency rather than treating removal of database assertions as coverage.
