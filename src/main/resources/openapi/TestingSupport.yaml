@@ -15,6 +15,7 @@ paths:
         Existing rows must match the exact run reference in respondent_account.remo_reference.
         Supports owned unlinked lifecycle states, approved pending drafts, and exclusively owned published graphs.
         Shared, inconsistent or financially active published graphs cannot be deleted.
+        Cleanup takes no explicit table-wide locks; concurrent published-graph writes are an accepted non-live test risk.
         Already-absent IDs succeed after authentication; no draft remains for an ownership or BU permission check. No GET request or If-Match header is required.
       security:
         - TestingSupportBearerAuth: []
@@ -71,7 +72,7 @@ paths:
               schema:
                 $ref: './common.yaml#/components/schemas/ProblemDetail'
         '503':
-          description: Persistence temporarily unavailable or cleanup lock contention; deletion is rolled back. Retry with bounded backoff
+          description: Persistence temporarily unavailable; deletion is rolled back
           content:
             application/problem+json:
               schema:
