@@ -13,6 +13,9 @@ import org.springframework.context.annotation.Import;
 import uk.gov.hmcts.opal.authorisation.MaintenanceUserService;
 import uk.gov.hmcts.opal.controllers.TestingSupportDraftCasefileController;
 import uk.gov.hmcts.opal.repository.DraftCasefileRepository;
+import uk.gov.hmcts.opal.repository.DraftCasefileCleanupRepository;
+import uk.gov.hmcts.opal.service.DraftCasefileTestScope;
+import uk.gov.hmcts.opal.service.DraftCasefileTestEligibility;
 import uk.gov.hmcts.opal.service.DraftCasefileCleanupService;
 
 class DraftCasefileCleanupAvailabilityTest {
@@ -21,7 +24,8 @@ class DraftCasefileCleanupAvailabilityTest {
         .withUserConfiguration(TestConfiguration.class)
         .withBean(MaintenanceUserService.class, () -> mock(MaintenanceUserService.class))
         .withBean(DraftCasefileRepository.class, () -> mock(DraftCasefileRepository.class))
-        .withBean(ObjectMapper.class, ObjectMapper::new);
+        .withBean(ObjectMapper.class, ObjectMapper::new)
+        .withBean(DraftCasefileCleanupRepository.class, () -> mock(DraftCasefileCleanupRepository.class));
 
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
@@ -45,7 +49,8 @@ class DraftCasefileCleanupAvailabilityTest {
     }
 
     @Configuration(proxyBeanMethods = false)
-    @Import({TestingSupportDraftCasefileController.class, DraftCasefileCleanupService.class})
+    @Import({TestingSupportDraftCasefileController.class, DraftCasefileCleanupService.class,
+        DraftCasefileTestScope.class, DraftCasefileTestEligibility.class})
     static class TestConfiguration {
     }
 }
