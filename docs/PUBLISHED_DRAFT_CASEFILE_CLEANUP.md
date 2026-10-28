@@ -46,123 +46,100 @@ Any failed guard or later delete/flush error rolls back **all** draft and graph
 changes. The null-version legacy draft deletion path is retained. Capture normal
 GET/snapshot/timeline assertions before DELETE, because cleanup removes them.
 
-## Locking and supported writers
+## Locking and accepted concurrency risk
 
-After the draft row is locked and authenticated ownership/approval checks pass,
-`PUBLISHED` cleanup acquires this fixed lock in its existing transaction, immediately
-before graph traversal:
+On 28 October 2026 the user explicitly chose to remove the additional table-wide
+locks and accept the risk of published cleanup overlapping concurrent writers in
+non-live tests. This supersedes the earlier whole-table locking proposal. No
+`LOCK TABLE` statement, table-lock privilege requirement or cleanup-specific
+lock-contention translation remains.
 
-```sql
-LOCK TABLE public.respondent_accounts, public.creditor_accounts, public.parties
-IN ACCESS EXCLUSIVE MODE NOWAIT
-```
+The existing pessimistic draft-row lock, graph-row locks, foreign keys and one
+Spring-managed cleanup transaction remain. They still serialize operations on
+the same draft with the normal publication/failure paths and preserve rollback.
+They do not provide a complete concurrency guarantee for the published graph.
+Normal row-level or foreign-key contention can still occur; removing explicit
+table-wide locks does not promise that all other activity is unaffected.
 
-These are **whole-table** locks on exactly those three tables. While held, they
-block unrelated reads **and** writes on those tables, including ordinary readers
-and publication work. They are not scoped to a BU, marker or account. Conflicting
-already-held locks make acquisition fail immediately; the support transaction
-rolls back and exposes safe 503 for this PostgreSQL lock contention. A later
-bounded client retry may succeed after contention clears, or return 409 if the
-committed writer made the graph shared/ineligible.
+In particular, `notes` and `respondent_account_parties` have polymorphic targets.
+A concurrent writer can validate a target before cleanup deletes it and insert a
+note or association afterwards. Prior regression experiments reproduced dangling
+references in that ordering. Existing ownership/sharing checks inspect the state
+visible to cleanup; they do not prevent a subsequent write from changing it. The
+remaining row locks do not close this gap, even for the unchanged target-validating
+helpers. Arbitrary direct writers are not protected either.
 
-`NOWAIT` bounds **acquisition of these table locks only**, not total cleanup
-transaction/HTTP duration. The draft row lock, other row locks and graph work can
-still wait or take time. Locks remain held until commit/rollback. There is no pool
-admission aspect, pool-minus-one guarantee, endpoint-wide deadline or automatic
-retry. Accept the availability cost before enabling; monitor ordinary service
-health and time spent by cleanup/blocked work in the agreed environment.
-
-The supported concurrent polymorphic writers are the unchanged baseline
-`p_insert_notes` and `p_insert_respondent_account_parties` helpers and callers that
-perform equivalent target validation/read **in the same transaction as the write**,
-using the baseline READ COMMITTED transaction behavior rather than cached target
-existence. The note helper reads `respondent_accounts`; Respondent associations validate
-`parties`; Applicant associations validate `creditor_accounts`/`parties`. The locks
-therefore prevent validation reads while cleanup holds its graph locks, or refuse
-cleanup while a validating writer holds its target read lock. Existing foreign
-keys protect the remaining typed relationships.
-
-**Exclude direct INSERT/UPDATE into `notes` or `respondent_account_parties` that
-bypasses same-transaction target validation.** Their polymorphic targets lack
-foreign keys: table locks on the targets cannot protect an arbitrary writer that
-never accesses a target. No production helper, trigger or procedure is changed
-by this support lineage. The test/operations contract must exclude unsupported
-direct writers; if that cannot be accepted, obtain an explicit quiescence or
-cleanup-eligibility scope decision before enablement.
+This is an explicitly accepted test-cleanup limitation, not a guarantee provided
+by Fines or by an `afterEach` hook. Run cleanup after the test's state/timeline
+assertions and avoid overlapping writes where practical. Completion of browser
+assertions does not prove that asynchronous processing has finished. The user has
+accepted this risk without requiring a new isolated-environment prerequisite;
+any later change in that decision must be reconciled before changing the design.
+Production support remains disabled by default. No production helper, trigger or
+stored procedure is changed by this support lineage.
 
 ## Privileges, failures and operating prerequisites
 
-Verify the **actual deployed service role** can acquire ACCESS EXCLUSIVE locks on
-all three tables and perform the existing graph SELECT/DELETE operations. Disposable
-owner-role Testcontainers success does not establish deployed privileges. This
-change adds no grants or migrations; do not infer privileges from an HTTP 503 or
-change shared grants as a test setup step. Permission/syntax/constraint failures
-are not reclassified as retryable table-lock contention.
+Verify the actual deployed service role can perform the existing graph SELECT
+and DELETE operations. No additional explicit table-lock permission is required
+by this cleanup implementation. Disposable owner-role tests do not verify the
+deployed role; this change adds no grants or migrations and does not authorize
+shared grant changes as test setup.
 
-Enable only after operational acceptance of table-wide blocking, verified role
-capability, exclusion of bypass writers, and the
-[migration/consumer cutover checks](DRAFT_CASEFILE_TEST_CLEANUP.md#deployment-and-recovery).
-The actual-role checks and environment acceptance remain deployment prerequisites,
-not facts established by this candidate.
+The after hook retains every failed cleanup ledger entry until 204. Persistence
+unavailability can produce the existing safe 503. No special PostgreSQL lock
+contention-to-503 contract is added; other failures retain the normal service
+mapping and rollback behavior. Use bounded retries for transient storage/network
+failures, and retain/report an entry when retries are exhausted. A 409 requires
+eligibility investigation rather than retries that broaden scope.
 
-The after hook retains every failed cleanup ledger entry until 204. Use a finite
-retry budget/backoff for transient 503 or uncertain network outcomes; retain and
-report the entry when exhausted. Treat 409 as an eligibility investigation. After
-a successful or failed cleanup, the transaction releases its locks. No client retry
-may broaden the scope, edit the marker or delete rows directly to force success.
+Enable only for agreed synthetic non-live tests with the retained identity,
+marker and lifecycle checks and the [consumer cutover requirements](DRAFT_CASEFILE_TEST_CLEANUP.md#deployment-and-recovery).
+The previous requirements to accept table-wide blocking and acquire explicit
+table locks have been removed. Deployed read/delete capability, frontend cutover
+and recovery/broker verification remain separate requirements.
 
 ## Verification boundaries
 
 Backend Spring/PostgreSQL integration tests cover graph scope, rollback, legacy
-versions, siblings/references and both helper/cleanup transaction orderings.
-Cleanup-first tests observe blocked real target reads and verify commit versus
-rollback outcomes; writer-first tests verify refusal and safe retry/shared-graph
-conflict. These are disposable database observations, not deployed workload,
-actual-role or browser/broker proof. See [Testing](TESTING.md#synthetic-draft-casefile-cleanup)
-for commands and evidence ownership. Final run results belong in the current
-verification handoff; historical passing counts are not evidence for a new run.
+versions, siblings/references and same-draft publication/cleanup transaction
+ordering. A published-cleanup regression holds ordinary reader transactions open
+on the three target tables while cleanup completes on another connection. It
+failed with the previous table-wide locks and verifies the requested removal.
 
-## Final local verification — 28 October 2026
+The nine former helper/cleanup race-prevention tests and the four unit cases for
+the removed lock-error translator are retired with that protection. No passing
+result is claimed for preventing the accepted polymorphic-writer race. Retained
+consumer and failure-recording races still exercise the existing draft-row lock.
+These local tests do not establish deployed role privileges, browser recovery or
+broker behavior. See [Testing](TESTING.md#synthetic-draft-casefile-cleanup) for
+commands and evidence ownership.
 
-Verified with Java 21.0.11, Gradle 9.8.2, Docker 29.6.1 and disposable PostgreSQL 17,
-serially and offline. Runtime/SQL/framework source remains identical to tested
-`b974767`; subsequent changes are documentation only.
+## Verification record — lock removal, 28 October 2026
+
+The ordinary-reader regression first failed against `bc1ae57` because the prior
+explicit table locks rejected cleanup. After removal, the changed source passed:
 
 ```sh
-./gradlew test integration checkstyleMain checkstyleTest checkstyleIntegrationTest checkstyleFunctionalTest checkstyleOpenapi --offline --no-daemon
-./gradlew build jacocoTestReport -x dbUnitTest -x dbUnitTestParentTransitionFrameworkTest -x dbUnitTestFrameworkTest -x integration --offline --no-daemon
+./gradlew integration --tests '*DraftCasefilePublishedCleanupIntegrationTest' --tests '*DraftCasefileCleanupConsumerIntegrationTest' test --tests '*DraftCasefileCleanup*' --tests '*DraftCasefileTestScope*' checkstyleMain checkstyleTest checkstyleIntegrationTest --offline --no-daemon
 ```
 
-The first command passed in 4m53s: **673 unit tests passed; 571 integration tests
-were discovered, 561 passed and 10 were skipped**, with zero failures/errors.
-The skips are six queue-consumer and four queue integration tests requiring
-`RUN_SERVICE_BUS_TESTS=true` and a dedicated otherwise-unused Service Bus queue.
-They do not verify broker behavior. All five requested Checkstyle suites passed.
-The full integration run includes signed-bearer scope, rollback/retention,
-helper/cleanup and consumer races, and public `/`, `/health` and `/prometheus`.
+Result: **25 integration tests and 216 focused unit tests passed**, with zero
+failures/errors/skips; Main, Test and Integration Checkstyle passed. The full unit
+run subsequently passed **669 tests** with zero failures/errors/skips. The lower
+counts reflect retirement of the nine explicit-lock race-prevention cases and
+four translator unit cases, plus one new reader/cleanup regression.
 
-The second command passed in 2m37s, reran all 673 unit tests, and passed all six
-Checkstyle suites including smoke. Metadata/profile/selection regressions passed
-(106/16/176). Combined unit/integration JaCoCo reports were produced: 1,286 covered
-and 97 missed lines under the configured exclusions. Generation, compilation and
-packaging passed; the boot jar contains exactly one byte-identical bundle with
-51 unique schemas, 138 resolved internal references and DELETE-only cleanup.
-No retired evidence/admission classes were packaged. Generated output is not
-committed.
+The broader command below was still running at this update; its integration,
+database, build and coverage outcome is **not claimed complete**:
 
-The packaging exclusions **reuse separately passed unchanged-source evidence**;
-they are not waivers or claims that excluded tasks ran in that invocation.
-The full `./gradlew dbUnitTest --offline --no-daemon` previously passed in 21m12s
-at `b974767`: both fixed profiles, 84 fresh suite executions/39,278 assertions,
-31 registered upgrades/35,169 owner assertions, and both native framework
-matrices. All 114 test-owned container/volume pairs were verified absent.
-DEV-only replay is outside the non-live profile and is verified by non-live-dev.
-The migration/pgTAP trees and framework remain byte-identical to PO-10629;
-application-owned cleanup SQL is covered by the real PostgreSQL integration tests.
+```sh
+./gradlew test integration build jacocoTestReport --offline --no-daemon
+```
 
-Overall delivery remains **Not Agent Complete** under repository DoD. Actual
-service-role privileges, acceptance of table-wide blocking/supported writers,
-frontend evidence-route cutover, deployed recovery/accessibility and broker
-execution/current acceptance allocation, CI and human QA/release approval remain
-unverified. The [deployment record](DRAFT_CASEFILE_TEST_CLEANUP.md#deployment-and-recovery)
-distinguishes the user's migration non-application attestation from a DB audit.
+The earlier complete `bc1ae57` database/build verification is historical. Schema,
+stored procedures and database-owned pgTAP remain unchanged, but old results are
+not presented as a completed rerun of the revised application. Deployed graph
+read/delete privileges, frontend evidence-route cutover, real recovery/accessibility
+and dedicated-broker verification remain separate delivery requirements. Explicit
+table-lock privileges and acceptance of table-wide blocking are no longer required.
