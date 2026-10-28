@@ -9,7 +9,7 @@ import uk.gov.hmcts.opal.entity.DraftCasefileEntity;
 import uk.gov.hmcts.opal.entity.DraftCasefileStatus;
 import uk.gov.hmcts.opal.exception.DraftCasefileError;
 import uk.gov.hmcts.opal.repository.DraftCasefileRepository;
-import uk.gov.hmcts.opal.repository.PublicationEvidenceRepository;
+import uk.gov.hmcts.opal.repository.DraftCasefileCleanupRepository;
 
 import java.util.Optional;
 
@@ -22,7 +22,7 @@ public class DraftCasefileCleanupService {
     private final DraftCasefileTestScope scope;
     private final DraftCasefileRepository repository;
     private final DraftCasefileTestEligibility eligibility;
-    private final PublicationEvidenceRepository evidence;
+    private final DraftCasefileCleanupRepository graphs;
 
     @Transactional
     public void cleanup(Long draftCasefileId, String testRunReference) {
@@ -32,11 +32,23 @@ public class DraftCasefileCleanupService {
         }
         DraftCasefileEntity draft = found.orElseThrow();
         scope.requireOwnedRun(draft, testRunReference);
-        requireUnpublished(draft);
-        evidence.findObservation(draftCasefileId).ifPresent(observation ->
-            evidence.deleteObservation(draftCasefileId, observation.testRunReference()));
-        repository.delete(draft);
+        DraftCasefileCleanupRepository.Graph graph = null;
+        if (draft.getCasefileStatus() == DraftCasefileStatus.PUBLISHED) {
+            requireApproval(draft);
+            graphs.lockPublicationTargetsForCleanup();
+            graph = graphs.lockGraph(draft, testRunReference);
+        } else {
+            requireUnpublished(draft);
+        }
+        if (draft.getVersionNumber() == null) {
+            graphs.deleteUnversionedDraft(draftCasefileId);
+        } else {
+            repository.delete(draft);
+        }
         repository.flush();
+        if (graph != null) {
+            graphs.deleteGraph(graph);
+        }
     }
 
     private void requireUnpublished(DraftCasefileEntity draft) {
@@ -44,13 +56,24 @@ public class DraftCasefileCleanupService {
             throw conflict();
         }
         boolean unlinkedLifecycle = switch (draft.getCasefileStatus()) {
-            case SUBMITTED, REJECTED, RESUBMITTED, DELETED, PUBLISHING_FAILED -> true;
-            case PUBLISHING_PENDING, PUBLISHED -> false;
+            case SUBMITTED, REJECTED, RESUBMITTED, DELETED, PUBLISHING_FAILED, PUBLISHING_PENDING -> true;
+            case PUBLISHED -> false;
         };
         boolean submittedWithValidation = draft.getCasefileStatus() == DraftCasefileStatus.SUBMITTED
             && (draft.getValidatedDate() != null || draft.getValidatedBy() != null
                 || draft.getValidatedByName() != null);
         if (!unlinkedLifecycle || submittedWithValidation || !eligibility.isUnlinked(draft)) {
+            throw conflict();
+        }
+        if (draft.getCasefileStatus() == DraftCasefileStatus.PUBLISHING_PENDING) {
+            requireApproval(draft);
+        }
+    }
+
+    private void requireApproval(DraftCasefileEntity draft) {
+        if (draft.getValidatedDate() == null || draft.getValidatedBy() == null
+            || draft.getValidatedBy().isBlank() || draft.getValidatedByName() == null
+            || draft.getValidatedByName().isBlank() || draft.getValidatedBy().equals(draft.getSubmittedBy())) {
             throw conflict();
         }
     }

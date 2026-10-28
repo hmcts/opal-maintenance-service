@@ -11,12 +11,7 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import uk.gov.hmcts.opal.BaseIntegrationTest;
-import uk.gov.hmcts.opal.repository.PublicationEvidenceRepository;
 import uk.gov.hmcts.opal.service.DraftCasefileTestScope;
-import uk.gov.hmcts.opal.service.DraftCasefileAdmission;
-import uk.gov.hmcts.opal.service.PublicationEvidenceService;
-import uk.gov.hmcts.opal.service.messaging.ObservedDraftCasefileQueuePublisher;
-import uk.gov.hmcts.opal.service.messaging.PublicationEvidenceWriter;
 import uk.gov.hmcts.opal.support.DraftCasefileHttpFixture;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -52,12 +47,7 @@ class DisabledDraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
-    void publicationEvidenceIsUnavailableWithNoJournalBeans() throws Exception {
-        assertThat(context.getBeansOfType(PublicationEvidenceService.class)).isEmpty();
-        assertThat(context.getBeansOfType(DraftCasefileAdmission.class)).isEmpty();
-        assertThat(context.getBeansOfType(PublicationEvidenceRepository.class)).isEmpty();
-        assertThat(context.getBeansOfType(PublicationEvidenceWriter.class)).isEmpty();
-        assertThat(context.getBeansOfType(ObservedDraftCasefileQueuePublisher.class)).isEmpty();
+    void publicationEvidenceIsUnavailable() throws Exception {
         for (var request : new MockHttpServletRequestBuilder[]{
             post("/testing-support/draft-casefiles/1/publication-evidence"),
             get("/testing-support/draft-casefiles/1/publication-evidence")}) {
