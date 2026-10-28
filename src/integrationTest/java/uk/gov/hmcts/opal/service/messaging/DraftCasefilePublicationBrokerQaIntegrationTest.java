@@ -81,7 +81,8 @@ import static org.mockito.Mockito.when;
     "logging.level.org.springframework.jms=OFF", "logging.level.org.hibernate=OFF",
     "logging.level.uk.gov.hmcts.opal.support.publication.PublicationQaSettlementContainer=OFF"})
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@Sql({"/draft-casefile/reference-fixtures.sql", "/draft-casefile/cleanup-scope-fixtures.sql"})
+@Sql({"/draft-casefile/reference-fixtures.sql", "/draft-casefile/cleanup-scope-fixtures.sql",
+    "/draft-casefile/publication-qa-reference-fixtures.sql"})
 class DraftCasefilePublicationBrokerQaIntegrationTest extends BaseIntegrationTest {
     @Autowired
     private DataSource dataSource;
@@ -186,7 +187,8 @@ class DraftCasefilePublicationBrokerQaIntegrationTest extends BaseIntegrationTes
                             fixture.cleanupCaptured();
                         }
                         // Unconditional AFTER_TEST_METHOD @Sql would delete owned data even after join failure.
-                        new ResourceDatabasePopulator(new ClassPathResource("draft-casefile/cleanup-scope-cleanup.sql"))
+                        new ResourceDatabasePopulator(new ClassPathResource("draft-casefile/cleanup-scope-cleanup.sql"),
+                            new ClassPathResource("draft-casefile/publication-qa-reference-cleanup.sql"))
                             .execute(dataSource);
                     } catch (RuntimeException | AssertionError failure) {
                         throw new AssertionError("Owned publication fixture cleanup failed; investigation required");

@@ -49,6 +49,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -61,8 +62,10 @@ import static org.springframework.test.context.jdbc.Sql.ExecutionPhase.AFTER_TES
 @TestPropertySource(properties = {"spring.flyway.locations=classpath:db/migration/ddl", "opal.redis.enabled=false",
     "management.health.redis.enabled=false", "spring.jpa.open-in-view=false"})
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@Sql({"/draft-casefile/reference-fixtures.sql", "/draft-casefile/cleanup-scope-fixtures.sql"})
-@Sql(scripts = "/draft-casefile/cleanup-scope-cleanup.sql", executionPhase = AFTER_TEST_METHOD)
+@Sql({"/draft-casefile/reference-fixtures.sql", "/draft-casefile/cleanup-scope-fixtures.sql",
+    "/draft-casefile/publication-qa-reference-fixtures.sql"})
+@Sql(scripts = {"/draft-casefile/cleanup-scope-cleanup.sql",
+    "/draft-casefile/publication-qa-reference-cleanup.sql"}, executionPhase = AFTER_TEST_METHOD)
 class DraftCasefilePublicationQaIntegrationTest extends BaseIntegrationTest {
 
     @Autowired
@@ -280,7 +283,7 @@ class DraftCasefilePublicationQaIntegrationTest extends BaseIntegrationTest {
         transactions.assertCommitted("processing");
         assertPublicationLogs(published);
         clearInvocations(logging);
-        when(logging.personalDataAccessLogAsync(any())).thenReturn(true);
+        doReturn(true).when(logging).personalDataAccessLogAsync(any());
         fixture.assertHttpState(owned.id(), published, "Published");
         verifyNoInteractions(failures);
     }
@@ -299,7 +302,7 @@ class DraftCasefilePublicationQaIntegrationTest extends BaseIntegrationTest {
         assertEquals("Publication failed; contact support", failed.getStatusMessage());
         graph.assertUnchanged(owned.graphBefore());
         verifyNoInteractions(logging);
-        when(logging.personalDataAccessLogAsync(any())).thenReturn(true);
+        doReturn(true).when(logging).personalDataAccessLogAsync(any());
         fixture.assertHttpState(owned.id(), failed, "Publishing failed");
     }
 

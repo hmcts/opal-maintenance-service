@@ -486,6 +486,15 @@ prove the real procedure ran or that a partially created graph rolled back.
 Full graph, rollback and delivery-count claims require the corresponding
 integration/broker evidence.
 
+Both QA integration classes select schema-only Flyway locations. Their
+`publication-qa-reference-fixtures.sql` supplies the two global clearance
+defaults required by account insertion and Amount/Arrears metadata for the
+synthetic MAT Result. Configuration rows have explicit test-owned negative IDs
+and scoped cleanup; the shared synthetic Result is removed by the existing
+reference cleanup. Broker cleanup runs only after its listener has joined.
+These fixtures do not replace the real publication procedure or relax the
+successful-return, complete-graph, transaction or retry assertions.
+
 Use compatible existing non-live Maintenance and User Service deployments via
 `TEST_URL` and `OPAL_USER_SERVICE_API_URL`, real publication producer/consumer
 connectivity, and enabled scoped testing-support cleanup. Existing reference
