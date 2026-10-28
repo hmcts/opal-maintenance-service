@@ -236,7 +236,8 @@ connection settings. For a disposable emulator exposed on a mapped port,
 ```
 
 These tests consume their synthetic messages from the dedicated queue. They prove
-persistent ID-only publication, bounded connection failure, and that an accepted
+persistent publication of the four-field approval message, bounded connection failure,
+and that an accepted
 message survives a later database rollback without successful-decision logging.
 Do not point them at an application queue. Remove the test queue or disposable
 emulator after the run; keep credentials out of files and command arguments.
