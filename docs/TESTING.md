@@ -294,39 +294,115 @@ record why the baseline build was not run.
 
 ## Synthetic Draft Casefile cleanup
 
-The [cleanup guide](DRAFT_CASEFILE_TEST_CLEANUP.md) defines shared enablement,
-the HTTP contract and future Cypress capture/ledger handling. Service checks use
-synthetic data in disposable PostgreSQL 17 and signed JWT/local WireMock fixtures;
-no shared service or real account is required for these automated checks.
+The [cleanup guide](DRAFT_CASEFILE_TEST_CLEANUP.md) defines the dedicated default-off
+DELETE, identity/marker/lifecycle rules, pre-deletion assertions and durable ledger.
+The [published graph guide](PUBLISHED_DRAFT_CASEFILE_CLEANUP.md) inventories graph
+checks/deletions and the whole-table locking, real-role and supported-writer contract.
+Normal APIs supply state reads. There is no publication-evidence registration/read
+route, evidence schema, publisher instrumentation or pool admission aspect on this
+support lineage.
+
+Service checks use synthetic data in disposable PostgreSQL 17 with signed JWT/local
+WireMock fixtures. Docker is required for database-backed integration checks. These
+are reproducible commands, not a report that they ran on the current revision:
 
 ```bash
-./gradlew test --tests '*DraftCasefileCleanup*'
-./gradlew integration --tests '*DraftCasefileCleanup*' --tests '*DisabledDraftCasefileCleanup*'
+./gradlew test --tests '*DraftCasefileCleanup*' --tests '*DraftCasefileTestScope*'
+./gradlew integration --tests '*DraftCasefileCleanup*' --tests '*DisabledDraftCasefileCleanup*' --tests '*DraftCasefilePublishedCleanup*'
+./gradlew integration --tests '*DraftCasefileDecision*' --tests '*DraftCasefileReplace*'
 ./gradlew bundleOpenApi generateOpenApiValidationSchema
 ./gradlew openApiGenerate compileJava --no-daemon
 ./gradlew build --no-daemon
 ./gradlew jacocoTestReport
 ```
 
-The integration suites prove real POST-ID-to-DELETE behavior, caller/BU/run scope,
-lifecycle/publication rejection, embedded-data deletion, sibling/reference retention,
-rollback after a real flush, safe repeats and actual PostgreSQL locking-SELECT
-contention. Signed JWT cases verify bearer validation, User Service permission 21
-and submitter ownership, including another user cleaning their own draft. Disabled
-HTTP/runtime-doc tests distinguish authenticated 404 from anonymous 401. Missing IDs return 204 to authenticated callers.
-Unit tests cover enabled/disabled/default-off shared-flag behaviour and
-caller-derived ownership without additional environment or owner configuration. These are endpoint/application
-tests, rather than direct database schema assertions.
+The cleanup suites cover authentication, permission 21 in stored BU, latest submitter,
+exact marker, absent-ID 204, all eligible lifecycle states, shared/inconsistent/active
+graph refusal, snapshot integrity, legacy null versions, sibling/reference retention
+and atomic rollback. Disabled-route/runtime-doc checks distinguish authenticated 404
+from anonymous 401. Enabled/disabled publisher checks retain the base publisher,
+exercise real HTTP approval and verify one producer invocation and repeat refusal
+with mocked JMS transport. Separate route/runtime OpenAPI contract checks verify
+that evidence routes remain absent.
 
-No migration-specific boundary assertions required: cleanup adds no schema,
-routine or persistent SQL contract. Existing `draft_casefiles_pgtap_tests.sql` and
-`draft_casefiles_publication_link_pgtap_tests.sql` remain unchanged schema coverage;
-they do not prove endpoint deletion or rollback. Run the full build's `dbUnitTest`
-baseline and inspect its timings, PostgreSQL version and cleanup confirmation in
-`build/reports/dbUnitTest`. Do not infer execution from compilation or task presence.
-Functional/smoke suites require a separately running service; document any omitted
-external check, its setup and expected result. Do not enable cleanup or run it
-against shared data as part of routine local verification.
+`DraftCasefileCleanupConcurrencyIntegrationTest` calls the unchanged real note and
+Applicant/Respondent association helpers from independent transactions. It covers
+writer-first 503/rollback with later cleanup or sharing refusal, and cleanup-first
+blocked target reads followed by commit/missing-target refusal or rollback/writer
+success. It observes PostgreSQL locks using bounded coordination, verifies retained
+siblings/no dangling references and checks lock release. Pending delivery/failure
+races remain in `DraftCasefileCleanupConsumerIntegrationTest`. These tests do not
+support direct polymorphic writes that bypass same-transaction target validation.
+
+No migration-specific boundary assertions are required for this candidate: database
+schema, routines and database-owned pgTAP suites remain unchanged against the approved
+base. Application-owned graph SQL/transactions are covered by Spring integration
+checks. Run the unchanged `dbUnitTest` baseline and inspect PostgreSQL version,
+timings, selected profiles/history and disposable cleanup confirmation in
+`build/reports/dbUnitTest`. Migration-tree equality does not prove compatibility
+with retained databases that may have applied original-lineage V1_67–V1_69; see
+[release prerequisites](DRAFT_CASEFILE_TEST_CLEANUP.md#deployment-and-recovery).
+
+### FE/QA consumer cutover and acceptance evidence
+
+Read-only inspection of `opal-rm-frontend` at
+`977badf4e28c6e0f22ef54e0d907404815f6e955` found the PO-10626 consumer still uses
+publication-evidence registration/read and response-schema assertions. Before
+retiring the old routes or pairing these consumers with this backend, deliver and
+verify the FE cutover below, then run the real recovery journeys against the agreed
+compatible Maintenance/User services. The FE/QA delivery owner and acceptance owner
+must confirm the allocation; this backend change does not perform that cutover.
+Inspect and update together (all paths are relative to `opal-rm-frontend`):
+
+- `cypress/e2e/functional/opal/actions/checkAndValidateCase/draft-casefile-evidence.actions.ts`
+  and `cypress/e2e/functional/opal/actions/checkAndValidateCase/interfaces/draft-casefile-publication-evidence.interface.ts`.
+- `cypress/e2e/functional/opal/flows/checkAndValidateCase/draft-casefile-concurrency.flow.ts`
+  and `cypress/support/step_definitions/checkAndValidateCase/draft-casefile-concurrency.steps.ts`.
+- `cypress/component/checkAndValidateCase/concurrency-support.cy.ts` and the
+  `cypress/e2e/functional/opal/features/checkAndValidateCase/README.md` guidance.
+- `cypress/e2e/functional/opal/features/checkAndValidateCase/DraftCasefileConcurrency.feature`
+  and `cypress/e2e/functional/opal/features/checkAndValidateCase/DraftCasefileConcurrencyAccessibility.feature`,
+  whose publication-evidence step must be reconciled with the agreed allocation.
+  The functional feature still skips approval under `@PO10626RequiresPublishedCleanup`
+  and states pending/published cleanup is unavailable. Reconcile that stale dependency
+  only after the delivered cleanup and real approval/recovery run are verified.
+
+This is a backend handoff; those external files are not changed here. Preserve the
+real API mutation and response-drop/request-count machinery and replace evidence
+calls with normal GET/re-entry, identifier/version/lifecycle/snapshot and exactly
+one corresponding timeline-event assertions **before** scoped after-hook DELETE.
+Create through real UI/APIs, capture ID/owning inputter/exact marker early and retain
+failed cleanup entries until 204. Never substitute a stubbed successful mutation.
+Keep approve/reject/delete, PUT resubmit, definite failure, stale conflict and each
+material accessibility recovery state independently exercised.
+
+| Fact to prove | Evidence source and boundary |
+| --- | --- |
+| One browser PATCH/PUT and no automatic replay after response loss | FE request counting through completed normal GET/re-entry and accessibility recovery. Explicit retry scenarios have their own expected counts. |
+| Persisted decision/resubmission, current version, original ID, snapshot and one corresponding timeline event | Normal API recovery assertions before DELETE; backend decision/replacement and transaction tests separately support state/rollback behavior. |
+| One producer invocation for approval and repeat/stale refusal without another invocation | Decision/transaction tests verify publisher calls and state/rollback with a mocked publisher; enabled/disabled publisher integration tests execute the real service/base publisher with mocked JMS transport and verify one producer call plus repeat refusal. These prove their tested executions only. |
+| Broker acceptance, settlement/redelivery and one persisted published account graph | Separately labelled opt-in real-broker/consumer integration execution against a dedicated otherwise-unused queue. This does not imply exactly-once broker delivery. |
+| No duplicate producer sends in the deployed UI journey | Remains unmet unless the acceptance owner approves the proposed evidence allocation or separately scoped broker-observation capability is delivered. No broker monitor is added here. |
+
+Real-broker suites require `RUN_SERVICE_BUS_TESTS=true`, `TEST_SERVICEBUS_QUEUE`
+naming an agreed dedicated otherwise-unused `test-` queue, compatible existing
+Service Bus connection settings, and `TEST_SERVICEBUS_MAX_DELIVERIES` matching the
+provisioned queue's positive delivery limit for consumer dead-letter checks.
+`TEST_SERVICEBUS_AMQP_URI` optionally supplies a disposable emulator's mapped URI;
+keep any credentials private. Never reuse a shared stack queue for isolation-sensitive
+broker tests. Record their actual execution or skips separately from mocked producer
+checks. One browser request, one producer invocation, broker acceptance/redelivery
+and one published account are distinct facts. Backend support does not complete the
+full deployed UI E2E ticket; the current live acceptance mapping still requires
+acceptance-owner confirmation.
+
+Record exact revision, commands, test/failure/error/skipped counts, environment,
+elapsed time and safe report paths in the current verification handoff. Do not copy
+historical counts as new evidence. Functional/smoke/deployed FE tests need compatible
+running Maintenance/User services and synthetic prerequisites; actual-role lock
+capability and non-live blocking acceptance need explicit verification before
+support is enabled. List any unrun check, setup and expected outcome. Routine local
+verification must not clean, repair or rebuild shared data.
 
 ## Test design
 
