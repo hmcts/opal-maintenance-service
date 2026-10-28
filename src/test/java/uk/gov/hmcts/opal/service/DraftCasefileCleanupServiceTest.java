@@ -14,17 +14,14 @@ import org.springframework.security.access.AccessDeniedException;
 import uk.gov.hmcts.opal.authorisation.MaintenanceUser;
 import uk.gov.hmcts.opal.authorisation.MaintenanceUserService;
 import uk.gov.hmcts.opal.common.exception.OpalApiException;
-import uk.gov.hmcts.opal.dto.PublicationObservation;
 import uk.gov.hmcts.opal.entity.DraftCasefileEntity;
 import uk.gov.hmcts.opal.entity.DraftCasefileStatus;
 import uk.gov.hmcts.opal.exception.DraftCasefileError;
 import uk.gov.hmcts.opal.repository.DraftCasefileRepository;
-import uk.gov.hmcts.opal.repository.PublicationEvidenceRepository;
+import uk.gov.hmcts.opal.repository.DraftCasefileCleanupRepository;
 
-import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.Optional;
-import java.util.UUID;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -46,10 +43,10 @@ class DraftCasefileCleanupServiceTest {
     private static final String EMPTY_ACCOUNT = "{\"account_id\":null,\"account_number\":null}";
     private final MaintenanceUserService users = mock(MaintenanceUserService.class);
     private final DraftCasefileRepository repository = mock(DraftCasefileRepository.class);
-    private final PublicationEvidenceRepository evidence = mock(PublicationEvidenceRepository.class);
+    private final DraftCasefileCleanupRepository graphs = mock(DraftCasefileCleanupRepository.class);
     private final DraftCasefileCleanupService service = new DraftCasefileCleanupService(
         new DraftCasefileTestScope(users, new ObjectMapper()), repository,
-        new DraftCasefileTestEligibility(new ObjectMapper()), evidence);
+        new DraftCasefileTestEligibility(new ObjectMapper()), graphs);
 
     @BeforeEach
     void authoriseAutomation() {
@@ -67,11 +64,12 @@ class DraftCasefileCleanupServiceTest {
         ordered.verify(users).requireAuthorisedUser((short) 1, CREATE_MANAGE_DRAFT_CASEFILES);
         ordered.verify(repository).delete(draft);
         ordered.verify(repository).flush();
+        verifyNoInteractions(graphs);
     }
 
     @ParameterizedTest
     @EnumSource(value = DraftCasefileStatus.class,
-        names = {"REJECTED", "RESUBMITTED", "DELETED", "PUBLISHING_FAILED"})
+        names = {"REJECTED", "RESUBMITTED", "DELETED", "PUBLISHING_FAILED", "PUBLISHING_PENDING"})
     void cleansOwnedUnlinkedLifecycle(DraftCasefileStatus status) {
         DraftCasefileEntity draft = ownedDraft().toBuilder()
             .casefileStatus(status).validatedBy("BUU-CHECKER")
@@ -80,6 +78,17 @@ class DraftCasefileCleanupServiceTest {
         found(draft);
         service.cleanup(41L, RUN);
         verify(repository).delete(draft);
+        verify(repository).flush();
+        verifyNoInteractions(graphs);
+    }
+
+    @Test
+    void deletesLockedLegacyDraftRatherThanTreatingNullVersionAsNew() {
+        DraftCasefileEntity draft = ownedDraft().toBuilder().versionNumber(null).build();
+        found(draft);
+        service.cleanup(41L, RUN);
+        verify(graphs).deleteUnversionedDraft(41L);
+        verify(repository, never()).delete(any(DraftCasefileEntity.class));
         verify(repository).flush();
     }
 
@@ -91,15 +100,17 @@ class DraftCasefileCleanupServiceTest {
         assertNoDeletion();
     }
 
-    @Test
-    void rejectsDifferentStoredSubmitter() {
-        found(ownedDraft().toBuilder().submittedBy("BUU-OTHER").build());
+    @ParameterizedTest
+    @EnumSource(DraftCasefileStatus.class)
+    void rejectsDifferentStoredSubmitter(DraftCasefileStatus status) {
+        found(ownedDraft().toBuilder().casefileStatus(status).submittedBy("BUU-OTHER").build());
         assertDenied();
     }
 
-    @Test
-    void missingPermissionRejectsWithoutDeletion() {
-        found(ownedDraft());
+    @ParameterizedTest
+    @EnumSource(DraftCasefileStatus.class)
+    void missingPermissionRejectsWithoutDeletion(DraftCasefileStatus status) {
+        found(ownedDraft().toBuilder().casefileStatus(status).build());
         AccessDeniedException failure = new AccessDeniedException("Permission is required");
         when(users.requireAuthorisedUser((short) 1, CREATE_MANAGE_DRAFT_CASEFILES)).thenThrow(failure);
         assertThatThrownBy(() -> service.cleanup(41L, RUN)).isSameAs(failure);
@@ -197,34 +208,6 @@ class DraftCasefileCleanupServiceTest {
         verify(repository).delete(draft);
     }
 
-    @Test
-    void deletesAttachedObservationUsingItsPersistedMarkerAfterCurrentScopeCheck() {
-        DraftCasefileEntity draft = ownedDraft();
-        found(draft);
-        var observation = new PublicationObservation(UUID.randomUUID(), 41L, "E2E-fedcba9876543210", Instant.EPOCH);
-        when(evidence.findObservation(41L)).thenReturn(Optional.of(observation));
-        service.cleanup(41L, RUN);
-        var order = inOrder(users, repository, evidence);
-        order.verify(repository).findForCleanupById(41L);
-        order.verify(users).requireAuthorisedUser((short) 1, CREATE_MANAGE_DRAFT_CASEFILES);
-        order.verify(evidence).findObservation(41L);
-        order.verify(evidence).deleteObservation(41L, observation.testRunReference());
-        order.verify(repository).delete(draft);
-        order.verify(repository).flush();
-    }
-
-    @Test
-    void journalDeletionFailurePreventsDraftDeletion() {
-        found(ownedDraft());
-        var observation = new PublicationObservation(UUID.randomUUID(), 41L, RUN, Instant.EPOCH);
-        when(evidence.findObservation(41L)).thenReturn(Optional.of(observation));
-        var failure = new DataAccessResourceFailureException("Synthetic journal failure");
-        doThrow(failure).when(evidence).deleteObservation(41L, RUN);
-        assertThatThrownBy(() -> service.cleanup(41L, RUN)).isSameAs(failure);
-        verify(repository, never()).delete(any(DraftCasefileEntity.class));
-        verify(repository, never()).flush();
-    }
-
     private void found(DraftCasefileEntity draft) {
         when(repository.findForCleanupById(41L)).thenReturn(Optional.of(draft));
     }
@@ -248,9 +231,9 @@ class DraftCasefileCleanupServiceTest {
     }
 
     private void assertNoDeletion() {
-        verifyNoInteractions(evidence);
         verify(repository, never()).delete(any(DraftCasefileEntity.class));
         verify(repository, never()).flush();
+        verifyNoInteractions(graphs);
     }
 
     private static Stream<DraftCasefileEntity> publicationFields() {
@@ -297,6 +280,7 @@ class DraftCasefileCleanupServiceTest {
 
     private static DraftCasefileEntity ownedDraft() {
         return DraftCasefileEntity.builder().draftCasefileId(41L).businessUnitId((short) 1)
+            .versionNumber(0L)
             .submittedBy("BUU-1").casefileStatus(DraftCasefileStatus.SUBMITTED)
             .casefile("{\"respondent_account\":{\"remo_reference\":\"" + RUN + "\"}}")
             .casefileSnapshot("""

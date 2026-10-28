@@ -13,15 +13,7 @@ public final class DraftCasefileActions extends BaseStepDef {
             .when().put(testServiceUrl() + "/draft-casefiles/" + id);
     }
 
-    public Response registerPublicationEvidence(String token, long id, String marker) {
-        return authenticatedRequestWithoutReporting(token).header("Test-Run-Reference", marker)
-            .when().post(testServiceUrl() + "/testing-support/draft-casefiles/" + id + "/publication-evidence");
-    }
 
-    public Response publicationEvidence(String token, long id, String marker) {
-        return authenticatedRequestWithoutReporting(token).header("Test-Run-Reference", marker)
-            .when().get(testServiceUrl() + "/testing-support/draft-casefiles/" + id + "/publication-evidence");
-    }
 
     public Response userState(String token) {
         return authenticatedRequestWithoutReporting(token).when().get(userServiceUrl() + "/v2/users/0/state");

@@ -48,15 +48,12 @@ class RecordCheckerDecisionsStepDefTest {
     private final RecordCheckerDecisionsStepDef steps = steps(Map.of());
     private ObjectNode current;
     private ObjectNode originalRequest;
-    private ObjectNode registration;
     private int version;
-    private int registeredVersion = -1;
     private int testedCalls;
     private String problem;
     private Consumer<ObjectNode> createChange = node -> { };
     private Consumer<ObjectNode> replaceChange = node -> { };
     private Consumer<ObjectNode> decisionChange = node -> { };
-    private Consumer<ObjectNode> evidenceChange = node -> { };
 
     @BeforeEach
     void boundary() {
@@ -76,11 +73,9 @@ class RecordCheckerDecisionsStepDefTest {
         });
         when(actions.get(anyString(), eq(123L))).thenAnswer(call -> response(200, current, etag()));
         when(actions.decide(anyString(), eq(123L), anyString(), anyString())).thenAnswer(call -> {
-            if (registeredVersion >= 0) {
-                testedCalls++;
-                if (problem != null) {
-                    return problem(problem);
-                }
+            testedCalls++;
+            if (problem != null) {
+                return problem(problem);
             }
             JsonNode body = JSON.readTree(call.getArgument(2, String.class));
             String status = body.path("casefile_status").textValue();
@@ -101,18 +96,6 @@ class RecordCheckerDecisionsStepDefTest {
             version++;
             return response(200, current, etag());
         });
-        when(actions.registerPublicationEvidence(anyString(), eq(123L), anyString())).thenAnswer(call -> {
-            registeredVersion = version;
-            registration = evidence(0);
-            return response(201, registration, null);
-        });
-        when(actions.publicationEvidence(anyString(), eq(123L), anyString())).thenAnswer(call -> {
-            ObjectNode observed = evidence("PUBLISHING_PENDING".equals(current.path("casefile_status").asText())
-                || "PUBLISHED".equals(current.path("casefile_status").asText())
-                || "PUBLISHING_FAILED".equals(current.path("casefile_status").asText()) ? 1 : 0);
-            evidenceChange.accept(observed);
-            return response(200, observed, null);
-        });
         when(actions.delete(anyString(), eq(123L), anyString())).thenReturn(response(204, null, null));
         steps.resetScenario();
     }
@@ -128,15 +111,12 @@ class RecordCheckerDecisionsStepDefTest {
         steps.recordDecision(decision);
         steps.assertDecision();
         steps.deleteCreatedDraft(scenario);
-        assertThat(testedCalls).isEqualTo(1);
+        assertThat(testedCalls).isEqualTo("RESUBMITTED".equals(source) ? 2 : 1);
         ArgumentCaptor<String> body = ArgumentCaptor.forClass(String.class);
         InOrder order = inOrder(actions);
-        order.verify(actions).registerPublicationEvidence(eq("owner-token"), eq(123L), anyString());
-        order.verify(actions).get("owner-token", 123L);
         order.verify(actions).decide(eq("checker-token"), eq(123L), body.capture(),
             eq("\"" + expectedVersion + "\""));
         order.verify(actions).get("owner-token", 123L);
-        order.verify(actions).publicationEvidence(eq("owner-token"), eq(123L), anyString());
         order.verify(actions).delete(eq("owner-token"), eq(123L), anyString());
         ObjectNode expected = JSON.createObjectNode().put("business_unit_id", 44)
             .put("casefile_status", target(decision));
@@ -174,7 +154,7 @@ class RecordCheckerDecisionsStepDefTest {
     }
 
     @Test
-    void noBusinessUnitApprovalUsesDeniedActorAndOriginalOwnerForEvidenceAndCleanup() {
+    void noBusinessUnitApprovalUsesDeniedActorAndOriginalOwnerForReadbackAndCleanup() {
         steps.readyForChecking("SUBMITTED");
         problem = "forbidden";
         steps.deniedApproval();
@@ -182,7 +162,6 @@ class RecordCheckerDecisionsStepDefTest {
         steps.deleteCreatedDraft(scenario);
         verify(actions).userState("denied-token");
         verify(actions).decide(eq("denied-token"), eq(123L), anyString(), eq("\"0\""));
-        verify(actions).publicationEvidence(eq("owner-token"), eq(123L), anyString());
         verify(actions).delete(eq("owner-token"), eq(123L), anyString());
     }
 
@@ -198,7 +177,7 @@ class RecordCheckerDecisionsStepDefTest {
         verify(actions, times(2)).decide(eq("checker-token"), eq(123L), decisions.capture(), eq("\"0\""));
         assertThat(decisions.getAllValues().get(0)).contains("REJECTED");
         assertThat(decisions.getAllValues().get(1)).contains("PUBLISHING_PENDING");
-        assertThat(registeredVersion).isEqualTo(2);
+        assertThat(version).isEqualTo(2);
     }
 
     @Test
@@ -220,7 +199,7 @@ class RecordCheckerDecisionsStepDefTest {
     }
 
     @Test
-    void eachCreateHasNewMarkerRetainedThroughRegistrationAndCleanup() throws Exception {
+    void eachCreateHasNewMarkerRetainedThroughDecisionAndCleanup() throws Exception {
         steps.readyForChecking("SUBMITTED");
         steps.recordDecision("Reject");
         steps.assertDecision();
@@ -235,8 +214,6 @@ class RecordCheckerDecisionsStepDefTest {
         String second = JSON.readTree(requests.getAllValues().get(1)).at("/casefile/respondent_account/remo_reference")
             .asText();
         assertThat(first).matches("E2E-[0-9a-f]{16}").isNotEqualTo(second);
-        verify(actions).registerPublicationEvidence("owner-token", 123L, first);
-        verify(actions).publicationEvidence("owner-token", 123L, first);
         verify(actions).delete("owner-token", 123L, first);
     }
 
@@ -266,7 +243,6 @@ class RecordCheckerDecisionsStepDefTest {
             }
         };
         assertThatThrownBy(() -> steps.readyForChecking("RESUBMITTED")).isInstanceOf(AssertionError.class);
-        verify(actions, never()).registerPublicationEvidence(anyString(), anyLong(), anyString());
     }
 
     @Test
@@ -282,55 +258,23 @@ class RecordCheckerDecisionsStepDefTest {
     void resubmittedSetupRejectsIncorrectDerivedStatusLabel(String label) {
         replaceChange = body -> body.put("casefile_status_name", label);
         assertThatThrownBy(() -> steps.readyForChecking("RESUBMITTED")).isInstanceOf(AssertionError.class);
-        verify(actions, never()).registerPublicationEvidence(anyString(), anyLong(), anyString());
     }
 
     @Test
     void setupRejectionRequiresAuthenticatedCheckerHistory() {
         decisionChange = body -> ((ObjectNode) body.at("/timeline_data/1")).put("username", "Wrong Actor");
         assertThatThrownBy(steps::rejectedVersion).isInstanceOf(AssertionError.class);
-        verify(actions, never()).registerPublicationEvidence(anyString(), anyLong(), anyString());
     }
 
     @Test
-    void registrationMustNotChangeFullDraftOrEtag() {
+    void preDecisionReadMustNotChangeFullDraftOrEtag() {
         steps.readyForChecking("SUBMITTED");
-        when(actions.registerPublicationEvidence(anyString(), anyLong(), anyString())).thenAnswer(call -> {
+        when(actions.get(anyString(), anyLong())).thenAnswer(call -> {
             current.put("unexpected", "changed");
-            return response(201, evidence(0), null);
+            return response(200, current, etag());
         });
         assertThatThrownBy(() -> steps.recordDecision("Approve")).isInstanceOf(AssertionError.class);
         verify(actions, never()).decide(anyString(), anyLong(), anyString(), anyString());
-    }
-
-    @Test
-    void invalidRegistrationPreventsTestedPatch() {
-        steps.readyForChecking("SUBMITTED");
-        ObjectNode incomplete = evidence(0).put("evidence_complete", false);
-        when(actions.registerPublicationEvidence(anyString(), anyLong(), anyString()))
-            .thenReturn(response(201, incomplete, null));
-        assertThatThrownBy(() -> steps.recordDecision("Approve")).isInstanceOf(AssertionError.class);
-        verify(actions, never()).decide(anyString(), anyLong(), anyString(), anyString());
-    }
-
-    @ParameterizedTest
-    @ValueSource(strings = {"identity", "timestamp", "extraSend", "uncertain", "unfinished", "incomplete"})
-    void journalCannotBeDowngradedToAnySuccessfulRead(String change) {
-        steps.readyForChecking("SUBMITTED");
-        steps.recordDecision("Approve");
-        evidenceChange = body -> {
-            switch (change) {
-                case "identity" -> body.put("observation_id", "650e8400-e29b-41d4-a716-446655440000");
-                case "timestamp" -> body.put("registered_at", "2026-10-24T10:00:00Z");
-                case "extraSend" -> body.put("send_attempt_count", 2).put("acknowledged_send_count", 2);
-                case "uncertain" -> body.put("uncertain_send_count", 1).put("send_attempt_count", 2)
-                    .put("evidence_complete", false);
-                case "unfinished" -> body.put("unfinished_send_count", 1).put("send_attempt_count", 2)
-                    .put("evidence_complete", false);
-                default -> body.put("evidence_complete", false);
-            }
-        };
-        assertThatThrownBy(steps::assertDecision).isInstanceOf(AssertionError.class);
     }
 
     @ParameterizedTest
@@ -383,7 +327,6 @@ class RecordCheckerDecisionsStepDefTest {
             .hasMessageContaining("ambiguous").hasMessageNotContaining("private").hasNoCause();
         verify(actions, times(1)).decide(anyString(), anyLong(), anyString(), anyString());
         assertThatThrownBy(steps::assertForbidden).isInstanceOf(AssertionError.class);
-        verify(actions, never()).publicationEvidence(anyString(), anyLong(), anyString());
     }
 
     @Test
@@ -393,7 +336,6 @@ class RecordCheckerDecisionsStepDefTest {
         assertThatThrownBy(() -> steps.readyForChecking("RESUBMITTED")).isInstanceOf(AssertionError.class)
             .hasMessageContaining("ambiguous").hasNoCause();
         verify(actions, times(1)).replace(anyString(), anyLong(), anyString(), anyString());
-        verify(actions, never()).registerPublicationEvidence(anyString(), anyLong(), anyString());
     }
 
     @Test
@@ -507,7 +449,6 @@ class RecordCheckerDecisionsStepDefTest {
     void selfSubmissionMustMatchActualBusinessUnitUserId() {
         createChange = body -> body.put("submitted_by", "different-id");
         assertThatThrownBy(steps::ownSubmission).isInstanceOf(AssertionError.class);
-        verify(actions, never()).registerPublicationEvidence(anyString(), anyLong(), anyString());
     }
 
     @Test
@@ -529,7 +470,6 @@ class RecordCheckerDecisionsStepDefTest {
         steps.readyForChecking("SUBMITTED");
         when(actions.userState("denied-token")).thenReturn(response(200, user("denied-id", 44, 22), null));
         assertThatThrownBy(steps::deniedApproval).isInstanceOf(AssertionError.class);
-        verify(actions, never()).registerPublicationEvidence(anyString(), anyLong(), anyString());
     }
 
     @Test
@@ -551,16 +491,14 @@ class RecordCheckerDecisionsStepDefTest {
     }
 
     @Test
-    void ambiguousRegistrationCannotBeReplayedOrReachTestedPatch() {
+    void ambiguousDecisionCannotBeReplayed() {
         steps.readyForChecking("SUBMITTED");
-        when(actions.registerPublicationEvidence(anyString(), anyLong(), anyString()))
+        when(actions.decide(anyString(), anyLong(), anyString(), anyString()))
             .thenThrow(new IllegalStateException("private owner-token"));
         assertThatThrownBy(() -> steps.recordDecision("Approve")).isInstanceOf(AssertionError.class)
             .hasMessageContaining("ambiguous").hasNoCause();
         assertThatThrownBy(() -> steps.recordDecision("Approve")).isInstanceOf(AssertionError.class);
-        verify(actions, times(1)).registerPublicationEvidence(anyString(), anyLong(), anyString());
-        verify(actions, never()).decide(anyString(), anyLong(), anyString(), anyString());
-        verify(actions, never()).publicationEvidence(anyString(), anyLong(), anyString());
+        verify(actions, times(1)).decide(anyString(), anyLong(), anyString(), anyString());
     }
 
     @Test
@@ -569,15 +507,6 @@ class RecordCheckerDecisionsStepDefTest {
         problem = "forbidden";
         steps.deniedApproval();
         version++;
-        assertThatThrownBy(steps::assertForbidden).isInstanceOf(AssertionError.class);
-    }
-
-    @Test
-    void negativeResponseStillRequiresCompleteZeroJournal() {
-        steps.readyForChecking("SUBMITTED");
-        problem = "forbidden";
-        steps.deniedApproval();
-        evidenceChange = body -> body.put("send_attempt_count", 1).put("acknowledged_send_count", 1);
         assertThatThrownBy(steps::assertForbidden).isInstanceOf(AssertionError.class);
     }
 
@@ -612,11 +541,9 @@ class RecordCheckerDecisionsStepDefTest {
         assertThat(testedCalls).isEqualTo(1);
         InOrder order = inOrder(actions);
         order.verify(actions).userState("denied-token");
-        order.verify(actions).registerPublicationEvidence(eq("owner-token"), eq(123L), anyString());
         order.verify(actions).get("owner-token", 123L);
         order.verify(actions).decide(eq("denied-token"), eq(123L), anyString(), eq("\"0\""));
         order.verify(actions).get("owner-token", 123L);
-        order.verify(actions).publicationEvidence(eq("owner-token"), eq(123L), anyString());
         order.verify(actions).delete(eq("owner-token"), eq(123L), anyString());
     }
 
@@ -648,7 +575,6 @@ class RecordCheckerDecisionsStepDefTest {
 
         assertThatThrownBy(steps::deniedApproval).isInstanceOf(AssertionError.class)
             .hasMessageNotContaining("private").hasMessageNotContaining("denied-id");
-        verify(actions, never()).registerPublicationEvidence(anyString(), anyLong(), anyString());
         verify(actions, never()).decide(anyString(), anyLong(), anyString(), anyString());
     }
 
@@ -749,12 +675,6 @@ class RecordCheckerDecisionsStepDefTest {
             entries.addObject().put("permission_id", permission);
         }
         return state;
-    }
-
-    private ObjectNode evidence(int count) {
-        return JSON.createObjectNode().put("observation_id", "550e8400-e29b-41d4-a716-446655440000")
-            .put("registered_at", DATE).put("send_attempt_count", count).put("acknowledged_send_count", count)
-            .put("uncertain_send_count", 0).put("unfinished_send_count", 0).put("evidence_complete", true);
     }
 
     private Response problem(String kind) {

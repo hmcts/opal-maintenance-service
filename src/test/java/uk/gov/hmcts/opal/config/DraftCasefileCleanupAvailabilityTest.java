@@ -1,32 +1,22 @@
 package uk.gov.hmcts.opal.config;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
-import org.springframework.jdbc.core.JdbcTemplate;
 import uk.gov.hmcts.opal.authorisation.MaintenanceUserService;
 import uk.gov.hmcts.opal.controllers.TestingSupportDraftCasefileController;
 import uk.gov.hmcts.opal.repository.DraftCasefileRepository;
-import uk.gov.hmcts.opal.repository.PublicationEvidenceRepository;
-import uk.gov.hmcts.opal.service.DraftCasefileCleanupService;
-import uk.gov.hmcts.opal.service.DraftCasefileAdmission;
-import uk.gov.hmcts.opal.service.DraftCasefileTestEligibility;
+import uk.gov.hmcts.opal.repository.DraftCasefileCleanupRepository;
 import uk.gov.hmcts.opal.service.DraftCasefileTestScope;
-import uk.gov.hmcts.opal.service.PublicationEvidenceService;
-import uk.gov.hmcts.opal.service.messaging.DraftCasefileQueuePublisher;
-import uk.gov.hmcts.opal.service.messaging.DraftCasefileQueuePublisherImpl;
-import uk.gov.hmcts.opal.service.messaging.ObservedDraftCasefileQueuePublisher;
-import uk.gov.hmcts.opal.service.messaging.PublicationEvidenceWriter;
-
-import java.time.Clock;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
+import uk.gov.hmcts.opal.service.DraftCasefileTestEligibility;
+import uk.gov.hmcts.opal.service.DraftCasefileCleanupService;
 
 class DraftCasefileCleanupAvailabilityTest {
 
@@ -35,14 +25,7 @@ class DraftCasefileCleanupAvailabilityTest {
         .withBean(MaintenanceUserService.class, () -> mock(MaintenanceUserService.class))
         .withBean(DraftCasefileRepository.class, () -> mock(DraftCasefileRepository.class))
         .withBean(ObjectMapper.class, ObjectMapper::new)
-        .withBean(JdbcTemplate.class, () -> mock(JdbcTemplate.class))
-        .withBean(Clock.class, Clock::systemUTC)
-        .withBean(HikariDataSource.class, () -> {
-            HikariDataSource pool = new HikariDataSource();
-            pool.setMaximumPoolSize(10);
-            return pool;
-        })
-        .withBean(DraftCasefileQueuePublisherImpl.class, () -> mock(DraftCasefileQueuePublisherImpl.class));
+        .withBean(DraftCasefileCleanupRepository.class, () -> mock(DraftCasefileCleanupRepository.class));
 
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
@@ -53,15 +36,6 @@ class DraftCasefileCleanupAvailabilityTest {
                 assertThat(context.getBeansOfType(TestingSupportDraftCasefileController.class))
                     .hasSize(enabled ? 1 : 0);
                 assertThat(context.getBeansOfType(DraftCasefileCleanupService.class)).hasSize(enabled ? 1 : 0);
-                assertThat(context.getBeansOfType(DraftCasefileTestScope.class)).hasSize(enabled ? 1 : 0);
-                assertThat(context.getBeansOfType(DraftCasefileAdmission.class)).hasSize(enabled ? 1 : 0);
-                assertThat(context.getBeansOfType(PublicationEvidenceService.class)).hasSize(enabled ? 1 : 0);
-                assertThat(context.getBeansOfType(PublicationEvidenceRepository.class)).hasSize(enabled ? 1 : 0);
-                assertThat(context.getBeansOfType(PublicationEvidenceWriter.class)).hasSize(enabled ? 1 : 0);
-                assertThat(context.getBeansOfType(ObservedDraftCasefileQueuePublisher.class)).hasSize(enabled ? 1 : 0);
-                assertThat(context.getBean(DraftCasefileQueuePublisher.class))
-                    .isInstanceOf(enabled ? ObservedDraftCasefileQueuePublisher.class
-                        : DraftCasefileQueuePublisherImpl.class);
             });
     }
 
@@ -71,20 +45,12 @@ class DraftCasefileCleanupAvailabilityTest {
             assertThat(context).hasNotFailed();
             assertThat(context).doesNotHaveBean(TestingSupportDraftCasefileController.class);
             assertThat(context).doesNotHaveBean(DraftCasefileCleanupService.class);
-            assertThat(context).doesNotHaveBean(DraftCasefileTestScope.class);
-            assertThat(context).doesNotHaveBean(DraftCasefileAdmission.class);
-            assertThat(context).doesNotHaveBean(PublicationEvidenceService.class);
-            assertThat(context).doesNotHaveBean(PublicationEvidenceRepository.class);
-            assertThat(context).doesNotHaveBean(PublicationEvidenceWriter.class);
-            assertThat(context).doesNotHaveBean(ObservedDraftCasefileQueuePublisher.class);
         });
     }
 
     @Configuration(proxyBeanMethods = false)
     @Import({TestingSupportDraftCasefileController.class, DraftCasefileCleanupService.class,
-        DraftCasefileTestScope.class, DraftCasefileTestEligibility.class, PublicationEvidenceService.class,
-        PublicationEvidenceRepository.class, PublicationEvidenceWriter.class,
-        ObservedDraftCasefileQueuePublisher.class, DraftCasefileAdmission.class})
+        DraftCasefileTestScope.class, DraftCasefileTestEligibility.class})
     static class TestConfiguration {
     }
 }
