@@ -72,7 +72,6 @@ class DraftCasefileCheckerQaIntegrationTest extends BaseIntegrationTest {
 
     private static final JsonMapper JSON = JsonMapper.builder().build();
     private static final String DRAFT_PATH = "/draft-casefiles/{id}";
-    private static final String EVIDENCE_PATH = "/testing-support/draft-casefiles/{id}/publication-evidence";
     private static final String REASON = "Synthetic checker correction required";
     private static final String ACTOR_NAME = "Synthetic Submitter";
     private static final Permission CREATE = new Permission(21L, "Create and Manage Draft Casefiles");
@@ -102,7 +101,7 @@ class DraftCasefileCheckerQaIntegrationTest extends BaseIntegrationTest {
         }
         State before = state(draft);
         assertThat(before.body().path("casefile_status").asString()).isEqualTo(source);
-        final JsonNode registered = register(draft, before);
+
         final Instant earliest = Instant.now();
         MockHttpServletResponse response = decision(draft, checker(), before.etag(), target)
             .andExpect(status().isOk()).andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
@@ -135,7 +134,7 @@ class DraftCasefileCheckerQaIntegrationTest extends BaseIntegrationTest {
             assertThat(utcTimestamp(result.path("validated_date"))).isEqualTo(decidedAt);
             assertThat(after.entity().getStatusMessage()).isNull();
             assertThat(result.path("status_message").isNull()).isTrue();
-            assertEvidence(draft, registered, 1, 1, 0, true);
+
             verify(delegate, times(1)).publish(argThat(message -> message.draftCasefileId().equals(draft.id())));
         } else {
             assertThat(after.entity().getStatusMessage()).isEqualTo(REASON);
@@ -146,7 +145,7 @@ class DraftCasefileCheckerQaIntegrationTest extends BaseIntegrationTest {
             for (String field : new String[]{"validated_by", "validated_by_name", "validated_date"}) {
                 assertThat(result.get(field)).as(field).isEqualTo(before.body().get(field));
             }
-            assertEvidence(draft, registered, 0, 0, 0, true);
+
             verifyNoInteractions(delegate);
         }
     }
@@ -186,10 +185,10 @@ class DraftCasefileCheckerQaIntegrationTest extends BaseIntegrationTest {
 
     @Test
     @Timeout(20)
-    void actualTransportFailureRollsBackApprovalAndRecordsUncertainty() throws Exception {
+    void actualTransportFailureRollsBackApproval() throws Exception {
         OwnedDraft draft = submit(owner());
         State before = state(draft);
-        final JsonNode registered = register(draft, before);
+
         clearInvocations(logging);
         AtomicBoolean transportFailed = new AtomicBoolean();
         // Retain the bound socket throughout PATCH: TCP connects but no AMQP peer completes the handshake.
@@ -222,9 +221,9 @@ class DraftCasefileCheckerQaIntegrationTest extends BaseIntegrationTest {
         // Check before ordinary GET can emit its legitimate consultation log.
         verifyNoInteractions(logging);
         assertUnchanged(draft, before);
-        assertEvidence(draft, registered, 1, 0, 1, false);
+
         verify(delegate, times(1)).publish(argThat(message -> message.draftCasefileId().equals(draft.id())));
-        // Uncertainty records a failed acknowledgement; it does not establish non-delivery.
+        // A failed acknowledgement does not establish non-delivery.
     }
 
     private OwnedDraft submit(OpalJwtAuthenticationToken creator) throws Exception {
@@ -284,48 +283,18 @@ class DraftCasefileCheckerQaIntegrationTest extends BaseIntegrationTest {
         return new State(JSON.readTree(response.getContentAsString()), entity, etag);
     }
 
-    private JsonNode register(OwnedDraft draft, State before) throws Exception {
-        JsonNode registered = JSON.readTree(mvc.perform(post(EVIDENCE_PATH, draft.id()).with(authentication(owner()))
-            .header("Test-Run-Reference", draft.marker())).andExpect(status().isCreated())
-            .andReturn().getResponse().getContentAsString());
-        assertThat(registered.propertyNames()).containsExactlyInAnyOrder("observation_id", "registered_at",
-            "send_attempt_count", "acknowledged_send_count", "uncertain_send_count", "unfinished_send_count",
-            "evidence_complete");
-        UUID.fromString(registered.path("observation_id").asString());
-        utcTimestamp(registered.path("registered_at"));
-        assertCounts(registered, 0, 0, 0, true);
-        assertUnchanged(draft, before);
-        return registered;
-    }
 
-    private void assertEvidence(OwnedDraft draft, JsonNode registered, int attempts, int acknowledged, int uncertain,
-                                boolean complete) throws Exception {
-        JsonNode current = JSON.readTree(mvc.perform(get(EVIDENCE_PATH, draft.id()).with(authentication(owner()))
-            .header("Test-Run-Reference", draft.marker())).andExpect(status().isOk())
-            .andReturn().getResponse().getContentAsString());
-        assertThat(current.propertyNames()).containsExactlyInAnyOrderElementsOf(registered.propertyNames());
-        assertThat(current.get("observation_id")).isEqualTo(registered.get("observation_id"));
-        assertThat(current.get("registered_at")).isEqualTo(registered.get("registered_at"));
-        assertCounts(current, attempts, acknowledged, uncertain, complete);
-    }
 
-    private void assertCounts(JsonNode observation, int attempts, int acknowledged, int uncertain, boolean complete) {
-        assertThat(observation.path("send_attempt_count").intValue()).isEqualTo(attempts);
-        assertThat(observation.path("acknowledged_send_count").intValue()).isEqualTo(acknowledged);
-        assertThat(observation.path("uncertain_send_count").intValue()).isEqualTo(uncertain);
-        assertThat(observation.path("unfinished_send_count").intValue()).isZero();
-        assertThat(observation.path("evidence_complete").booleanValue()).isEqualTo(complete);
-    }
 
     private void assertDeniedDecision(OwnedDraft draft, OpalJwtAuthenticationToken caller, String etag,
                                       int expectedStatus, String type) throws Exception {
         State before = state(draft);
-        final JsonNode registered = register(draft, before);
+
         clearInvocations(logging);
         assertProblem(decision(draft, caller, etag, "PUBLISHING_PENDING"), expectedStatus, type, draft);
         verifyNoInteractions(logging, delegate);
         assertUnchanged(draft, before);
-        assertEvidence(draft, registered, 0, 0, 0, true);
+
         verifyNoInteractions(delegate);
     }
 

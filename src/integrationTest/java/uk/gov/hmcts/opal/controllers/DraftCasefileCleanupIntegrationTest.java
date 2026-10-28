@@ -24,6 +24,7 @@ import org.springframework.test.context.jdbc.Sql;
 import org.springframework.test.context.jdbc.SqlMergeMode;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -397,9 +398,22 @@ class DraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    void authenticatedPublicationEvidenceRoutesAreAbsent() throws Exception {
+        for (var request : new MockHttpServletRequestBuilder[]{
+            post("/testing-support/draft-casefiles/1/publication-evidence"),
+            get("/testing-support/draft-casefiles/1/publication-evidence")}) {
+            mockMvc.perform(request.with(authentication(DraftCasefileHttpFixture.token((short) 1)))
+                    .header("Test-Run-Reference", RUN))
+                .andExpect(status().isNotFound());
+        }
+    }
+
+    @Test
     void runtimeDocumentationIncludesConditionalDeleteContract() throws Exception {
         String body = mockMvc.perform(get("/v3/api-docs")).andExpect(status().isOk())
             .andReturn().getResponse().getContentAsString();
+        assertThat(objectMapper.readTree(body).path("paths")
+            .has("/testing-support/draft-casefiles/{draft_casefile_id}/publication-evidence")).isFalse();
         JsonNode operation = objectMapper.readTree(body)
             .at("/paths/~1testing-support~1draft-casefiles~1{draft_casefile_id}/delete");
         assertThat(operation.isObject()).isTrue();

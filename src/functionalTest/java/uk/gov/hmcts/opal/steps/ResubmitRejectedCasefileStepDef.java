@@ -23,7 +23,6 @@ import uk.gov.hmcts.opal.actions.DraftCasefileActions;
 import uk.gov.hmcts.opal.assertions.DraftCasefileDecisionAssertions;
 import uk.gov.hmcts.opal.assertions.DraftCasefileResubmissionAssertions;
 import uk.gov.hmcts.opal.assertions.DraftCasefileRetrievalAssertions;
-import uk.gov.hmcts.opal.assertions.PublicationEvidenceAssertions;
 import uk.gov.hmcts.opal.data.DraftCasefileRequestFactory;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -141,18 +140,7 @@ public class ResubmitRejectedCasefileStepDef {
 
     private void replace(Actor actor, boolean invalid, boolean differentUnit) {
         requireOwned();
-        require(!owned.observationAttempted && !owned.putAttempted, "Tested PUT and registration must not replay");
-        owned.observationAttempted = true;
-        Response registration = mutation(() -> actions.registerPublicationEvidence(creator.token, owned.id,
-            owned.marker));
-        require(registration.statusCode() == 201,
-            "Publication registration requires HTTP 201; actual HTTP status " + registration.statusCode());
-        try {
-            owned.registration = PublicationEvidenceAssertions.registered(registration);
-        } catch (AssertionError exception) {
-            throw new AssertionError("Publication registration contract failed; actual HTTP status "
-                + registration.statusCode());
-        }
+        require(!owned.putAttempted, "Tested PUT must not replay");
         DraftCasefileDecisionAssertions.unchanged(call(() -> actions.get(creator.token, owned.id)),
             owned.baseline, owned.etag);
         owned.correctedRequest = correction(invalid, differentUnit);
@@ -161,7 +149,7 @@ public class ResubmitRejectedCasefileStepDef {
         owned.ambiguous = true;
         owned.response = mutation(() -> actions.replace(actor.token, owned.id, owned.correctedRequest, owned.etag));
         if (owned.response.statusCode() == 200) {
-            // Only known eligible inputters can gain cleanup and journal authority on confirmed success.
+            // Only known eligible inputters can gain cleanup authority on confirmed success.
             if (actor == creator || actor == checker) {
                 owned.owner = actor;
             }
@@ -190,7 +178,7 @@ public class ResubmitRejectedCasefileStepDef {
         return put.toString();
     }
 
-    @Then("the corrected casefile is persisted with the authenticated latest submitter and no publication")
+    @Then("the corrected casefile is persisted with the authenticated latest submitter")
     public void assertResubmitted() {
         requireTested();
         JsonNode after = DraftCasefileResubmissionAssertions.resubmitted(owned.response, owned.baseline,
@@ -199,24 +187,23 @@ public class ResubmitRejectedCasefileStepDef {
             "Resubmission must numerically advance the strong ETag");
         DraftCasefileDecisionAssertions.unchanged(call(() -> actions.get(owned.owner.token, owned.id)),
             after, owned.response.header("ETag"));
-        noPublication();
         owned.resubmitted = after;
         owned.resubmittedEtag = owned.response.header("ETag");
     }
 
-    @Then("a safe validation problem preserves the complete rejected casefile and no publication")
+    @Then("a safe validation problem preserves the complete rejected casefile")
     public void assertInvalid() {
         unchanged();
         DraftCasefileResubmissionAssertions.invalidContent(owned.response, owned.marker);
     }
 
-    @Then("a safe denied problem preserves the complete rejected casefile and no publication")
+    @Then("a safe denied problem preserves the complete rejected casefile")
     public void assertDenied() {
         unchanged();
         DraftCasefileDecisionAssertions.safeProblem(owned.response, 403, "forbidden", owned.marker);
     }
 
-    @Then("a safe ownership conflict preserves the complete rejected casefile and no publication")
+    @Then("a safe ownership conflict preserves the complete rejected casefile")
     public void assertConflict() {
         unchanged();
         DraftCasefileDecisionAssertions.safeProblem(owned.response, 409, "resource-conflict", owned.marker);
@@ -226,13 +213,8 @@ public class ResubmitRejectedCasefileStepDef {
         requireTested();
         DraftCasefileDecisionAssertions.unchanged(call(() -> actions.get(owned.owner.token, owned.id)),
             owned.baseline, owned.etag);
-        noPublication();
     }
 
-    private void noPublication() {
-        PublicationEvidenceAssertions.noSend(call(() -> actions.publicationEvidence(owned.owner.token, owned.id,
-            owned.marker)), owned.registration);
-    }
 
     @Then("the latest submitter cannot check its own resubmitted work")
     public void selfCheckDenied() {
@@ -244,7 +226,6 @@ public class ResubmitRejectedCasefileStepDef {
             owned.resubmittedEtag));
         DraftCasefileDecisionAssertions.unchanged(call(() -> actions.get(checker.token, owned.id)),
             owned.resubmitted, owned.resubmittedEtag);
-        noPublication();
         DraftCasefileDecisionAssertions.safeProblem(response, 403, "forbidden", owned.marker);
     }
 
@@ -395,8 +376,8 @@ public class ResubmitRejectedCasefileStepDef {
 
     private void requireTested() {
         requireOwned();
-        require(owned.putAttempted && owned.response != null && owned.registration != null,
-            "A completed PUT and registered observation are required");
+        require(owned.putAttempted && owned.response != null,
+            "A completed PUT and rejected baseline are required");
     }
 
     private String configured(String variable, String fallback) {
@@ -479,8 +460,6 @@ public class ResubmitRejectedCasefileStepDef {
         private String correctedRequest;
         private JsonNode baseline;
         private String etag;
-        private JsonNode registration;
-        private boolean observationAttempted;
         private boolean putAttempted;
         private boolean ambiguous;
         private Response response;
