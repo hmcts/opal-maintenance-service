@@ -402,3 +402,78 @@ ext.selectDbUpgradeScenarios = { List scenarios, File repository, Map options ->
     full("Comparison evidence unavailable: ${problem.class.simpleName}".toString())
   }
 }
+
+// Frankie Moran — parent-transition maintenance — 22/10/2026.
+// A retained-parent claim requires complete local evidence; full replay is not a fallback.
+ext.selectDbParentTransition = { List scenarios, File repository, Map options ->
+  if (!options.comparisonRef) {
+    throw new GradleException('Actual-parent transition requires dbUnitTestComparisonRef')
+  }
+  def selection = project.ext.selectDbUpgradeScenarios(scenarios, repository,
+    options + [mode:'full', environment:[:]])
+  if (selection.historyValidation.status != 'PASS' || !selection.baseSha ||
+      selection.mergeBaseSha != selection.baseSha) {
+    throw new GradleException("Actual-parent comparison unavailable: ${selection.fallbackReason}")
+  }
+  def checkedGit = { List arguments ->
+    def query = localGit(repository, arguments)
+    if (query.exitCode != 0 || !query.stderr.isBlank()) {
+      throw new GradleException('Cannot verify actual-parent local Git provenance')
+    }
+    query.stdout
+  }
+  def parentText = checkedGit(['show','-s','--format=%P',selection.testedSourceSha]).trim()
+  def testedParents = parentText ? parentText.split(' ') as List : []
+  def testedHeadTree = checkedGit(['rev-parse','--verify',"${selection.testedSourceSha}^{tree}".toString()]).trim()
+  if (!testedParents.every { it ==~ /[0-9a-f]{40}/ } || !(testedHeadTree ==~ /[0-9a-f]{40}/)) {
+    throw new GradleException('Cannot identify actual-parent tested Git parents and tree')
+  }
+  boolean headInventory = selection.baseSha == selection.testedSourceSha
+  if (!headInventory && testedParents != [selection.baseSha]) {
+    throw new GradleException('Actual-parent comparison must be tested HEAD or its sole immediate parent')
+  }
+  def overlayPaths = [] as Set
+  [['diff','--name-only','--no-renames','-z','--'],
+   ['diff','--cached','--name-only','--no-renames','-z','--'],
+   ['ls-files','--others','--exclude-standard','-z']].each { arguments ->
+    overlayPaths.addAll(checkedGit(arguments).split('\u0000').findAll { it })
+  }
+  // Ignored files can still be executable inputs. Bound provenance to the same
+  // inventory, validated declarations, suite discovery and fixed support as the runner.
+  def headPaths = checkedGit(['ls-tree','-r','--name-only','-z',selection.testedSourceSha])
+    .split('\u0000').findAll { it }.toSet()
+  def relevantPaths = selection.historyValidation.testedInventory.collect {
+    migrationPrefix + it.path
+  } as Set
+  scenarios.each { scenario ->
+    relevantPaths.addAll(project.ext.validateDbUpgradeInputs(scenario, repository))
+  }
+  project.fileTree(new File(repository,'src/dbUnitTest')) {
+    include '**/*_pgtap_tests.sql', '**/*_unit_tests.sql'
+    exclude 'support/**', 'upgradeCases/**', 'framework/**'
+  }.files.each { suite ->
+    relevantPaths.add(repository.toPath().relativize(suite.toPath()).toString().replace(File.separator,'/'))
+  }
+  if (new File(repository,'src/dbUnitTest/support/manifest.json').exists()) {
+    project.ext.dbUpgradeSupportFiles(repository).each { support ->
+      relevantPaths.add(repository.toPath().relativize(support.toPath()).toString().replace(File.separator,'/'))
+    }
+  }
+  relevantPaths.findAll { path -> !headPaths.contains(path) && new File(repository,path).isFile() }
+    .each { overlayPaths.add(it) }
+  def candidateMode = overlayPaths.isEmpty() ? 'committed HEAD' : 'HEAD plus index/worktree overlay'
+  // The full selector has already validated explicit locations without replacing invalid values.
+  def locations = options.containsKey('selectedLocations') ? options.selectedLocations :
+    ['ddl','data/allEnvs','data/dev']
+  def selected = { entry -> locations.any { entry.path.startsWith(it + '/') } }
+  def base = selection.historyValidation.comparisonInventory.findAll(selected)
+  def tested = selection.historyValidation.testedInventory.findAll(selected)
+  if (base.isEmpty() || base.size() > tested.size() || base != tested.take(base.size())) {
+    throw new GradleException('Actual-parent selected inventory must be an exact nonempty prefix')
+  }
+  selection + [baseEntries:base, testedEntries:tested, additions:tested.drop(base.size()),
+    parentProvenance:(headInventory ? 'HEAD inventory' : 'sole immediate Git parent') + ' to ' + candidateMode,
+    comparisonKind:headInventory ? 'head-inventory' : 'sole-immediate-parent',
+    candidateMode:candidateMode, overlayPaths:overlayPaths.toList().sort(),
+    testedHeadTree:testedHeadTree, testedParents:testedParents]
+}

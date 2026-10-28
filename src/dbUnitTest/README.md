@@ -223,7 +223,9 @@ and [SQL suite ownership](../../docs/TESTING.md#pgtap-suite-layout):
 - `./gradlew dbUnitTestProfileTest --no-daemon` checks fixed profiles, failure aggregation and resolved runtime agreement without Docker.
 - `./gradlew dbUnitTestSelectionTest --no-daemon` checks selection regressions.
 - `./gradlew dbUnitTestContractTest --no-daemon` checks compact declarations and shared support manifests.
-- `./gradlew dbUnitTestFrameworkTest --no-daemon` checks disposable orchestration regressions.
+- `./gradlew dbUnitTestFrameworkTest --no-daemon` checks disposable orchestration regressions, including the parent framework matrix.
+- `./gradlew dbUnitTestParentTransitionTest --no-daemon -PdbUnitTestComparisonRef=<exact-full-SHA>` additionally checks both retained actual-parent transitions.
+- `./gradlew dbUnitTestParentTransitionFrameworkTest --no-daemon` runs fixed parent controls directly.
 - `./gradlew build --no-daemon` runs the repository baseline with the same affected/full selection contract.
 
 Every normal build retains the complete fresh suite set in both fixed profiles.
@@ -337,10 +339,43 @@ command; original primary errors and all cleanup diagnostics remain available.
 Resources are limited to the exact task-owned target and volumes, never global
 Docker resources or developer-owned named volumes.
 
-The comparison ref is an impact-selection boundary. Registered replay recreates
-each selected migration's immediate predecessor; it is not a retained Git-parent
-inventory plus incoming-batch transition. No actual-parent transition task is
-provided.
+Normal comparison refs select impact; registered replay recreates each selected
+numerical predecessor. The explicit additional
+[actual-parent task](../../docs/TESTING.md#actual-comparison-parent-batch-verification)
+retains each fixed profile's independently derived comparison inventory and
+applies all additions on that target. Supply an exact full local SHA equal to
+HEAD or its sole immediate parent; no missing/base/CI fallback is allowed.
+Comparison equal to HEAD may be a merge (`comparisonKind=head-inventory`); a
+different candidate must have exactly that comparison as its one parent
+(`comparisonKind=sole-immediate-parent`). Reports include `parentProvenance`,
+`candidateMode`, `overlayPaths`, `testedHeadTree` and `testedParents`. Clean source
+is labelled `committed HEAD`; dirty source is labelled `HEAD plus index/worktree
+overlay`. Working evidence does not prove a committed parent relationship;
+retain a clean-child rerun against its sole immediate parent for that claim.
+
+Both profiles verify original row text/multiplicity, enumerated public catalogue,
+ACL/routine/enum/sequence state, complete original/final history, native
+validation and zero-applied repeat/history around final owning assertions.
+Equality and empty delta are fully verified, not skipped. Delta derives only
+from additions, with bounded routine/Aliases-name/Order-Term-response changes.
+Unsupported incoming data/structure fails closed; compact `observe` grants no
+implicit exemption. Historical seeds retain full registered replay and are not
+incoming additions. No synthetic preparation is borrowed. Only the three fixed
+framework self-suites requiring absent observations are excluded from retained
+owners; all application owners remain and all 32 fresh suites run. Shared
+committed observation cleanup, distinct-backend absence and an independent
+no-other-client-sessions probe on the test-owned target, plus owned container/
+every-volume absence, remain mandatory after failure. Both profiles are attempted
+after preflight/preparation and failures aggregate.
+
+Parent receipts live separately under
+`build/reports/dbUnitTest/parent-transition/summary.txt`,
+`parent-transition/<profile>/summary.txt` and each profile's `runs/<run-id>/`.
+The parent matrix uses `parent-framework/summary.txt`, retains its original 24
+controls and adds no-op, provenance, SQL/TAP/plan and preservation/cleanup failure
+checks. It participates in the existing framework graph. Normal fresh/registered
+report entry points are unchanged. The public parent task is explicitly invoked
+with a comparison ref; it is not a default build requirement without that ref.
 
 Each consumer must execute all current assertions on the fresh schema and its
 applicable compatible assertion groups at every required candidate boundary.
