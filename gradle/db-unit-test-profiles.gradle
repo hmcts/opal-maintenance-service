@@ -1,0 +1,213 @@
+import org.gradle.api.GradleException
+import java.nio.file.Files
+
+// Both profiles are maintained entry points; callers must report and throw the aggregate failure.
+ext.dbUnitTestProfiles = [
+  [name:'non-live-dev', locations:['ddl','data/allEnvs','data/nle','data/dev']],
+  [name:'non-live', locations:['ddl','data/allEnvs','data/nle']]
+]
+def describeProfileFailure
+describeProfileFailure = { Throwable failure, String indentation ->
+  def lines = ["${indentation}${indentation ? 'Secondary failure: ' : ''}${failure.message ?: failure.class.name}"]
+  failure.suppressed.each { secondary ->
+    lines.addAll(describeProfileFailure(secondary, indentation + '  '))
+  }
+  lines
+}
+ext.runDbUnitTestProfiles = { Closure action ->
+  def outcomes = project.ext.dbUnitTestProfiles.collect { profile ->
+    try {
+      [name:profile.name, locations:profile.locations, status:'PASS', result:action(profile), failure:null]
+    } catch (Throwable failure) {
+      [name:profile.name, locations:profile.locations, status:'FAILED', result:null, failure:failure]
+    }
+  }
+  def failures = outcomes.findAll { it.failure != null }
+  GradleException aggregate = null
+  if (!failures.isEmpty()) {
+    def diagnostics = failures.collect { outcome ->
+      "${outcome.name}: " + describeProfileFailure(outcome.failure, '').join('\n')
+    }.join('\n')
+    aggregate = new GradleException('Database unit-test profile failures:\n' + diagnostics)
+    failures.each { aggregate.addSuppressed(it.failure) }
+  }
+  [outcomes:outcomes, failure:aggregate]
+}
+ext.resolveDbUnitTestFlywayVersion = { List modules ->
+  def versions = ['flyway-core', 'flyway-database-postgresql'].collect { module ->
+    def matches = modules.findAll { it.group == 'org.flywaydb' && it.name == module }
+    if (matches.size() != 1) {
+      throw new GradleException("Expected exactly one resolved org.flywaydb:${module}; found ${matches.size()}")
+    }
+    def version = matches.first().version
+    if (!(version instanceof String) || !(version ==~ /[0-9]+\.[0-9]+\.[0-9]+/)) {
+      throw new GradleException('Flyway runtime requires numerical x.y.z release versions')
+    }
+    version
+  }
+  if (versions.unique(false).size() != 1) {
+    throw new GradleException("Flyway runtime versions differ: core ${versions[0]}; PostgreSQL ${versions[1]}")
+  }
+  versions.first()
+}
+
+ext.startDbUnitTestProfileReports = { File base, String runId ->
+  base.mkdirs()
+  new File(base, 'summary.txt').text = "Run:${runId}\nResult: RUNNING\n"
+  ['pg-prove.log', 'framework-self-test.log'].each { name ->
+    new File(base, name).text = "Run:${runId}\nStatus: Not run\n"
+  }
+}
+
+// Frankie Moran — PO-10643 — 22/10/2026
+// Fixed profile and resolved runtime controls do not require Docker or a database.
+tasks.register('dbUnitTestProfileTest') {
+  group = 'Verification'
+  description = 'Verifies fixed profile orchestration and resolved Flyway runtime agreement'
+  doLast {
+    ['dbUnitTestProfiles', 'runDbUnitTestProfiles', 'resolveDbUnitTestFlywayVersion'].each { helper ->
+      if (!project.ext.has(helper)) { throw new GradleException("Profile helper ${helper} is missing") }
+    }
+    int checks = 0
+    def check = { String name, Closure body ->
+      body()
+      checks++
+      logger.lifecycle("Profile regression ${name}: PASS")
+    }
+    def require = { boolean condition, String diagnostic ->
+      if (!condition) { throw new GradleException(diagnostic) }
+    }
+    def expectFailure = { String diagnostic, Closure action ->
+      GradleException observed = null
+      try { action() }
+      catch (GradleException failure) { observed = failure }
+      require(observed != null, "Expected failure was absent: ${diagnostic}")
+      require(observed.message.contains(diagnostic), "Expected ${diagnostic}; observed ${observed.message}")
+    }
+    def profiles = [
+      [name:'non-live-dev', locations:['ddl','data/allEnvs','data/nle','data/dev']],
+      [name:'non-live', locations:['ddl','data/allEnvs','data/nle']]
+    ]
+    check('fixed-profile-definitions') {
+      require(project.ext.dbUnitTestProfiles == profiles, 'Fixed profiles changed names, order or locations')
+    }
+    check('current-report-start-replaces-stale-latest-only') {
+      def fixture = Files.createTempDirectory('opal-profile-reports-').toFile()
+      try {
+        def base = new File(fixture, 'existing-profile')
+        def previous = new File(base, 'runs/previous/receipt.txt')
+        previous.parentFile.mkdirs()
+        previous.text = 'Prior immutable PASS receipt\n'
+        byte[] previousBytes = previous.bytes
+        ['summary.txt', 'pg-prove.log', 'framework-self-test.log'].each { name ->
+          new File(base, name).text = 'Run:previous\nResult: PASS\n'
+        }
+        require(project.ext.has('startDbUnitTestProfileReports'), 'Profile report initialization helper is missing')
+        project.ext.startDbUnitTestProfileReports(base, 'current')
+        require(new File(base, 'summary.txt').text == 'Run:current\nResult: RUNNING\n',
+          'Current summary retained stale completed evidence')
+        ['pg-prove.log', 'framework-self-test.log'].each { name ->
+          require(new File(base, name).text == 'Run:current\nStatus: Not run\n',
+            "Current ${name} retained stale passing TAP")
+        }
+        require(Arrays.equals(previous.bytes, previousBytes), 'Starting a report changed an immutable prior receipt')
+        def fresh = new File(fixture, 'new-profile')
+        project.ext.startDbUnitTestProfileReports(fresh, 'new')
+        require(fresh.isDirectory() && new File(fresh, 'summary.txt').text == 'Run:new\nResult: RUNNING\n',
+          'Report initialization did not create its profile directory')
+      } finally { fixture.deleteDir() }
+    }
+    check('both-profiles-succeed') {
+      def attempted = []
+      def result = project.ext.runDbUnitTestProfiles { profile ->
+        attempted.add(profile.name)
+        "${profile.name}-report".toString()
+      }
+      require(attempted == profiles*.name, 'Successful profiles were not both attempted in fixed order')
+      require(result.failure == null, 'Successful profiles produced an aggregate failure')
+      require(result.outcomes*.name == profiles*.name, 'Profile outcomes lost fixed identity or order')
+      require(result.outcomes*.locations == profiles*.locations, 'Profile outcomes lost exact locations')
+      require(result.outcomes*.status == ['PASS','PASS'], 'Successful profiles did not report PASS')
+      require(result.outcomes*.result == profiles.collect { "${it.name}-report".toString() },
+        'Profile callback results were not retained')
+      require(result.outcomes.every { it.failure == null }, 'Successful profile retained a failure')
+    }
+    check('first-failure-still-attempts-second-profile') {
+      def primary = new GradleException('fixed first profile failure')
+      def attempted = []
+      def result = project.ext.runDbUnitTestProfiles { profile ->
+        attempted.add(profile.name)
+        if (profile.name == profiles.first().name) { throw primary }
+        'second profile report'
+      }
+      require(attempted == profiles*.name, 'First failure prevented the second profile callback')
+      require(result.outcomes*.status == ['FAILED','PASS'], 'First failure lost independent profile outcomes')
+      require(result.outcomes.first().failure.is(primary), 'Original first profile failure was replaced')
+      require(result.outcomes.last().result == 'second profile report', 'Second profile evidence was lost')
+      require(result.failure instanceof GradleException, 'Failed profile did not produce an aggregate failure')
+      require(result.failure.suppressed.size() == 1 && result.failure.suppressed[0].is(primary),
+        'Aggregate did not preserve the original profile failure')
+      require(result.failure.message.contains('non-live-dev: fixed first profile failure'),
+        'Aggregate diagnostic lost the failed profile name')
+    }
+    check('both-failures-preserve-primary-and-nested-cleanup') {
+      def first = new GradleException('fixed first primary')
+      def cleanup = new GradleException('fixed cleanup failure')
+      def volume = new GradleException('fixed volume absence failure')
+      cleanup.addSuppressed(volume)
+      first.addSuppressed(cleanup)
+      def second = new GradleException('fixed second primary')
+      def attempted = []
+      def result = project.ext.runDbUnitTestProfiles { profile ->
+        attempted.add(profile.name)
+        throw profile.name == profiles.first().name ? first : second
+      }
+      require(attempted == profiles*.name, 'Both failed profiles were not attempted in fixed order')
+      require(result.outcomes*.status == ['FAILED','FAILED'], 'Both failures were not reported')
+      require(result.outcomes.first().failure.is(first) && result.outcomes.last().failure.is(second),
+        'Original failed outcomes were replaced')
+      require(result.failure.suppressed.size() == 2 && result.failure.suppressed[0].is(first)
+        && result.failure.suppressed[1].is(second), 'Aggregate lost original profile failure identities')
+      require(first.suppressed[0].is(cleanup) && cleanup.suppressed[0].is(volume),
+        'Aggregate changed nested cleanup failure identities')
+      ['non-live-dev: fixed first primary', 'non-live: fixed second primary',
+       'fixed cleanup failure', 'fixed volume absence failure'].each { diagnostic ->
+        require(result.failure.message.contains(diagnostic), "Aggregate diagnostic lost ${diagnostic}")
+      }
+    }
+    def modules = [
+      [group:'org.flywaydb', name:'flyway-core', version:'13.10.0'],
+      [group:'org.flywaydb', name:'flyway-database-postgresql', version:'13.10.0']
+    ]
+    check('resolved-runtime-agreement') {
+      def actual = project.ext.resolveDbUnitTestFlywayVersion(modules +
+        [[group:'other.group', name:'flyway-core', version:'1.0.0']])
+      require(actual == '13.10.0', 'Resolved runtime agreement did not retain the exact Flyway release')
+    }
+    ['flyway-core', 'flyway-database-postgresql'].each { module ->
+      check("missing-runtime-${module}") {
+        expectFailure("exactly one resolved org.flywaydb:${module}") {
+          project.ext.resolveDbUnitTestFlywayVersion(modules.findAll { it.name != module })
+        }
+      }
+      check("duplicate-runtime-${module}") {
+        expectFailure("exactly one resolved org.flywaydb:${module}") {
+          project.ext.resolveDbUnitTestFlywayVersion(modules + [modules.find { it.name == module }])
+        }
+      }
+    }
+    check('mismatched-runtime-versions') {
+      expectFailure('Flyway runtime versions differ') {
+        project.ext.resolveDbUnitTestFlywayVersion([modules.first(), modules.last() + [version:'13.5.0']])
+      }
+    }
+    ['13.10.0-SNAPSHOT', '13.10.0;unexpected', '', null, 13].each { version ->
+      check("unsafe-runtime-version-${version}") {
+        expectFailure('Flyway runtime requires numerical x.y.z release versions') {
+          project.ext.resolveDbUnitTestFlywayVersion(modules.collect { it + [version:version] })
+        }
+      }
+    }
+    logger.lifecycle("Profile regressions passed: ${checks}")
+  }
+}
