@@ -501,7 +501,7 @@ dependencies {
     exclude group: 'commons-fileupload', module: 'commons-fileupload'
   }
 
-  implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.1.1'
+  implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.2.0'
 
   implementation 'com.github.hmcts.java-logging:logging:8.0.0'
 
@@ -513,7 +513,7 @@ dependencies {
   implementation 'com.networknt:json-schema-validator:3.0.8'
   implementation 'com.jayway.jsonpath:json-path:3.0.0'
 
-  implementation 'org.openapitools:jackson-databind-nullable:0.2.12'
+  implementation 'org.openapitools:jackson-databind-nullable:0.2.13'
   implementation 'org.flywaydb:flyway-core:13.11.1'
   runtimeOnly 'org.flywaydb:flyway-database-postgresql:13.11.1', {
     exclude group: 'org.flywaydb', module: 'flyway-core'
