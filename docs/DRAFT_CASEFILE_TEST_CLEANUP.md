@@ -141,18 +141,23 @@ complete the deployed UI E2E ticket or demonstrate exactly-once broker delivery.
 ## Deployment and recovery
 
 This candidate introduces no schema/procedure migration relative to the approved
-PO-10629 base. The original `codex/PO-10626-publication-support` branch and PR #318
-are preserved. Its committed V1_67–V1_69 migrations remain immutable; their applied
-status in retained environments is **unknown**. A zero migration diff on this new
-lineage does not prove rollout compatibility with a database that applied them.
+PO-10629 base. Delivery will update the existing
+`codex/PO-10626-publication-support` branch and retain PR #318, as requested by the
+user. On 28 October 2026 the user explicitly confirmed that V1_67–V1_69 were never
+applied to any shared or retained database. This is user attestation, not a direct
+database audit. It resolves the earlier deployment-status uncertainty; the
+migration-clean candidate does not require recovery from those versions on the
+attested databases.
 
-Before release, obtain the environment/version/checksum/applied-status inventory.
-If a retained environment applied any of V1_67–V1_69, stop a rollout premised on their
-absence and obtain a separately approved forward-recovery plan covering
-compatibility/retention, consumer cutover, deployment order and rollback/roll-forward.
-Do not edit/delete applied migrations, repair shared history, or treat retained
-inert tables as zero schema difference. No shared database action is authorised by
-this guide.
+The candidate was built from the approved base without introducing the original
+support migrations. Replacing the existing shared branch history still requires
+separate explicit approval and a guarded force-with-lease update; this guide does
+not perform or authorise that update. Preserve the original history for recovery.
+If contrary applied-version evidence emerges, stop and obtain a separately
+approved forward-recovery plan covering compatibility/retention, consumer cutover,
+deployment order and rollback/roll-forward. Do not edit/delete applied migrations,
+repair shared history, or treat retained inert tables as zero schema difference.
+No shared database action is authorised by this guide.
 
 Before enablement, verify the actual deployed DB role and accept table blocking
 and supported-writer restrictions. To disable support, set the flag false and

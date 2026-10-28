@@ -121,3 +121,48 @@ conflict. These are disposable database observations, not deployed workload,
 actual-role or browser/broker proof. See [Testing](TESTING.md#synthetic-draft-casefile-cleanup)
 for commands and evidence ownership. Final run results belong in the current
 verification handoff; historical passing counts are not evidence for a new run.
+
+## Final local verification — 28 October 2026
+
+Verified with Java 21.0.11, Gradle 9.8.2, Docker 29.6.1 and disposable PostgreSQL 17,
+serially and offline. Runtime/SQL/framework source remains identical to tested
+`b974767`; subsequent changes are documentation only.
+
+```sh
+./gradlew test integration checkstyleMain checkstyleTest checkstyleIntegrationTest checkstyleFunctionalTest checkstyleOpenapi --offline --no-daemon
+./gradlew build jacocoTestReport -x dbUnitTest -x dbUnitTestParentTransitionFrameworkTest -x dbUnitTestFrameworkTest -x integration --offline --no-daemon
+```
+
+The first command passed in 4m53s: **673 unit tests passed; 571 integration tests
+were discovered, 561 passed and 10 were skipped**, with zero failures/errors.
+The skips are six queue-consumer and four queue integration tests requiring
+`RUN_SERVICE_BUS_TESTS=true` and a dedicated otherwise-unused Service Bus queue.
+They do not verify broker behavior. All five requested Checkstyle suites passed.
+The full integration run includes signed-bearer scope, rollback/retention,
+helper/cleanup and consumer races, and public `/`, `/health` and `/prometheus`.
+
+The second command passed in 2m37s, reran all 673 unit tests, and passed all six
+Checkstyle suites including smoke. Metadata/profile/selection regressions passed
+(106/16/176). Combined unit/integration JaCoCo reports were produced: 1,286 covered
+and 97 missed lines under the configured exclusions. Generation, compilation and
+packaging passed; the boot jar contains exactly one byte-identical bundle with
+51 unique schemas, 138 resolved internal references and DELETE-only cleanup.
+No retired evidence/admission classes were packaged. Generated output is not
+committed.
+
+The packaging exclusions **reuse separately passed unchanged-source evidence**;
+they are not waivers or claims that excluded tasks ran in that invocation.
+The full `./gradlew dbUnitTest --offline --no-daemon` previously passed in 21m12s
+at `b974767`: both fixed profiles, 84 fresh suite executions/39,278 assertions,
+31 registered upgrades/35,169 owner assertions, and both native framework
+matrices. All 114 test-owned container/volume pairs were verified absent.
+DEV-only replay is outside the non-live profile and is verified by non-live-dev.
+The migration/pgTAP trees and framework remain byte-identical to PO-10629;
+application-owned cleanup SQL is covered by the real PostgreSQL integration tests.
+
+Overall delivery remains **Not Agent Complete** under repository DoD. Actual
+service-role privileges, acceptance of table-wide blocking/supported writers,
+frontend evidence-route cutover, deployed recovery/accessibility and broker
+execution/current acceptance allocation, CI and human QA/release approval remain
+unverified. The [deployment record](DRAFT_CASEFILE_TEST_CLEANUP.md#deployment-and-recovery)
+distinguishes the user's migration non-application attestation from a DB audit.

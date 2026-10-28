@@ -204,10 +204,12 @@ graph investigation. No publisher evidence routes, evidence schema, pool admissi
 aspect, automatic retry or generic SQL endpoint is supplied.
 
 This new support lineage has no migration/procedure differences from its approved
-PO-10629 base. Preserve the original support branch/PR and immutable V1_67–V1_69;
-their applied status in retained databases is unknown. Do not start a rollout on
-the assumption that those versions were never applied: obtain migration inventory
-and, where necessary, a separately approved forward-recovery/cutover plan first.
+PO-10629 base. On 28 October 2026 the user explicitly confirmed that V1_67–V1_69
+were never applied to any shared or retained database; this is attestation, not a
+direct database audit. The existing support branch will be updated and PR #318
+retained. Shared history replacement requires separate explicit approval and a
+guarded force-with-lease update. Preserve the original history; if contrary
+applied-version evidence emerges, stop for an approved forward-recovery plan.
 See [deployment and recovery](DRAFT_CASEFILE_TEST_CLEANUP.md#deployment-and-recovery).
 Local shared-stack startup may apply Flyway migrations; it is not disposable
 verification and must not be used to test history repair or cleanup against shared
