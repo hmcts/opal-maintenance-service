@@ -181,9 +181,10 @@ requires the real broker, running consumer and database provider
 nonnumeric `Amount` (`not-an-amount`) accepted by draft creation, then requires
 the real failed publication state. The successful-publication scenario requires
 `PUBLISHED`: `PUBLISHING_FAILED` and deadline expiry remain failures. The PO-10629 foundation supplies the real database provider. PR #318 supplies
-owner/marker-scoped pending and published cleanup; published cleanup requires
-the documented table-lock privileges and eligibility checks. A refusal remains
-a failed cleanup, with safe retained-resource evidence. There are no skipped,
+owner/marker-scoped pending and published cleanup with retained eligibility checks
+and the explicitly accepted concurrent-writer limitation. Actual deployed graph
+read/delete privileges remain unverified. A refusal remains a failed cleanup,
+with safe retained-resource evidence. There are no skipped,
 inverted or placeholder terminal assertions.
 
 Polling allows 60 seconds with 500 ms intervals, blocks new reads and late
@@ -393,7 +394,8 @@ record why the baseline build was not run.
 The [cleanup guide](DRAFT_CASEFILE_TEST_CLEANUP.md) defines the dedicated default-off
 DELETE, identity/marker/lifecycle rules, pre-deletion assertions and durable ledger.
 The [published graph guide](PUBLISHED_DRAFT_CASEFILE_CLEANUP.md) inventories graph
-checks/deletions and the whole-table locking, real-role and supported-writer contract.
+checks/deletions, retained row locks and the accepted concurrent-writer risk.
+Additional table-wide locks are removed by the user's 28 October 2026 decision.
 Normal APIs supply state reads. There is no publication-evidence registration/read
 route, evidence schema, publisher instrumentation or pool admission aspect on this
 support lineage.
@@ -406,7 +408,7 @@ are reproducible commands, not a report that they ran on the current revision:
 ./gradlew test --tests '*DraftCasefileCleanup*' --tests '*DraftCasefileTestScope*'
 ./gradlew integration --tests '*DraftCasefileCleanup*' --tests '*DisabledDraftCasefileCleanup*' --tests '*DraftCasefilePublishedCleanup*'
 ./gradlew integration --tests '*DraftCasefileDecision*' --tests '*DraftCasefileReplace*'
-./gradlew bundleOpenApi generateOpenApiValidationSchema
+./gradlew processResources
 ./gradlew openApiGenerate compileJava --no-daemon
 ./gradlew build --no-daemon
 ./gradlew jacocoTestReport
@@ -421,14 +423,16 @@ exercise real HTTP approval and verify one producer invocation and repeat refusa
 with mocked JMS transport. Separate route/runtime OpenAPI contract checks verify
 that evidence routes remain absent.
 
-`DraftCasefileCleanupConcurrencyIntegrationTest` calls the unchanged real note and
-Applicant/Respondent association helpers from independent transactions. It covers
-writer-first 503/rollback with later cleanup or sharing refusal, and cleanup-first
-blocked target reads followed by commit/missing-target refusal or rollback/writer
-success. It observes PostgreSQL locks using bounded coordination, verifies retained
-siblings/no dangling references and checks lock release. Pending delivery/failure
-races remain in `DraftCasefileCleanupConsumerIntegrationTest`. These tests do not
-support direct polymorphic writes that bypass same-transaction target validation.
+`DraftCasefilePublishedCleanupIntegrationTest` verifies that cleanup can complete
+while another transaction retains ordinary reads on respondent accounts, creditor
+accounts and parties. It retains graph/refusal/rollback checks and same-draft
+publication ordering. Pending delivery/failure races remain in
+`DraftCasefileCleanupConsumerIntegrationTest` and use the existing draft-row lock.
+The former nine helper race-prevention cases and four lock-error mapping unit
+cases were retired when the user accepted the concurrent-writer risk. No test or
+operating claim now guarantees that cleanup excludes published-graph writers;
+concurrent polymorphic notes/associations can leave dangling references. Test
+assertions completing and an after-hook do not prove asynchronous work is finished.
 
 No migration-specific boundary assertions are required for this candidate: database
 schema, routines and database-owned pgTAP suites remain unchanged against the approved
@@ -495,9 +499,10 @@ acceptance-owner confirmation.
 Record exact revision, commands, test/failure/error/skipped counts, environment,
 elapsed time and safe report paths in the current verification handoff. Do not copy
 historical counts as new evidence. Functional/smoke/deployed FE tests need compatible
-running Maintenance/User services and synthetic prerequisites; actual-role lock
-capability and non-live blocking acceptance need explicit verification before
-support is enabled. List any unrun check, setup and expected outcome. Routine local
+running Maintenance/User services and synthetic prerequisites; actual-role graph
+read/delete capability still needs verification before support is enabled.
+The user accepted concurrent-writer cleanup risk; table-wide blocking and explicit
+table-lock privilege acceptance are no longer prerequisites. List any unrun check, setup and expected outcome. Routine local
 verification must not clean, repair or rebuild shared data.
 
 ## Test design
