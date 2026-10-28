@@ -1,8 +1,8 @@
 # Synthetic Draft Casefile test cleanup
 
 The dedicated `DELETE /testing-support/draft-casefiles/{draft_casefile_id}` removes
-an authenticated inputter's eligible synthetic RM draft and, when safe, its exclusive
-published graph. Create data through normal APIs/UI and capture the returned ID.
+an authenticated inputter's eligible synthetic RM draft and, when its eligibility
+checks pass, the observed exclusive published graph. Create data through normal APIs/UI and capture the returned ID.
 Normal Draft Casefile GET/list/re-entry APIs supply authoritative state; this support
 contract adds no state-read, publication-evidence or generic SQL endpoint. Complete
 all response, recovery, snapshot and timeline assertions **before DELETE**.
@@ -31,7 +31,7 @@ itself. See the [OpenAPI contract](../src/main/resources/openapi/TestingSupport.
 | 404 | Route is not registered when disabled. Retain the entry and resolve enablement with the operator. |
 | 409 | Ineligible lifecycle or shared, inconsistent or financially active published graph. Retain the entry and investigate; retries cannot make an unsafe graph eligible. |
 | 500 | Unexpected failure; the cleanup transaction rolls back. Retain the entry and investigate; any retry must be bounded. |
-| 503 | Persistence temporarily unavailable or cleanup lock contention; the cleanup transaction rolls back. Retain the entry and use bounded backoff after contention resolves. |
+| 503 | Persistence temporarily unavailable; the cleanup transaction rolls back. Retain the entry and use bounded retry for transient storage failures. |
 
 Errors use the existing safe OPAL Problem Details where specified. When disabled,
 an authenticated request gets 404 and runtime OpenAPI omits the route; an anonymous
@@ -51,7 +51,7 @@ values, including frontend-owned Maintenance subcharts: there is no application
 allowlist based on an environment name.
 
 Enable only for agreed non-live synthetic tests after accepting the
-[published cleanup operating contract](PUBLISHED_DRAFT_CASEFILE_CLEANUP.md#locking-and-supported-writers).
+[published cleanup operating contract](PUBLISHED_DRAFT_CASEFILE_CLEANUP.md#locking-and-accepted-concurrency-risk).
 There is no endpoint-specific owner variable, credential, token-minting API or
 frontend source switch. Use existing bearer validation and User Service identity;
 keep tokens out of source, command arguments, logs and ledgers.
@@ -159,8 +159,10 @@ deployment order and rollback/roll-forward. Do not edit/delete applied migration
 repair shared history, or treat retained inert tables as zero schema difference.
 No shared database action is authorised by this guide.
 
-Before enablement, verify the actual deployed DB role and accept table blocking
-and supported-writer restrictions. To disable support, set the flag false and
+Before enablement, verify the actual deployed DB role can read/delete the owned
+graph. On 28 October 2026 the user accepted concurrent-writer cleanup risk and
+requested removal of explicit table-wide locks. Existing row locks/transactions
+remain; they do not prevent every published-graph race. To disable support, set the flag false and
 redeploy normally; retain outstanding ledger entries for authorised retry.
 Disabling cannot restore deleted data. Use existing `/health` and `/prometheus`
 monitoring and non-sensitive CI cleanup outcomes; no publication monitor is added.

@@ -35,7 +35,6 @@ public class DraftCasefileCleanupService {
         DraftCasefileCleanupRepository.Graph graph = null;
         if (draft.getCasefileStatus() == DraftCasefileStatus.PUBLISHED) {
             requireApproval(draft);
-            graphs.lockPublicationTargetsForCleanup();
             graph = graphs.lockGraph(draft, testRunReference);
         } else {
             requireUnpublished(draft);
