@@ -91,11 +91,9 @@ No bearer values or response payloads are included in cleanup failure evidence.
 See the [cleanup guide](DRAFT_CASEFILE_TEST_CLEANUP.md) for ownership, lifecycle,
 enablement and retry requirements.
 
-The support API also provides scoped publication-evidence registration and reads
-for PO-10626; see the [support checks](#synthetic-draft-casefile-cleanup). There
-is no marker-search route. These PO-10287 functional assertions check the real
-POST response, including snapshot, timeline, ETag and correlated
-permission/reference errors. Persistence,
+The merged support API provides deletion only, with no inspection or marker-search
+route. Functional assertions check the real POST response, including snapshot,
+timeline, ETag and correlated permission/reference errors. Persistence,
 rejected-request row absence and rollback are verified by `DraftCasefileDatabaseIntegrationTest` and
 `DraftCasefileAuthenticationIntegrationTest`; cleanup isolation and actual row
 removal are verified by `DraftCasefileCleanupIntegrationTest`. These database
@@ -126,6 +124,7 @@ disable scenario actions while the JUnit helper tests execute normally:
 ```bash
 ./gradlew functionalOpal --tests 'uk.gov.hmcts.opal.*.DraftCasefile*Test' -Dcucumber.execution.dry-run=true
 ```
+
 
 ### Draft Casefile retrieval journeys (PO-10618)
 
@@ -181,12 +180,11 @@ requires the real broker, running consumer and database provider
 `public.p_process_draft_casefiles`. The failed-publication fixture supplies a
 nonnumeric `Amount` (`not-an-amount`) accepted by draft creation, then requires
 the real failed publication state. The successful-publication scenario requires
-`PUBLISHED`: `PUBLISHING_FAILED` and deadline expiry remain failures. Missing
-provider delivery is expected to leave these checks red; there are no skipped,
-inverted or placeholder assertions. Cleanup of `PUBLISHED` and
-`PUBLISHING_PENDING` drafts currently returning 409 is a separate unmet
-support-API dependency and is not automatically fixed by merging the database
-provider. These tests do not bypass that lifecycle restriction.
+`PUBLISHED`: `PUBLISHING_FAILED` and deadline expiry remain failures. The PO-10629 foundation supplies the real database provider. PR #318 supplies
+owner/marker-scoped pending and published cleanup; published cleanup requires
+the documented table-lock privileges and eligibility checks. A refusal remains
+a failed cleanup, with safe retained-resource evidence. There are no skipped,
+inverted or placeholder terminal assertions.
 
 Polling allows 60 seconds with 500 ms intervals, blocks new reads and late
 acceptance after the deadline, and fails on an unexpected lifecycle state. An
@@ -289,9 +287,9 @@ guess an ID. Credentials are cleared after the hook, including attachment failur
 Every non-201 create response retains that fixture's unknown ownership and marker
 for operator follow-up. The after hook still attempts all other captured drafts.
 No POST is replayed and unknown IDs are never guessed for cleanup.
-Known support-API restrictions return 409 for `PUBLISHED` and `PUBLISHING_PENDING`;
-these are unresolved cleanup dependencies, not permission to bypass guards, delete
-database rows, rewrite lifecycle or purge queues. Shared pending drafts are never
+The current cleanup API supports eligible pending drafts and exclusively owned
+initial published graphs. Its authorization, ownership and graph guards remain
+mandatory; published cleanup also needs the documented table-lock privileges. Shared pending drafts are never
 reused or altered. Preserve the safe ledger before another functional invocation
 clears its reports; never retain tokens, request/response payloads or participant data.
 
@@ -330,16 +328,16 @@ feature and its bindings.
 
 | Journey | Source and decision | Expected evidence |
 | --- | --- | --- |
-| 1 | SUBMITTED / Approve | HTTP 200 approval, server-owned validation and history, persisted GET, one acknowledged producer send |
-| 2 | SUBMITTED / Reject | HTTP 200 rejection with exact reason and history, identical persisted GET, complete zero producer sends |
-| 3 | SUBMITTED / Delete | HTTP 200 logical deletion with exact reason and history, identical persisted GET, complete zero producer sends |
-| 4 | RESUBMITTED / Approve | Corrected full baseline, approval and persisted metadata/history, one acknowledged producer send |
-| 5 | RESUBMITTED / Reject | Corrected full baseline, rejection and persisted history, complete zero producer sends |
-| 6 | RESUBMITTED / Delete | Corrected full baseline, logical deletion and persisted history, complete zero producer sends |
-| 7 | Checker approves their own submission | Safe correlated 403, entire draft and ETag unchanged, complete zero producer sends |
-| 8 | Caller lacks owning Business Unit permission 22 | Safe correlated 403, entire draft and ETag unchanged, complete zero producer sends |
-| 9 | Independent checker uses obsolete original version 0 against eligible RESUBMITTED version 2 | Safe optimistic-locking 409, entire corrected draft and ETag unchanged, complete zero producer sends |
-| 10 | Independent checker approves current REJECTED version 1 | Safe resource-conflict 409, entire rejected draft and ETag unchanged, complete zero producer sends |
+| 1 | SUBMITTED / Approve | HTTP 200 approval, server-owned validation and history, persisted GET |
+| 2 | SUBMITTED / Reject | HTTP 200 rejection with exact reason and history, identical persisted GET |
+| 3 | SUBMITTED / Delete | HTTP 200 logical deletion with exact reason and history, identical persisted GET |
+| 4 | RESUBMITTED / Approve | Corrected full baseline, approval and persisted metadata/history |
+| 5 | RESUBMITTED / Reject | Corrected full baseline, rejection and persisted history |
+| 6 | RESUBMITTED / Delete | Corrected full baseline, logical deletion and persisted history |
+| 7 | Checker approves their own submission | Safe correlated 403, entire draft and ETag unchanged |
+| 8 | Caller lacks owning Business Unit permission 22 | Safe correlated 403, entire draft and ETag unchanged |
+| 9 | Independent checker uses obsolete original version 0 against eligible RESUBMITTED version 2 | Safe optimistic-locking 409, entire corrected draft and ETag unchanged |
+| 10 | Independent checker approves current REJECTED version 1 | Safe resource-conflict 409, entire rejected draft and ETag unchanged |
 
 Each scenario creates a complete synthetic draft with its own fresh `E2E-`
 marker followed by 16 lowercase hexadecimal characters, including minor
@@ -358,11 +356,8 @@ still matches its original submitted content.
 Configure `TEST_URL` and `OPAL_USER_SERVICE_API_URL` for the intended non-live
 Maintenance and User Service deployments. Use the active `AP00001` application,
 active country CJS code `1`, result `MAT`, Business Unit 44, enabled scoped
-cleanup and publication-evidence support, and a configured real publisher.
-The service must include the PO-10626 publication-evidence routes and compatible
-synchronous producer instrumentation. Missing routes, unavailable dependencies,
-non-JSON responses, incomplete observations and unknown runtime compatibility
-fail strictly; an HTTP 200 alone is insufficient.
+cleanup from PR #318, and a configured real publisher and consumer. Full response,
+version, lifecycle, snapshot and timeline assertions remain mandatory.
 
 The existing default users are `opal-test@dev.platform.hmcts.net` (inputter),
 `opal-test-10@dev.platform.hmcts.net` (checker), and
@@ -391,43 +386,35 @@ authentication/header safeguards and request contracts are preserved. Assertions
 and the safe cleanup ledger still establish outcomes; unrelated tests retain
 their existing reporting behavior.
 
-After all setup and actor preconditions, the original owner registers a scoped
-publication observation with the draft ID and marker. Registration requires
-HTTP 201, UUID/time identity and complete zero counts, then a full GET proves
-that registration preserved the baseline and ETag. The tested PATCH executes
-once with its explicit actor, ETag and Business Unit 44 decision body. Reject
-and Delete require the exact synthetic reason. Approval requires a strong ETag
-that numerically advances and a full persisted readback. That readback may be
-`PUBLISHING_PENDING`, or valid fast `PUBLISHED` / `PUBLISHING_FAILED` retaining
-approval metadata/history. No consumer stop, polling or sleep window is
-required. Producer and journal completion are synchronous with the decision.
-The original owner then reads the same observation: approval requires exact
-attempt/acknowledged/uncertain/unfinished counts `1/1/0/0`; all other paths
-require `0/0/0/0`, always complete. Journal identity and registration time must
-match. A producer acknowledgement is not durable broker proof, exactly-once
-delivery or global absence of unrelated messages.
+After all setup and actor preconditions, a normal GET verifies the full baseline
+and ETag. The tested PATCH executes once with the explicit actor, current ETag
+and Business Unit 44 decision body. Reject and Delete require the exact synthetic
+reason. Approval requires an advanced numeric ETag and authoritative persisted
+readback. A fast consumer may reach PUBLISHED or PUBLISHING_FAILED; the readback
+must still retain the exact approval metadata and history. Refused decisions
+must preserve the complete draft and ETag. No observation registration or
+publication-evidence request is made, and API readback does not prove send counts.
 
 | Acceptance criterion | Live journeys | Supporting evidence |
 | --- | --- | --- |
-| AC1: independent approval and publication | Journeys 1 and 4 verify response, persisted metadata/history and scoped producer acknowledgement | `DraftCasefileCheckerQaIntegrationTest` covers HTTP/persistence and controlled failures; opt-in `DraftCasefileQueueIntegrationTest` supplies real persistent broker acceptance proof |
-| AC2: reject and delete without publication | Journeys 2, 3, 5 and 6 verify exact decision/history/readback and scoped zero evidence | Checker integration coverage verifies no publisher call and persisted state |
-| AC3: protect invalid decisions and preserve the draft | Journeys 7–10 verify safe 403/409, complete unchanged bodies/ETags and scoped zero evidence | Checker integration coverage includes actual local AMQP failure, whole-transaction rollback and uncertain producer evidence |
+| AC1: independent approval and publication | Journeys 1 and 4 verify response and persisted metadata/history | Checker integration verifies the publisher invocation; opt-in queue integration proves real broker acceptance |
+| AC2: reject and delete without publication | Journeys 2, 3, 5 and 6 verify exact decision/history/readback | Checker integration verifies no publisher call and persisted state |
+| AC3: protect invalid decisions and preserve the draft | Journeys 7–10 verify safe 403/409 and unchanged bodies/ETags | Checker integration verifies no publisher call; local AMQP failure proves whole-transaction rollback |
 
-The maintained integration selection has eighty checks: eleven in
-`DraftCasefileCheckerQaIntegrationTest`, twenty-seven in
-`DraftCasefileDecisionIntegrationTest`, and forty-two in
-`PublicationEvidenceIntegrationTest`. Local controlled AMQP failure and
-transaction rollback are integration evidence, without deployed fault injection. The actual publication message has four fields (draft ID,
-checker user ID, originating IP and approval timestamp); the older ID-only
-physical description has drifted. This journey change does not edit the API
-specification.
+`DraftCasefileCheckerQaIntegrationTest` retains its eleven decision, refusal and
+real local AMQP failure cases. `DraftCasefileDecisionIntegrationTest` supplies
+additional decision validation. The publication message remains exactly
+`draft_casefile_id`, `checker_user_id`, `originating_ip_address`, and
+`approval_timestamp`. Retired observation routes and journal tables have no
+consumer here. Request/helper call counts prove harness behavior; dedicated
+broker tests own broker acceptance and delivery evidence.
 
 Durable broker proof remains the existing opt-in dedicated-queue suite described
 below. It requires an otherwise unused `test-` queue, `RUN_SERVICE_BUS_TESTS=true`,
 `TEST_SERVICEBUS_QUEUE`, and normal Service Bus connection environment settings.
 Consumer tests additionally require `TEST_SERVICEBUS_MAX_DELIVERIES` matching
 the provisioned queue. No safely configured queue is currently available, so
-these checks must not be reported as passed or replaced by the producer journal.
+these checks must not be reported as passed or inferred from API readback.
 
 Cleanup always uses the original creator token, owned positive ID and marker,
 including after setup, evidence or assertion failures. Only HTTP 204 confirms
@@ -435,16 +422,15 @@ cleanup. Unknown or malformed create outcomes retain a safe marker ledger;
 ambiguous POST/PUT/PATCH operations are never replayed. Cleanup failure fails an
 otherwise green scenario or attaches separate safe evidence when a primary
 failure already exists. Attachment failure is surfaced safely, and all scenario
-credentials/state are cleared in `finally`. Existing deployed cleanup 409s for
-`REJECTED` / `PUBLISHING_PENDING` remain unresolved runtime dependencies with an
-unproven outside cause; no direct database deletion, lifecycle rewrite, shared
-queue purge or service restart bypasses them. Retain only safe IDs, markers,
+credentials/state are cleared in `finally`. Eligible pending and published cleanup uses PR #318 and its documented
+ownership, graph and table-lock contract. Refusal or contention remains a failed
+cleanup, with safe retained-resource evidence. Retain only safe IDs, markers,
 statuses and timings before the next functional invocation replaces reports.
 
 Run actual Java helper/glue regressions without a Cucumber tag property:
 
 ```bash
-./gradlew functionalOpal --tests 'uk.gov.hmcts.opal.*.DraftCasefile*Test' --tests 'uk.gov.hmcts.opal.assertions.PublicationEvidenceAssertionsTest' --tests 'uk.gov.hmcts.opal.steps.GetDraftCasefileStepDefTest' --tests 'uk.gov.hmcts.opal.steps.ListDraftCasefilesStepDefTest' --tests 'uk.gov.hmcts.opal.steps.RecordCheckerDecisionsStepDefTest' -Dcucumber.execution.dry-run=true
+./gradlew functionalOpal --tests 'uk.gov.hmcts.opal.*.DraftCasefile*Test' --tests 'uk.gov.hmcts.opal.steps.GetDraftCasefileStepDefTest' --tests 'uk.gov.hmcts.opal.steps.ListDraftCasefilesStepDefTest' --tests 'uk.gov.hmcts.opal.steps.RecordCheckerDecisionsStepDefTest' -Dcucumber.execution.dry-run=true
 ./gradlew checkstyleFunctionalTest
 ```
 
@@ -481,15 +467,15 @@ perform a real independent checker rejection and complete persisted readback.
 
 | Acceptance criterion | Live journey | Supporting controlled integration |
 | --- | --- | --- |
-| AC1: correct a rejected casefile and resubmit | Original inputter changes respondent, applicant and minor 7 names while preserving minor 23; HTTP 200, full corrected content/snapshot/history, advanced ETag, persisted RESUBMITTED and zero publication | `DraftCasefileResubmissionQaIntegrationTest` verifies the complete transaction and original submitter |
-| AC2: another authorised inputter can resubmit and becomes latest submitter | Different owning-unit inputter takes ownership; the same latest submitter with check permission then receives 403 for self-check, preserving full state/version and zero publication | Integration verifies handover and latest-submitter self-check denial |
-| AC3: invalid or unauthorised corrections preserve the rejected draft | Unknown application `ZZ99999` gives 400; caller without owning-unit create authority gives 403; supplied Business Unit 45 with nested owner 44 gives resource-conflict 409. Each verifies whole unchanged GET, ETag and zero publication | Integration also controls obsolete ETag against eligible REJECTED state, non-REJECTED lifecycle and a caller authorised only in another Business Unit |
+| AC1: correct a rejected casefile and resubmit | Original inputter changes respondent, applicant and minor 7 names while preserving minor 23; HTTP 200, full corrected content/snapshot/history, advanced ETag, persisted RESUBMITTED | `DraftCasefileResubmissionQaIntegrationTest` verifies the complete transaction and original submitter |
+| AC2: another authorised inputter can resubmit and becomes latest submitter | Different owning-unit inputter takes ownership; the same latest submitter with check permission then receives 403 for self-check, preserving full state/version | Integration verifies handover and latest-submitter self-check denial |
+| AC3: invalid or unauthorised corrections preserve the rejected draft | Unknown application `ZZ99999` gives 400; caller without owning-unit create authority gives 403; supplied Business Unit 45 with nested owner 44 gives resource-conflict 409. Each verifies whole unchanged GET and ETag | Integration also controls obsolete ETag against eligible REJECTED state, non-REJECTED lifecycle and a caller authorised only in another Business Unit |
 
 Use normal `TEST_URL` and `OPAL_USER_SERVICE_API_URL` pointing to compatible
 non-live Maintenance and User Service deployments. Existing reference data must
 include Business Unit 44, active application `AP00001`, active country CJS code
 `1` and result `MAT`. The application must provide enabled scoped cleanup and
-publication-evidence routes with compatible producer instrumentation. Tests
+the PR #318 cleanup contract. No publication-evidence routes are required. Tests
 never change reference data, identities or permissions.
 
 The default creator is `opal-test@dev.platform.hmcts.net`, independent checker
@@ -505,21 +491,16 @@ present malformed maintenance/units/permissions, duplicate owning-unit entries
 and duplicate permission IDs fail setup. Actor details and tokens stay in
 memory and never enter retained evidence.
 
-After setup rejection and immediately before the tested PUT, the original
-owner registers a fresh observation. HTTP 201, canonical UUID, registration
-time and complete `0/0/0/0` counts are mandatory. Registration failures retain
-only safe numeric HTTP status, never payloads. A full GET must show unchanged
-baseline and ETag after registration. PUT contains only `business_unit_id` and
-the complete corrected `casefile`, preserving marker and nested owning unit.
-Each mutation is dispatched once. HTTP 200 immediately changes evidence and
-cleanup authority to the acting resubmitter before detailed response assertions.
-The latest owner must retrieve the complete persisted casefile and the same
-observation UUID/time with complete attempt/acknowledged/uncertain/unfinished
-counts `0/0/0/0`. Failed PUTs retain original ownership. Negative whole-state and
-journal checks execute before final strict problem-format assertions. Self-check
-uses a rejection with a valid reason/current ETag, avoiding publication setup.
-This scoped producer evidence does not establish broker durability or global
-absence of unrelated messages.
+After setup rejection, a normal GET verifies the complete baseline and ETag
+immediately before the tested PUT. PUT contains only `business_unit_id` and the
+full corrected `casefile`, preserving marker and nested owning unit. Each mutation
+is dispatched once. HTTP 200 immediately transfers cleanup authority to the known
+acting resubmitter before detailed response assertions. The latest owner must
+retrieve the exact persisted content, snapshot, timeline and advanced ETag.
+Failed PUTs retain original ownership. Whole-state checks execute before strict
+problem-format assertions. Self-check uses a rejection with a valid reason and
+current ETag. Integration tests verify absence of publisher calls; API reads and
+harness request counts do not establish broker non-delivery.
 
 Cleanup is bounded to the captured owned ID and marker; only HTTP 204 succeeds.
 Confirmed handover uses the latest owner even if a later success assertion
@@ -535,23 +516,19 @@ otherwise passing scenario; a primary failure retains only safe ID/marker and
 status/error-category evidence. Credentials and state are cleared in `finally`,
 including attachment failures.
 
-Known runtime gaps must remain visible: publication registration has returned a
-non-201 status and owned GET has returned 404 on an existing local deployment;
-these are setup failures and do not prove tested PUT coverage. Runtime image
-source revision and database-provider compatibility require separate evidence.
 The physical `common.yaml` problem contract requires canonical UUID
-`operation_id`, while installed common-lib 0.3.37 `LogUtil` strips hyphens.
-Strict assertions retain that physical contract; do not relax them or classify
-UUID failures as missing-provider failures. Existing scoped cleanup 409s remain
-unresolved runtime dependencies and must be reported separately. No result in
-this section claims live passes.
+`operation_id`. Strict UUID assertions remain in place; any mismatch is a separate
+contract failure, not a missing-provider failure. Current cleanup supports eligible
+pending and published drafts with the documented ownership, graph and table-lock
+contract. Live verification still requires a pinned compatible deployment; prior
+observations against an unknown local image do not verify these branches.
 
 Run actual Java regressions without a Cucumber tag property and preserve the
 Java XML counts from `build/test-results/functional/opal` before discovery
 replaces reports:
 
 ```bash
-./gradlew --offline functionalOpal --tests 'uk.gov.hmcts.opal.*.DraftCasefile*Test' --tests 'uk.gov.hmcts.opal.assertions.PublicationEvidenceAssertionsTest' --tests 'uk.gov.hmcts.opal.steps.GetDraftCasefileStepDefTest' --tests 'uk.gov.hmcts.opal.steps.ListDraftCasefilesStepDefTest' --tests 'uk.gov.hmcts.opal.steps.RecordCheckerDecisionsStepDefTest' --tests 'uk.gov.hmcts.opal.steps.ResubmitRejectedCasefileStepDefTest' -Dcucumber.execution.dry-run=true
+./gradlew --offline functionalOpal --tests 'uk.gov.hmcts.opal.*.DraftCasefile*Test' --tests 'uk.gov.hmcts.opal.steps.GetDraftCasefileStepDefTest' --tests 'uk.gov.hmcts.opal.steps.ListDraftCasefilesStepDefTest' --tests 'uk.gov.hmcts.opal.steps.RecordCheckerDecisionsStepDefTest' --tests 'uk.gov.hmcts.opal.steps.ResubmitRejectedCasefileStepDefTest' -Dcucumber.execution.dry-run=true
 ./gradlew --offline checkstyleFunctionalTest
 ./gradlew --offline integration --tests 'uk.gov.hmcts.opal.controllers.DraftCasefileResubmissionQaIntegrationTest'
 ```
@@ -583,14 +560,8 @@ connection settings. For a disposable emulator exposed on a mapped port,
 ./gradlew integration --tests '*DraftCasefileQueueIntegrationTest'
 ```
 
-These tests stop the application listener and consume their synthetic messages
-from the dedicated queue. `DraftCasefileQueueConsumerIntegrationTest` starts its
-own correlation-filtered listener and also requires
-`TEST_SERVICEBUS_MAX_DELIVERIES` to match the provisioned dead-letter limit.
-Its missing-draft test runs with support enabled and verifies that the real JMS
-callback has no ambient Spring database transaction or synchronization before
-entering guarded processing. They prove
-persistent four-field publication (draft ID, checker user ID, originating IP and approval timestamp), bounded connection failure, and that an accepted
+These tests consume their synthetic messages from the dedicated queue. They prove
+persistent ID-only publication, bounded connection failure, and that an accepted
 message survives a later database rollback without successful-decision logging.
 Do not point them at an application queue. Remove the test queue or disposable
 emulator after the run; keep credentials out of files and command arguments.
@@ -745,106 +716,115 @@ record why the baseline build was not run.
 
 ## Synthetic Draft Casefile cleanup
 
-The [support guide](DRAFT_CASEFILE_TEST_CLEANUP.md) defines the shared default-off
-flag, permission 21/current-inputter/exact-marker scope, HTTP contracts, and the
-Cypress response-loss/CI-ledger sequence. All evidence must be captured before
-DELETE removes the journal. Service checks use synthetic data in disposable
-PostgreSQL 17 and signed JWT/local WireMock fixtures; no shared service or real
-account is required for those automated checks. Real broker checks require the
-isolated queue prerequisites [above](#draft-casefile-publication-tests).
+The [cleanup guide](DRAFT_CASEFILE_TEST_CLEANUP.md) defines the dedicated default-off
+DELETE, identity/marker/lifecycle rules, pre-deletion assertions and durable ledger.
+The [published graph guide](PUBLISHED_DRAFT_CASEFILE_CLEANUP.md) inventories graph
+checks/deletions and the whole-table locking, real-role and supported-writer contract.
+Normal APIs supply state reads. There is no publication-evidence registration/read
+route, evidence schema, publisher instrumentation or pool admission aspect on this
+support lineage.
+
+Service checks use synthetic data in disposable PostgreSQL 17 with signed JWT/local
+WireMock fixtures. Docker is required for database-backed integration checks. These
+are reproducible commands, not a report that they ran on the current revision:
 
 ```bash
-./gradlew test --tests '*DraftCasefileAdmission*' --tests '*DraftCasefileCleanup*' --tests '*PublicationEvidence*' --tests '*ObservedDraftCasefileQueuePublisherTest'
-./gradlew integration --tests '*DraftCasefileCleanup*' --tests '*DisabledDraftCasefileCleanup*' --tests '*PublicationEvidence*'
-./gradlew processResources openApiGenerate compileJava --no-daemon
-./gradlew test --tests '*OpenApiSchemaValidatorTest' --tests '*OpenApiRequestBodyAdviceTest'
+./gradlew test --tests '*DraftCasefileCleanup*' --tests '*DraftCasefileTestScope*'
+./gradlew integration --tests '*DraftCasefileCleanup*' --tests '*DisabledDraftCasefileCleanup*' --tests '*DraftCasefilePublishedCleanup*'
+./gradlew integration --tests '*DraftCasefileDecision*' --tests '*DraftCasefileReplace*'
+./gradlew bundleOpenApi generateOpenApiValidationSchema
+./gradlew openApiGenerate compileJava --no-daemon
 ./gradlew build --no-daemon
 ./gradlew jacocoTestReport
 ```
 
-The response-only `PublicationEvidence` schema in `TestingSupport.yaml` generates
-one `TestingSupportPublicationEvidence` model. Verify UUID `observation_id`,
-offset date-time `registered_at`, nonnegative int64 counts (generated `Long`)
-and boolean `evidence_complete`, with exactly seven response fields. Follow
-[OpenAPI verification](OPENAPI_GUIDELINES.md#verification): inspect internal refs
-and unique component names in `build/openapi-bundled.yaml`, generated getters and
-types, and byte equality with `build/resources/main/openapi-bundled.yaml`.
-Validation uses the packaged bundle; no separate validation-schema generation
-task is required. Runtime OpenAPI tests must expose both authenticated evidence
-operations only when support is enabled. Generation/compilation alone does not
-prove runtime validation or security.
+The cleanup suites cover authentication, permission 21 in stored BU, latest submitter,
+exact marker, absent-ID 204, all eligible lifecycle states, shared/inconsistent/active
+graph refusal, snapshot integrity, legacy null versions, sibling/reference retention
+and atomic rollback. Disabled-route/runtime-doc checks distinguish authenticated 404
+from anonymous 401. Enabled/disabled publisher checks retain the base publisher,
+exercise real HTTP approval and verify one producer invocation and repeat refusal
+with mocked JMS transport. Separate route/runtime OpenAPI contract checks verify
+that evidence routes remain absent.
 
-| Requirement | Automated service/database evidence | Consumer/deployed evidence still required |
-| --- | --- | --- |
-| Register once and read stable evidence without sending | `PublicationEvidenceIntegrationTest` checks 201 first/200 repeat, same observation/time, seven fields, lifecycle eligibility and no reset after approval | Frontend registers before the real mutation and retains the observation ID |
-| Current BU permission 21, latest inputter and both draft/observation markers | `PublicationEvidenceAuthenticationIntegrationTest` uses signed JWT/User Service fixtures; `PublicationEvidenceIntegrationTest` covers scope denial and actual PUT handover | Environment credentials must resolve the current inputter; checker actions retain inputter ownership |
-| Observe exactly one real producer invocation | `ObservedDraftCasefileQueuePublisherTest` checks delegation/ordering/failure; `PublicationEvidenceIntegrationTest` checks actual approval, non-approval, outer rollback and no automatic replay; `DraftCasefileQueueIntegrationTest` checks a dedicated real broker | Cypress captures every PATCH/PUT, loses the response after server-side completion, recovers with the existing GET journey, and asserts one mutation/one expected timeline entry |
-| Complete, correctly scoped response-loss evidence | API tests cover acknowledged, uncertain and unfinished outcomes; `PublicationEvidenceRepositoryIntegrationTest` and `PublicationEvidenceWriterIntegrationTest` cover durable counters and independent transactions | Same observation, `evidence_complete=true`, approval counts `1/1/0/0` or reject/delete/PUT `0/0/0/0`; no service upgrade or undecorated producer during the interval |
-| Consistent evidence during cleanup | `PublicationEvidenceConcurrencyIntegrationTest` pauses GET after the real observation lookup, commits DELETE, then verifies the original uncertain/unfinished snapshot | Capture and retain evidence before initiating cleanup |
-| Bounded support-enabled approval concurrency | The same suite holds 9 real outer transactions in the configured pool of 10, proves an additional approval, processing and failure-recording caller all wait before transaction/connection acquisition, and checks scoped durable outcomes after success or failure; it repeats the queue check during transaction completion and verifies advice order and ambient-transaction rejection | Every replica uses the instrumented revision and fixed configured pool size; processing and failure-recording callers share the same admission; additional direct writers must reconcile their protocol |
-| Atomic eligible cleanup and safe retries | `DraftCasefileCleanupIntegrationTest` covers POST-ID-to-DELETE, scope, lifecycle, embedded-data deletion, sibling/reference retention, rollback, repeats and PostgreSQL lock contention; `PublicationEvidenceIntegrationTest` covers journal/attempt rollback, old-marker cleanup after current-owner PUT, and orphan retention | Durable ID/marker/environment/scenario ledger; remove entries only after 204 and retain every failed cleanup |
-| Default-off/disabled security and operational endpoints | Cleanup availability and disabled HTTP/runtime-doc suites check default-off, authenticated 404/anonymous 401; publication/API and operational suites cover `/`, `/health`, `/prometheus` | Verify resolved non-live flag and production-disabled values through normal deployment controls |
-| Journal schema and fresh migration path | `draft_casefile_test_observations_pgtap_tests.sql` and `draft_casefile_test_send_attempts_pgtap_tests.sql` own V1_49 direct PostgreSQL boundaries through `dbUnitTest` | Deploy V1_49 before enabling support; predecessor-upgrade verification remains unmet below |
-| Actual consumer and unlinked cleanup races | `DraftCasefileCleanupConsumerIntegrationTest` exercises real processing/failure services, observed PostgreSQL lock waits, cleanup commit/rollback, accepted approval followed by rollback/uncertain send, and a controlled publication-repository timeout | This proves Java orchestration, not publication SQL or real graph deletion |
-| Pending/published cleanup | Current integration guards require 409 and preserve draft, graph and journal | The six-check gate in the support guide requires the real provider, graph/writer inventory and complete publication/cleanup races; this requirement is Not Agent Complete |
+`DraftCasefileCleanupConcurrencyIntegrationTest` calls the unchanged real note and
+Applicant/Respondent association helpers from independent transactions. It covers
+writer-first 503/rollback with later cleanup or sharing refusal, and cleanup-first
+blocked target reads followed by commit/missing-target refusal or rollback/writer
+success. It observes PostgreSQL locks using bounded coordination, verifies retained
+siblings/no dangling references and checks lock release. Pending delivery/failure
+races remain in `DraftCasefileCleanupConsumerIntegrationTest`. These tests do not
+support direct polymorphic writes that bypass same-transaction target validation.
 
-The admission tests use short test-only connection timeouts and latch/transaction
-coordination, with the existing PostgreSQL Testcontainers infrastructure. They
-exercise real approval service transactions and the real evidence decorator/writer;
-the external publisher is controlled. They do not replace the isolated real broker
-checks. `DraftCasefileAdmissionTest` checks insufficient-capacity startup,
-default-off behavior, interruption and permit release. Existing default-off
-decision transaction tests retain their enclosing-transaction behavior. See the
-[support concurrency contract](DRAFT_CASEFILE_TEST_CLEANUP.md#support-enabled-concurrency)
-for the pool-derived per-replica bound and supported caller/deployment assumptions.
+No migration-specific boundary assertions are required for this candidate: database
+schema, routines and database-owned pgTAP suites remain unchanged against the approved
+base. Application-owned graph SQL/transactions are covered by Spring integration
+checks. Run the unchanged `dbUnitTest` baseline and inspect PostgreSQL version,
+timings, selected profiles/history and disposable cleanup confirmation in
+`build/reports/dbUnitTest`. Migration-tree equality does not prove compatibility
+with retained databases that may have applied original-lineage V1_67–V1_69; see
+[release prerequisites](DRAFT_CASEFILE_TEST_CLEANUP.md#deployment-and-recovery).
 
-Counts above are attempts / acknowledged / uncertain / unfinished. Unregistered,
-uncertain or unfinished evidence fails the recovery test's precondition, as do
-disabled support, a missing broker prerequisite, a service upgrade during the
-interval or a producer without the decorator. A send count is not a consumer
-execution count or broker-level exactly-once proof; a transport exception does
-not prove non-delivery. The service suites do not implement Cypress response
-loss, a durable browser-independent ledger or deployed frontend GET assertions.
+### FE/QA consumer cutover and acceptance evidence
 
-Additive V1_49 creates the journal tables without changing stored routines.
-The existing `draft_casefiles_pgtap_tests.sql` and
-`draft_casefiles_publication_link_pgtap_tests.sql` remain draft-schema coverage;
-the new owning suites cover journal constraints, indexes and cascade behavior.
-Endpoint deletion and transaction rollback remain application integration
-coverage. Run the full build's `dbUnitTest` baseline and inspect timings,
-PostgreSQL version and owned cleanup evidence in `build/reports/dbUnitTest`;
-do not infer execution from compilation or task presence.
+Read-only inspection of `opal-rm-frontend` at
+`977badf4e28c6e0f22ef54e0d907404815f6e955` found the PO-10626 consumer still uses
+publication-evidence registration/read and response-schema assertions. Before
+retiring the old routes or pairing these consumers with this backend, deliver and
+verify the FE cutover below, then run the real recovery journeys against the agreed
+compatible Maintenance/User services. The FE/QA delivery owner and acceptance owner
+must confirm the allocation; this backend change does not perform that cutover.
+Inspect and update together (all paths are relative to `opal-rm-frontend`):
 
-The journal's DB-03 upgrade check remains unmet with selected predecessor
-`1.34`. Integrate the separately delivered framework PR #271 and the journal's
-owning suites through the reviewed `OPAL-DB-UPGRADE` and
-`dbUnitTestComparisonRef` / `dbUnitTestUpgradeMode` interfaces before executing
-and recording predecessor preservation, candidate migration, assertions,
-validation, repeat/no-op and owned cleanup. No standalone upgrade recipe or
-harness is provided. Fresh migration and integration-test success do not close
-this requirement.
+- `cypress/e2e/functional/opal/actions/checkAndValidateCase/draft-casefile-evidence.actions.ts`
+  and `cypress/e2e/functional/opal/actions/checkAndValidateCase/interfaces/draft-casefile-publication-evidence.interface.ts`.
+- `cypress/e2e/functional/opal/flows/checkAndValidateCase/draft-casefile-concurrency.flow.ts`
+  and `cypress/support/step_definitions/checkAndValidateCase/draft-casefile-concurrency.steps.ts`.
+- `cypress/component/checkAndValidateCase/concurrency-support.cy.ts` and the
+  `cypress/e2e/functional/opal/features/checkAndValidateCase/README.md` guidance.
+- `cypress/e2e/functional/opal/features/checkAndValidateCase/DraftCasefileConcurrency.feature`
+  and `cypress/e2e/functional/opal/features/checkAndValidateCase/DraftCasefileConcurrencyAccessibility.feature`,
+  whose publication-evidence step must be reconciled with the agreed allocation.
+  The functional feature still skips approval under `@PO10626RequiresPublishedCleanup`
+  and states pending/published cleanup is unavailable. Reconcile that stale dependency
+  only after the delivered cleanup and real approval/recovery run are verified.
 
-Pending/published cleanup also remains **Not Agent Complete**. The PO-10629 Java
-consumer and separate failure transaction now share cleanup's row lock and
-missing-row no-op protocol. The current migration tree does not supply
-`public.p_process_draft_casefiles`; positive real-provider integration tests
-require separately delivered, pinned SQL. A test-only provider or controlled
-repository failure is not real graph-publication evidence. Do not blanket-skip
-these upstream checks or treat a focused support run as a passing whole baseline.
-Preserve both 409 responses and outstanding IDs/markers until the reviewed graph
-and writer inventory and all six [cleanup gate checks](DRAFT_CASEFILE_TEST_CLEANUP.md#deployment-retention-and-outstanding-prerequisites)
-have passed. There is no journal TTL or background sweeper; scoped eligible DELETE
-is the retention mechanism.
+This is a backend handoff; those external files are not changed here. Preserve the
+real API mutation and response-drop/request-count machinery and replace evidence
+calls with normal GET/re-entry, identifier/version/lifecycle/snapshot and exactly
+one corresponding timeline-event assertions **before** scoped after-hook DELETE.
+Create through real UI/APIs, capture ID/owning inputter/exact marker early and retain
+failed cleanup entries until 204. Never substitute a stubbed successful mutation.
+Keep approve/reject/delete, PUT resubmit, definite failure, stale conflict and each
+material accessibility recovery state independently exercised.
 
-Functional/smoke suites require a separately running agreed non-live service,
-User Service permission 21 inputter, a distinct checker with its normal decision
-permission, compatible migrations, enabled support and a dedicated broker queue.
-Expected evidence includes registration 201/repeat 200, current-owner reads,
-unchanged observation, one approval acknowledgment, scope 403 and disabled 404.
-Document omitted external checks with that setup and expected result. Do not
-enable support or exercise cleanup against shared data during routine local
-verification. Human QA, deployment and frontend adoption remain separate from
-these service checks.
+| Fact to prove | Evidence source and boundary |
+| --- | --- |
+| One browser PATCH/PUT and no automatic replay after response loss | FE request counting through completed normal GET/re-entry and accessibility recovery. Explicit retry scenarios have their own expected counts. |
+| Persisted decision/resubmission, current version, original ID, snapshot and one corresponding timeline event | Normal API recovery assertions before DELETE; backend decision/replacement and transaction tests separately support state/rollback behavior. |
+| One producer invocation for approval and repeat/stale refusal without another invocation | Decision/transaction tests verify publisher calls and state/rollback with a mocked publisher; enabled/disabled publisher integration tests execute the real service/base publisher with mocked JMS transport and verify one producer call plus repeat refusal. These prove their tested executions only. |
+| Broker acceptance, settlement/redelivery and one persisted published account graph | Separately labelled opt-in real-broker/consumer integration execution against a dedicated otherwise-unused queue. This does not imply exactly-once broker delivery. |
+| No duplicate producer sends in the deployed UI journey | Remains unmet unless the acceptance owner approves the proposed evidence allocation or separately scoped broker-observation capability is delivered. No broker monitor is added here. |
+
+Real-broker suites require `RUN_SERVICE_BUS_TESTS=true`, `TEST_SERVICEBUS_QUEUE`
+naming an agreed dedicated otherwise-unused `test-` queue, compatible existing
+Service Bus connection settings, and `TEST_SERVICEBUS_MAX_DELIVERIES` matching the
+provisioned queue's positive delivery limit for consumer dead-letter checks.
+`TEST_SERVICEBUS_AMQP_URI` optionally supplies a disposable emulator's mapped URI;
+keep any credentials private. Never reuse a shared stack queue for isolation-sensitive
+broker tests. Record their actual execution or skips separately from mocked producer
+checks. One browser request, one producer invocation, broker acceptance/redelivery
+and one published account are distinct facts. Backend support does not complete the
+full deployed UI E2E ticket; the current live acceptance mapping still requires
+acceptance-owner confirmation.
+
+Record exact revision, commands, test/failure/error/skipped counts, environment,
+elapsed time and safe report paths in the current verification handoff. Do not copy
+historical counts as new evidence. Functional/smoke/deployed FE tests need compatible
+running Maintenance/User services and synthetic prerequisites; actual-role lock
+capability and non-live blocking acceptance need explicit verification before
+support is enabled. List any unrun check, setup and expected outcome. Routine local
+verification must not clean, repair or rebuild shared data.
 
 ## Test design
 

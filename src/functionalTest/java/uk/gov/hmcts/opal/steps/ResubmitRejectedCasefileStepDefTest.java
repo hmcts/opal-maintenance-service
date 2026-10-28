@@ -48,11 +48,9 @@ class ResubmitRejectedCasefileStepDefTest {
     private ObjectNode current;
     private ObjectNode original;
     private int version;
-    private int registeredVersion = -1;
     private String problem;
     private Consumer<ObjectNode> createChange = node -> { };
     private Consumer<ObjectNode> replaceChange = node -> { };
-    private Consumer<ObjectNode> evidenceChange = node -> { };
 
     @BeforeEach
     void boundary() {
@@ -75,7 +73,7 @@ class ResubmitRejectedCasefileStepDefTest {
         });
         when(actions.get(anyString(), eq(123L))).thenAnswer(call -> response(200, current, etag()));
         when(actions.decide(anyString(), eq(123L), anyString(), anyString())).thenAnswer(call -> {
-            if (registeredVersion >= 0) {
+            if (version >= 2) {
                 return problem("forbidden");
             }
             current.put("casefile_status", "REJECTED").put("casefile_status_name", "Rejected")
@@ -100,15 +98,6 @@ class ResubmitRejectedCasefileStepDefTest {
             version++;
             return response(200, current, etag());
         });
-        when(actions.registerPublicationEvidence(anyString(), eq(123L), anyString())).thenAnswer(call -> {
-            registeredVersion = version;
-            return response(201, evidence(), null);
-        });
-        when(actions.publicationEvidence(anyString(), eq(123L), anyString())).thenAnswer(call -> {
-            ObjectNode body = evidence();
-            evidenceChange.accept(body);
-            return response(200, body, null);
-        });
         when(actions.delete(anyString(), eq(123L), anyString())).thenReturn(response(204, null, null));
         steps.resetScenario();
     }
@@ -125,17 +114,13 @@ class ResubmitRejectedCasefileStepDefTest {
             steps.selfCheckDenied();
         }
         steps.deleteCreatedDraft(scenario);
-        assertThat(registeredVersion).isEqualTo(1);
+
         ArgumentCaptor<String> put = ArgumentCaptor.forClass(String.class);
         InOrder order = inOrder(actions);
         order.verify(actions).decide(eq("checker-token"), eq(123L), anyString(), eq("\"0\""));
-        order.verify(actions).get("owner-token", 123L);
-        order.verify(actions).registerPublicationEvidence(eq("owner-token"), eq(123L), anyString());
-        order.verify(actions).get("owner-token", 123L);
         order.verify(actions).replace(eq(actor), eq(123L), put.capture(), eq("\"1\""));
         String owner = "another".equals(flow) ? "checker-token" : "owner-token";
         order.verify(actions).get(owner, 123L);
-        order.verify(actions).publicationEvidence(eq(owner), eq(123L), anyString());
         order.verify(actions).delete(eq(owner), eq(123L), anyString());
         JsonNode request = JSON.readTree(put.getValue());
         assertThat(request.size()).isEqualTo(2);
@@ -208,7 +193,6 @@ class ResubmitRejectedCasefileStepDefTest {
         }
         when(actions.userState("denied-token")).thenReturn(response(200, state, null));
         assertThatThrownBy(steps::deniedCorrection).isInstanceOf(AssertionError.class);
-        verify(actions, never()).registerPublicationEvidence(anyString(), anyLong(), anyString());
         verify(actions, never()).replace(anyString(), anyLong(), anyString(), anyString());
     }
 
@@ -246,32 +230,21 @@ class ResubmitRejectedCasefileStepDefTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"body", "etag", "status", "incomplete"})
-    void registrationIsStrictAndCannotChangeDraft(String change) {
+    @ValueSource(strings = {"body", "etag"})
+    void prePutReadMustMatchRejectedBaseline(String change) {
         steps.rejectedCasefile();
-        when(actions.registerPublicationEvidence(anyString(), anyLong(), anyString())).thenAnswer(call -> {
+        when(actions.get(anyString(), anyLong())).thenAnswer(call -> {
             if ("body".equals(change)) {
                 current.put("extra", true);
-            } else if ("etag".equals(change)) {
+            } else {
                 version++;
             }
-            ObjectNode evidence = evidence().put("evidence_complete", !"incomplete".equals(change));
-            return response("status".equals(change) ? 404 : 201, evidence, null);
+            return response(200, current, etag());
         });
         assertThatThrownBy(steps::originalCorrection).isInstanceOf(AssertionError.class);
         verify(actions, never()).replace(anyString(), anyLong(), anyString(), anyString());
     }
 
-    @Test
-    void registrationFailureRecordsOnlyNumericStatusAndCannotReplay() {
-        steps.rejectedCasefile();
-        when(actions.registerPublicationEvidence(anyString(), anyLong(), anyString()))
-            .thenReturn(response(404, JSON.createObjectNode().put("private", "owner-token"), null));
-        assertThatThrownBy(steps::originalCorrection).isInstanceOf(AssertionError.class)
-            .hasMessageContaining("404").hasMessageNotContaining("owner-token");
-        assertThatThrownBy(steps::originalCorrection).isInstanceOf(AssertionError.class);
-        verify(actions, times(1)).registerPublicationEvidence(anyString(), anyLong(), anyString());
-    }
 
     @ParameterizedTest
     @ValueSource(strings = {"casefile", "actor", "label", "snapshot", "history", "version"})
@@ -295,28 +268,8 @@ class ResubmitRejectedCasefileStepDefTest {
         verify(actions, never()).delete(eq("owner-token"), anyLong(), anyString());
     }
 
-    @ParameterizedTest
-    @ValueSource(strings = {"observation", "time", "counts", "incomplete", "http"})
-    void successfulPutNeedsExactCompleteSameObservation(String change) {
-        steps.rejectedCasefile();
-        steps.originalCorrection();
-        evidenceChange = body -> {
-            switch (change) {
-                case "observation" -> body.put("observation_id", "650e8400-e29b-41d4-a716-446655440000");
-                case "time" -> body.put("registered_at", "2026-10-24T10:00:00Z");
-                case "counts" -> body.put("send_attempt_count", 1).put("acknowledged_send_count", 1);
-                default -> body.put("evidence_complete", false);
-            }
-        };
-        if ("http".equals(change)) {
-            when(actions.publicationEvidence(anyString(), anyLong(), anyString()))
-                .thenReturn(response(404, null, null));
-        }
-        assertThatThrownBy(steps::assertResubmitted).isInstanceOf(AssertionError.class);
-    }
-
     @Test
-    void negativeStateAndJournalAreCheckedBeforeCanonicalUuidFailure() {
+    void negativeStateIsCheckedBeforeCanonicalUuidFailure() {
         steps.rejectedCasefile();
         problem = "forbidden";
         steps.deniedCorrection();
@@ -330,17 +283,16 @@ class ResubmitRejectedCasefileStepDefTest {
         // A separate fresh attempt captures the malformed response without replaying this mutation.
         steps.deleteCreatedDraft(scenario);
         steps.resetScenario();
-        registeredVersion = -1;
+
         version = 0;
         steps.rejectedCasefile();
         steps.deniedCorrection();
         assertThatThrownBy(steps::assertDenied).isInstanceOf(AssertionError.class).hasMessageContaining("UUID");
-        verify(actions, times(1)).publicationEvidence(eq("owner-token"), eq(123L), anyString());
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"body", "etag", "journal"})
-    void failedPutRequiresEntireUnchangedStateAndZeroEvidence(String change) {
+    @ValueSource(strings = {"body", "etag"})
+    void failedPutRequiresEntireUnchangedState(String change) {
         steps.rejectedCasefile();
         problem = "invalid";
         steps.invalidCorrection();
@@ -348,8 +300,6 @@ class ResubmitRejectedCasefileStepDefTest {
             current.put("extra", "changed");
         } else if ("etag".equals(change)) {
             version++;
-        } else {
-            evidenceChange = body -> body.put("send_attempt_count", 1).put("acknowledged_send_count", 1);
         }
         assertThatThrownBy(steps::assertInvalid).isInstanceOf(AssertionError.class);
     }
@@ -480,7 +430,7 @@ class ResubmitRejectedCasefileStepDefTest {
     }
 
     @Test
-    void unexpectedDeniedSuccessCannotTransferEvidenceOrCleanupAuthority() {
+    void unexpectedDeniedSuccessCannotTransferCleanupAuthority() {
         steps.rejectedCasefile();
         final ObjectNode before = current.deepCopy();
         doReturn(response(200, before, etag())).when(actions)
@@ -497,14 +447,10 @@ class ResubmitRejectedCasefileStepDefTest {
 
         assertThat(current).isEqualTo(before);
         InOrder order = inOrder(actions);
-        order.verify(actions).registerPublicationEvidence(eq("owner-token"), eq(123L), anyString());
-        order.verify(actions).get("owner-token", 123L);
         order.verify(actions).replace(eq("denied-token"), eq(123L), anyString(), eq("\"1\""));
         order.verify(actions).get("owner-token", 123L);
-        order.verify(actions).publicationEvidence(eq("owner-token"), eq(123L), anyString());
         order.verify(actions).delete(eq("owner-token"), eq(123L), anyString());
         verify(actions, never()).get("denied-token", 123L);
-        verify(actions, never()).publicationEvidence(eq("denied-token"), anyLong(), anyString());
         verify(actions, never()).delete(eq("denied-token"), anyLong(), anyString());
         verify(actions, times(1)).replace(anyString(), anyLong(), anyString(), anyString());
     }
@@ -527,12 +473,11 @@ class ResubmitRejectedCasefileStepDefTest {
         verify(actions).decide(eq("checker-token"), eq(123L), body.capture(), eq("\"2\""));
         assertThat(JSON.readTree(body.getValue()).path("casefile_status").asText()).isEqualTo("REJECTED");
         assertThat(JSON.readTree(body.getValue()).path("status_message").asText()).isEqualTo(REASON);
-        verify(actions, times(2)).publicationEvidence(eq("checker-token"), eq(123L), anyString());
         assertThatThrownBy(steps::selfCheckDenied).isInstanceOf(AssertionError.class);
     }
 
     @Test
-    void malformedSetupRejectionReadbackStopsBeforeObservation() {
+    void malformedSetupRejectionReadbackStopsBeforePut() {
         when(actions.get(anyString(), eq(123L))).thenAnswer(call -> {
             ObjectNode body = current.deepCopy();
             if (version == 1) {
@@ -541,19 +486,6 @@ class ResubmitRejectedCasefileStepDefTest {
             return response(200, body, etag());
         });
         assertThatThrownBy(steps::rejectedCasefile).isInstanceOf(AssertionError.class);
-        verify(actions, never()).registerPublicationEvidence(anyString(), anyLong(), anyString());
-    }
-
-    @Test
-    void ambiguousRegistrationIsNeverReplayedAndCannotReachPut() {
-        steps.rejectedCasefile();
-        when(actions.registerPublicationEvidence(anyString(), anyLong(), anyString()))
-            .thenThrow(new IllegalStateException("private token"));
-        assertThatThrownBy(steps::originalCorrection).isInstanceOf(AssertionError.class)
-            .hasMessageContaining("ambiguous").hasNoCause();
-        assertThatThrownBy(steps::originalCorrection).isInstanceOf(AssertionError.class);
-        verify(actions, times(1)).registerPublicationEvidence(anyString(), anyLong(), anyString());
-        verify(actions, never()).replace(anyString(), anyLong(), anyString(), anyString());
     }
 
     @Test
@@ -567,12 +499,12 @@ class ResubmitRejectedCasefileStepDefTest {
     }
 
     @Test
-    void freshMarkerSurvivesEveryEvidenceAndCleanupBoundary() throws Exception {
+    void freshMarkerSurvivesEveryPutAndCleanupBoundary() throws Exception {
         steps.rejectedCasefile();
         steps.originalCorrection();
         steps.assertResubmitted();
         steps.deleteCreatedDraft(scenario);
-        registeredVersion = -1;
+
         version = 0;
         steps.rejectedCasefile();
         ArgumentCaptor<String> bodies = ArgumentCaptor.forClass(String.class);
@@ -582,8 +514,6 @@ class ResubmitRejectedCasefileStepDefTest {
         String second = JSON.readTree(bodies.getAllValues().get(1)).at("/casefile/respondent_account/remo_reference")
             .asText();
         assertThat(first).matches("E2E-[0-9a-f]{16}").isNotEqualTo(second);
-        verify(actions).registerPublicationEvidence("owner-token", 123L, first);
-        verify(actions).publicationEvidence("owner-token", 123L, first);
         verify(actions).delete("owner-token", 123L, first);
     }
 
@@ -679,12 +609,6 @@ class ResubmitRejectedCasefileStepDefTest {
             entries.addObject().put("permission_id", permission);
         }
         return state;
-    }
-
-    private ObjectNode evidence() {
-        return JSON.createObjectNode().put("observation_id", "550e8400-e29b-41d4-a716-446655440000")
-            .put("registered_at", DATE).put("send_attempt_count", 0).put("acknowledged_send_count", 0)
-            .put("uncertain_send_count", 0).put("unfinished_send_count", 0).put("evidence_complete", true);
     }
 
     private Response problem(String kind) {

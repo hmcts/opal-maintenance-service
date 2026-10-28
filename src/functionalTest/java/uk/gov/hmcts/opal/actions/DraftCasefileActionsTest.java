@@ -57,17 +57,7 @@ class DraftCasefileActionsTest {
             "\"4\"", null);
     }
 
-    @Test
-    void evidenceRegistrationUsesCreatorAndRunReferenceWithoutBodyOrIfMatch() {
-        assertNewRequest("POST", "/testing-support/draft-casefiles/321/publication-evidence",
-            "synthetic-creator-token", null, null, "E2E-550e8400e29b41d4");
-    }
 
-    @Test
-    void evidenceReadUsesCreatorAndRunReferenceWithoutBodyOrIfMatch() {
-        assertNewRequest("GET", "/testing-support/draft-casefiles/321/publication-evidence",
-            "synthetic-creator-token", null, null, "E2E-550e8400e29b41d4");
-    }
 
     @Test
     void userStateUsesConfiguredUserServiceAndExplicitCheckerToken() {
@@ -102,10 +92,7 @@ class DraftCasefileActionsTest {
                 actions.replace(token, 321L, body, etag);
             } else if ("/draft-casefiles".equals(path)) {
                 actions.create(token, body);
-            } else if ("POST".equals(method)) {
-                actions.registerPublicationEvidence(token, 321L, marker);
-            } else if (marker != null) {
-                actions.publicationEvidence(token, 321L, marker);
+
             } else {
                 actions.userState(token);
             }

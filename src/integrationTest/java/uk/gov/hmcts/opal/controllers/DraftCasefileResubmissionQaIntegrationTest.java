@@ -30,7 +30,6 @@ import uk.gov.hmcts.opal.common.user.authorisation.model.UserStateV2;
 import uk.gov.hmcts.opal.entity.DraftCasefileEntity;
 import uk.gov.hmcts.opal.logging.integration.service.LoggingService;
 import uk.gov.hmcts.opal.repository.DraftCasefileRepository;
-import uk.gov.hmcts.opal.repository.PublicationEvidenceRepository;
 import uk.gov.hmcts.opal.service.messaging.DraftCasefileQueuePublisherImpl;
 import uk.gov.hmcts.opal.support.DraftCasefileHttpFixture;
 
@@ -69,7 +68,6 @@ class DraftCasefileResubmissionQaIntegrationTest extends BaseIntegrationTest {
 
     private static final JsonMapper JSON = JsonMapper.builder().build();
     private static final String DRAFT_PATH = "/draft-casefiles/{id}";
-    private static final String EVIDENCE_PATH = "/testing-support/draft-casefiles/{id}/publication-evidence";
     private static final String REASON = "Synthetic resubmission correction required";
     private static final Permission CREATE = new Permission(21L, "Create and Manage Draft Casefiles");
     private static final Permission CHECK = new Permission(22L, "Check and validate draft Casefiles");
@@ -81,8 +79,6 @@ class DraftCasefileResubmissionQaIntegrationTest extends BaseIntegrationTest {
     private MockMvc mvc;
     @Autowired
     private DraftCasefileRepository drafts;
-    @Autowired
-    private PublicationEvidenceRepository evidence;
     @MockitoBean
     private DraftCasefileQueuePublisherImpl delegate;
     @MockitoBean
@@ -105,12 +101,12 @@ class DraftCasefileResubmissionQaIntegrationTest extends BaseIntegrationTest {
     @Test
     void latestInputterWithBothPermissionsCannotRejectAfterHandover() throws Exception {
         OwnedDraft draft = rejectedDraft();
-        final JsonNode registered = assertSuccessfulReplacement(draft, HANDOVER);
+        assertSuccessfulReplacement(draft, HANDOVER);
         State before = state(draft);
         // The identical authenticated identity has both 21 and 22 for BU1 on PUT and PATCH.
         final String operation = assertProblem(reject(draft, token(HANDOVER), before.etag()), 403, "forbidden", draft);
         assertUnchanged(draft, before);
-        assertEvidence(draft, HANDOVER, registered);
+
         verifyNoInteractions(delegate);
         cleanup(draft, HANDOVER);
         assertCanonicalOperationId(operation);
@@ -162,7 +158,7 @@ class DraftCasefileResubmissionQaIntegrationTest extends BaseIntegrationTest {
         assertRejectedReplacement(draft, caller, state(draft).etag(), corrected, expectedStatus, type);
     }
 
-    private JsonNode assertSuccessfulReplacement(OwnedDraft draft, Actor inputter) throws Exception {
+    private void assertSuccessfulReplacement(OwnedDraft draft, Actor inputter) throws Exception {
         State before = state(draft);
         assertThat(before.body().path("casefile_status").asString()).isEqualTo("REJECTED");
         ObjectNode corrected = correction(draft);
@@ -173,7 +169,7 @@ class DraftCasefileResubmissionQaIntegrationTest extends BaseIntegrationTest {
             assertThat(corrected.at(path)).isNotEqualTo(before.body().at(path));
         }
         assertThat(before.body().path("status_message").asString()).isEqualTo(REASON);
-        final JsonNode registered = register(draft, before);
+        clearInvocations(delegate);
         final Instant earliest = Instant.now();
         MockHttpServletResponse response = replace(draft, token(inputter), before.etag(), corrected)
             .andExpect(status().isOk()).andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
@@ -210,9 +206,9 @@ class DraftCasefileResubmissionQaIntegrationTest extends BaseIntegrationTest {
         assertThat(JSON.readTree(after.entity().getTimelineData())).isEqualTo(result.get("timeline_data"));
         assertSnapshot(result.get("casefile_snapshot"));
         assertThat(JSON.readTree(after.entity().getCasefileSnapshot())).isEqualTo(result.get("casefile_snapshot"));
-        assertEvidence(draft, inputter, registered);
+
         verifyNoInteractions(delegate);
-        return registered;
+
     }
 
     private void assertSnapshot(JsonNode snapshot) {
@@ -252,10 +248,10 @@ class DraftCasefileResubmissionQaIntegrationTest extends BaseIntegrationTest {
     private void assertRejectedReplacement(OwnedDraft draft, OpalJwtAuthenticationToken caller, String etag,
                                            ObjectNode corrected, int expectedStatus, String type) throws Exception {
         State before = state(draft);
-        final JsonNode registered = register(draft, before);
+        clearInvocations(delegate);
         final String operation = assertProblem(replace(draft, caller, etag, corrected), expectedStatus, type, draft);
         assertUnchanged(draft, before);
-        assertEvidence(draft, draft.creator(), registered);
+
         verifyNoInteractions(delegate);
         cleanup(draft, draft.creator());
         assertCanonicalOperationId(operation);
@@ -378,39 +374,8 @@ class DraftCasefileResubmissionQaIntegrationTest extends BaseIntegrationTest {
         return new State(JSON.readTree(response.getContentAsString()), etag, entity);
     }
 
-    private JsonNode register(OwnedDraft draft, State before) throws Exception {
-        final JsonNode registered = JSON.readTree(mvc.perform(post(EVIDENCE_PATH, draft.id())
-            .with(authentication(token(draft.creator()))).header("Test-Run-Reference", draft.marker()))
-            .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
-        assertThat(registered.propertyNames()).containsExactlyInAnyOrder("observation_id", "registered_at",
-            "send_attempt_count", "acknowledged_send_count", "uncertain_send_count", "unfinished_send_count",
-            "evidence_complete");
-        assertThat(UUID.fromString(registered.path("observation_id").asString()).toString())
-            .isEqualTo(registered.path("observation_id").asString());
-        utcTimestamp(registered.get("registered_at"));
-        assertZero(registered);
-        assertUnchanged(draft, before);
-        clearInvocations(delegate);
-        return registered;
-    }
 
-    private void assertEvidence(OwnedDraft draft, Actor owner, JsonNode registered) throws Exception {
-        JsonNode current = JSON.readTree(mvc.perform(get(EVIDENCE_PATH, draft.id()).with(authentication(token(owner)))
-            .header("Test-Run-Reference", draft.marker())).andExpect(status().isOk())
-            .andReturn().getResponse().getContentAsString());
-        assertThat(current).isEqualTo(registered);
-        assertZero(current);
-    }
 
-    private void assertZero(JsonNode observation) {
-        for (String field : List.of("send_attempt_count", "acknowledged_send_count", "uncertain_send_count",
-            "unfinished_send_count")) {
-            assertThat(observation.path(field).isIntegralNumber()).as(field).isTrue();
-            assertThat(observation.path(field).longValue()).as(field).isZero();
-        }
-        assertThat(observation.path("evidence_complete").isBoolean()).isTrue();
-        assertThat(observation.path("evidence_complete").booleanValue()).isTrue();
-    }
 
     private void assertUnchanged(OwnedDraft draft, State before) throws Exception {
         State after = state(draft);
@@ -423,7 +388,7 @@ class DraftCasefileResubmissionQaIntegrationTest extends BaseIntegrationTest {
         mvc.perform(delete("/testing-support/draft-casefiles/{id}", draft.id()).with(authentication(token(owner)))
             .header("Test-Run-Reference", draft.marker())).andExpect(status().isNoContent());
         assertThat(drafts.findById(draft.id())).isEmpty();
-        assertThat(evidence.findObservation(draft.id())).isEmpty();
+
     }
 
     private String strongEtag(MockHttpServletResponse response) {

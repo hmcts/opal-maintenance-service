@@ -23,13 +23,11 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 import uk.gov.hmcts.opal.BaseIntegrationTest;
-import uk.gov.hmcts.opal.common.exception.OpalApiException;
 import uk.gov.hmcts.opal.common.user.authorisation.model.Permission;
 import uk.gov.hmcts.opal.entity.DraftCasefileStatus;
 import uk.gov.hmcts.opal.exception.DraftCasefilePublicationException.Attempt;
 import uk.gov.hmcts.opal.logging.integration.service.LoggingService;
 import uk.gov.hmcts.opal.repository.DraftCasefileRepository;
-import uk.gov.hmcts.opal.repository.PublicationEvidenceRepository;
 import uk.gov.hmcts.opal.repository.extensions.DraftCasefilePublicationRepository;
 import uk.gov.hmcts.opal.service.DraftCasefileCleanupService;
 import uk.gov.hmcts.opal.service.DraftCasefilePublicationFailureService;
@@ -82,8 +80,6 @@ class DraftCasefileCleanupConsumerIntegrationTest extends BaseIntegrationTest {
     private DraftCasefileQueueConsumerService consumer;
     @Autowired
     private DraftCasefilePublicationFailureService failures;
-    @Autowired
-    private PublicationEvidenceRepository evidence;
     @MockitoSpyBean
     private DraftCasefileRepository drafts;
     @MockitoSpyBean
@@ -135,11 +131,9 @@ class DraftCasefileCleanupConsumerIntegrationTest extends BaseIntegrationTest {
                     .hasCauseInstanceOf(IllegalStateException.class);
                 assertThat(drafts.findById(id).orElseThrow().getCasefileStatus())
                     .isEqualTo(DraftCasefileStatus.SUBMITTED);
-                assertThat(evidence.findObservation(id)).isPresent();
             } else {
                 deletion.get(15, TimeUnit.SECONDS);
                 assertThat(drafts.findById(id)).isEmpty();
-                assertThat(evidence.findObservation(id)).isEmpty();
             }
             delivery.get(15, TimeUnit.SECONDS);
             assertThat(failure.get(15, TimeUnit.SECONDS)).isFalse();
@@ -172,21 +166,16 @@ class DraftCasefileCleanupConsumerIntegrationTest extends BaseIntegrationTest {
         approve(id, transportFailure ? 503 : 500);
         assertThat(accepted.get()).isNotNull();
         assertThat(drafts.findById(id).orElseThrow().getCasefileStatus()).isEqualTo(DraftCasefileStatus.SUBMITTED);
-        var counts = evidence.counts(evidence.findObservation(id).orElseThrow().observationId());
-        assertThat(counts.sendAttemptCount()).isEqualTo(1);
-        assertThat(counts.acknowledgedSendCount()).isEqualTo(transportFailure ? 0 : 1);
-        assertThat(counts.uncertainSendCount()).isEqualTo(transportFailure ? 1 : 0);
         consumer.consume(JSON.writeValueAsString(accepted.get()));
         cleanup(id);
         consumer.consume(JSON.writeValueAsString(accepted.get()));
         assertThat(failures.markFailed(new Attempt(id, 1L, "BUU-CHECKER", null), "Synthetic failure")).isFalse();
         assertThat(drafts.findById(id)).isEmpty();
-        assertThat(evidence.findObservation(id)).isEmpty();
         verifyNoInteractions(publication, logging);
     }
 
     @Test
-    void processingRollbackReleasesLockButPendingCleanupStillRefusesUntilFailureRecorded() throws Exception {
+    void processingRollbackReleasesLockAndPendingCleanupPreventsFailureRecreation() throws Exception {
         long id = submit();
         var accepted = new AtomicReference<DraftCasefileQueueMessage>();
         doAnswer(invocation -> {
@@ -218,16 +207,13 @@ class DraftCasefileCleanupConsumerIntegrationTest extends BaseIntegrationTest {
             }
             assertThatThrownBy(() -> delivery.get(15, TimeUnit.SECONDS))
                 .hasCauseInstanceOf(IllegalStateException.class);
-            assertThatThrownBy(() -> deletion.get(15, TimeUnit.SECONDS)).hasCauseInstanceOf(OpalApiException.class);
-            assertThat(drafts.findById(id).orElseThrow().getCasefileStatus())
-                .isEqualTo(DraftCasefileStatus.PUBLISHING_PENDING);
-            assertThat(evidence.findObservation(id)).isPresent();
-            assertThat(failures.markFailed(attempt, "Synthetic terminal failure")).isTrue();
+            deletion.get(15, TimeUnit.SECONDS);
+            assertThat(drafts.findById(id)).isEmpty();
+            assertThat(failures.markFailed(attempt, "Synthetic terminal failure")).isFalse();
             cleanup(id);
             consumer.consume(JSON.writeValueAsString(accepted.get()));
             assertThat(failures.markFailed(attempt, "Synthetic terminal failure")).isFalse();
             assertThat(drafts.findById(id)).isEmpty();
-            assertThat(evidence.findObservation(id)).isEmpty();
             verify(publication).publish(id);
             verifyNoInteractions(logging);
         } finally {
@@ -272,7 +258,6 @@ class DraftCasefileCleanupConsumerIntegrationTest extends BaseIntegrationTest {
             consumer.consume(payload(id));
             assertThat(failures.markFailed(attempt, "Synthetic terminal failure")).isFalse();
             assertThat(drafts.findById(id)).isEmpty();
-            assertThat(evidence.findObservation(id)).isEmpty();
             verify(publication, never()).publish(any());
             verifyNoInteractions(logging);
         } finally {
@@ -313,9 +298,6 @@ class DraftCasefileCleanupConsumerIntegrationTest extends BaseIntegrationTest {
             .contentType(MediaType.APPLICATION_JSON).content(request.toString()))
             .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString())
             .get("draft_casefile_id").longValue();
-        mvc.perform(post("/testing-support/draft-casefiles/{id}/publication-evidence", id)
-            .with(authentication(DraftCasefileHttpFixture.token((short) 1)))
-            .header("Test-Run-Reference", RUN)).andExpect(status().isCreated());
         clearInvocations(logging);
         return id;
     }

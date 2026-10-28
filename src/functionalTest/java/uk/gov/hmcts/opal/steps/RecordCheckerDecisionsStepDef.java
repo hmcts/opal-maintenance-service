@@ -22,7 +22,6 @@ import java.util.function.Supplier;
 import uk.gov.hmcts.opal.actions.DraftCasefileActions;
 import uk.gov.hmcts.opal.assertions.DraftCasefileDecisionAssertions;
 import uk.gov.hmcts.opal.assertions.DraftCasefileRetrievalAssertions;
-import uk.gov.hmcts.opal.assertions.PublicationEvidenceAssertions;
 import uk.gov.hmcts.opal.data.DraftCasefileRequestFactory;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -149,20 +148,15 @@ public class RecordCheckerDecisionsStepDef {
     }
 
     private void testDecision(Actor actor, String etag) {
-        require(!owned.observationAttempted && !owned.testedAttempted,
-            "A scenario may attempt its tested decision only once");
-        owned.observationAttempted = true;
-        owned.registration = PublicationEvidenceAssertions.registered(mutation(() ->
-            actions.registerPublicationEvidence(owned.ownerToken, owned.id, owned.marker)));
-        Response registeredRead = call(() -> actions.get(owned.ownerToken, owned.id));
-        DraftCasefileDecisionAssertions.unchanged(registeredRead, owned.baseline, owned.etag);
-        // Registration follows all setup. The synchronous publisher completes journal outcomes before PATCH returns.
+        require(!owned.testedAttempted, "A scenario may attempt its tested decision only once");
+        Response current = call(() -> actions.get(owned.ownerToken, owned.id));
+        DraftCasefileDecisionAssertions.unchanged(current, owned.baseline, owned.etag);
         owned.testedAttempted = true;
         owned.testedResponse = mutation(() -> actions.decide(actor.token, owned.id,
             decisionBody(owned.target), etag));
     }
 
-    @Then("the decision is persisted with server-owned history and the expected producer evidence")
+    @Then("the decision is persisted with server-owned history and authoritative readback")
     public void assertDecision() {
         requireTested();
         JsonNode decided = DraftCasefileDecisionAssertions.decided(owned.testedResponse, owned.baseline,
@@ -172,24 +166,24 @@ public class RecordCheckerDecisionsStepDef {
         Response persisted = call(() -> actions.get(owned.ownerToken, owned.id));
         if ("PUBLISHING_PENDING".equals(owned.target)) {
             DraftCasefileDecisionAssertions.approvalPersisted(persisted, decided, owned.testedResponse.header("ETag"));
-            PublicationEvidenceAssertions.acknowledged(evidence(), owned.registration);
+
         } else {
             DraftCasefileDecisionAssertions.unchanged(persisted, decided, owned.testedResponse.header("ETag"));
-            PublicationEvidenceAssertions.noSend(evidence(), owned.registration);
+
         }
     }
 
-    @Then("a safe forbidden response preserves the draft and complete zero producer evidence")
+    @Then("a safe forbidden response preserves the draft and version and history")
     public void assertForbidden() {
         unchangedProblem(403, "forbidden");
     }
 
-    @Then("a safe version conflict preserves the draft and complete zero producer evidence")
+    @Then("a safe version conflict preserves the draft and version and history")
     public void assertVersionConflict() {
         unchangedProblem(409, "optimistic-locking");
     }
 
-    @Then("a safe lifecycle conflict preserves the draft and complete zero producer evidence")
+    @Then("a safe lifecycle conflict preserves the draft and version and history")
     public void assertLifecycleConflict() {
         unchangedProblem(409, "resource-conflict");
     }
@@ -199,12 +193,9 @@ public class RecordCheckerDecisionsStepDef {
         DraftCasefileDecisionAssertions.safeProblem(owned.testedResponse, status, kind, owned.marker);
         DraftCasefileDecisionAssertions.unchanged(call(() -> actions.get(owned.ownerToken, owned.id)),
             owned.baseline, owned.etag);
-        PublicationEvidenceAssertions.noSend(evidence(), owned.registration);
+
     }
 
-    private Response evidence() {
-        return call(() -> actions.publicationEvidence(owned.ownerToken, owned.id, owned.marker));
-    }
 
     private void resolveChecker(boolean createPermission) {
         checker = actor(configuredUser("RM_DRAFT_CASEFILE_CHECKER_USER", CHECKER), createPermission, false);
@@ -448,8 +439,8 @@ public class RecordCheckerDecisionsStepDef {
 
     private void requireTested() {
         requireOwned();
-        require(owned.testedAttempted && owned.testedResponse != null && owned.registration != null,
-            "A completed tested decision and registered producer evidence are required");
+        require(owned.testedAttempted && owned.testedResponse != null,
+            "A completed tested decision and persisted baseline are required");
     }
 
     private String configuredUser(String variable, String defaultUser) {
@@ -543,8 +534,6 @@ public class RecordCheckerDecisionsStepDef {
         private String originalEtag;
         private JsonNode baseline;
         private String etag;
-        private JsonNode registration;
-        private boolean observationAttempted;
         private String target;
         private boolean testedAttempted;
         private Response testedResponse;
