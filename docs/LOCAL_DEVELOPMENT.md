@@ -188,17 +188,16 @@ version, lifecycle, snapshot and timeline assertions before after-hook DELETE.
 Owned unlinked lifecycle states, approved pending drafts and eligible exclusive
 published graphs are supported; shared/inconsistent/active graphs are refused.
 
-Before enabling published cleanup in an agreed non-live environment, accept its
-whole-table blocking and exclude direct polymorphic writes that bypass the baseline
-helpers' same-transaction target validation. Inside the cleanup transaction,
-`ACCESS EXCLUSIVE ... NOWAIT` locks cover exactly `public.respondent_accounts`,
-`public.creditor_accounts` and `public.parties`, blocking unrelated reads and writes
-until commit/rollback. NOWAIT bounds acquisition of those locks only, not total
-request duration. Verify the actual deployed DB role can acquire them and perform
-the graph reads/deletes; disposable owner-role tests do not prove those privileges.
-See the [published operating contract](PUBLISHED_DRAFT_CASEFILE_CLEANUP.md).
+Published cleanup has no additional table-wide locks. On 28 October 2026 the user
+accepted the risk of cleanup overlapping concurrent published-graph writes and
+requested removal of that protection. Existing row locks, foreign keys and the
+atomic cleanup transaction remain, but polymorphic notes/associations can still
+race with deletion. An after-hook does not guarantee asynchronous work has ended.
+Avoid overlapping writes where practical and record failed cleanup entries.
+Verify the actual deployed DB role can read/delete the owned graph; no additional
+explicit table-lock permission is required. See the [published operating contract](PUBLISHED_DRAFT_CASEFILE_CLEANUP.md).
 
-Retain failed cleanup entries until 204. Contention/persistence unavailability can
+Retain failed cleanup entries until 204. Persistence unavailability can
 return 503 with rollback; use bounded client retry/backoff. A 409 requires scope or
 graph investigation. No publisher evidence routes, evidence schema, pool admission
 aspect, automatic retry or generic SQL endpoint is supplied.
