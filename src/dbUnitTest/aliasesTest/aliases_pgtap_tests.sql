@@ -3,24 +3,39 @@
  *
  * MODULE      : aliases_pgtap_tests.sql
  *
- * DESCRIPTION : Verify the Aliases schema and integrity rules.
+ * DESCRIPTION : Verify current and historical corrected Aliases schema and integrity rules.
  *
  * CHANGE HISTORY:
  *
  * Date        Author        Ticket        Nature of Change
  * ----------  ------------  ------------  ----------------------------------------
  * 03/10/2026  Chris Larkin  PO-10634      Initial pgTAP test suite.
+ * 17/10/2026  Frankie Moran PO-10648      Verify corrected names and structural upgrade.
  */
 
-\set ON_ERROR_STOP on
--- PO-10634: catalogue and behavioural contract for the approved initial schema.
--- Applicability: fresh DB-01 path. Existing-state validation is not run under
--- the user-approved initial-schema scope exception; this is not upgrade evidence.
+-- OPAL-DB-UPGRADE {"id":"aliases.names_correction","candidate":"ddl/V1_60__alter_aliases_name_columns.sql","scope":"both","data":"approved-synthetic","inputs":["src/main/resources/db/migration/ddl/V1_25__create_aliases_table.sql","src/main/resources/db/migration/ddl/V1_20__create_parties_table.sql","src/main/resources/db/migration/ddl/V1_2__create_countries_table.sql","src/main/resources/db/migration/ddl/V1_56__create_p_insert_parties_procedure.sql"],"contract":{"type":"data","objects":{"created":[],"replaced":[]},"preserve":{"rows":["public.aliases","public.parties","public.countries"],"tables":["public.parties","public.countries"],"routines":["public.p_insert_parties(json,public.t_party_account_type_enum)"],"enums":["public.t_party_account_type_enum"],"sequences":["public.alias_id_seq","public.party_id_seq","public.country_id_seq"]},"assertion":"aliases.corrected","custom":{"prepare":"src/dbUnitTest/upgradeCases/aliases_correction_prepare.sql","verify":"src/dbUnitTest/upgradeCases/aliases_correction_verify.sql"}}}
+-- Approved data scenario: ALIASES-CORRECTION-SYNTHETIC-1; user-approved 17 October 2026.
+-- Maintenance package aliases-schema-correction; related PO-10648.
+-- Applicability: latest fresh and registered numerical-predecessor correction;
+-- functional assertions roll back.
+\set ON_ERROR_STOP 1
+\if :{?opal_assertion_group}
+\else
+    \set opal_assertion_group aliases.current
+\endif
+SELECT :'opal_assertion_group' IN ('aliases.current','aliases.corrected') AS ac_valid_group \gset
+\if :ac_valid_group
+\else
+    DO $group$ BEGIN RAISE EXCEPTION 'Unknown ALIASES assertion group'; END; $group$;
+\endif
+
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap;
-SET LOCAL search_path = public, pg_temp;
+SET LOCAL search_path = public, pg_catalog;
 SET LOCAL TIME ZONE 'UTC';
-SELECT plan(36);
+SET LOCAL statement_timeout = '30s';
+SET LOCAL lock_timeout = '5s';
+SELECT plan(52);
 DO $fixture$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM public.countries) THEN
@@ -33,117 +48,141 @@ CREATE TEMP TABLE cv_reference AS
 CREATE TEMP TABLE cv_subject (id bigint PRIMARY KEY);
 CREATE TEMP TABLE cv_generated (id bigint);
 
--- ---------------------------------------------------------------------------
--- Scenario: The table preserves its promoted physical contract.
--- Setup:    Read the PostgreSQL catalogue after the full fresh migration chain.
--- Expected: Columns, comments, constraints and indexes exactly match TDIA.
--- ---------------------------------------------------------------------------
-SELECT has_table('public', 'aliases', 'public.aliases exists');
-SELECT results_eq(
-    $actual$SELECT attname::text COLLATE "C", format_type(atttypid, atttypmod) COLLATE "C", attnotnull
-    FROM pg_attribute WHERE attrelid = 'public.aliases'::regclass
-      AND attnum > 0 AND NOT attisdropped ORDER BY attnum$actual$,
-    $expected$VALUES
-        ('alias_id' COLLATE "C", 'bigint' COLLATE "C", true),
-        ('party_id' COLLATE "C", 'bigint' COLLATE "C", true),
-        ('surname' COLLATE "C", 'character varying(50)' COLLATE "C", true),
-        ('forenames' COLLATE "C", 'character varying(50)' COLLATE "C", true),
-        ('organisation_name' COLLATE "C", 'character varying(50)' COLLATE "C", false),
-        ('sequence_number' COLLATE "C", 'integer' COLLATE "C", true)$expected$,
-    'exact ordered columns, types and nullability'
-);
-SELECT results_eq(
-    $actual$SELECT attname::text COLLATE "C", col_description(attrelid, attnum) COLLATE "C"
-    FROM pg_attribute WHERE attrelid = 'public.aliases'::regclass
-      AND attnum > 0 AND NOT attisdropped ORDER BY attnum$actual$,
-    $expected$VALUES
-        ('alias_id' COLLATE "C", 'Unique identifier of the alias' COLLATE "C"),
-        ('party_id' COLLATE "C", 'Identifier of the party owning the alias' COLLATE "C"),
-        ('surname' COLLATE "C", 'Alias surname' COLLATE "C"),
-        ('forenames' COLLATE "C", 'Alias forenames' COLLATE "C"),
-        ('organisation_name' COLLATE "C", 'Alias organisation name' COLLATE "C"),
-        ('sequence_number' COLLATE "C", 'Sequence of the alias within its party' COLLATE "C")$expected$,
-    'every column comment matches authoritative wording'
-);
-SELECT results_eq(
-    $actual$SELECT c.conname::text COLLATE "C", c.contype::text COLLATE "C",
-        ARRAY(SELECT a.attname::text COLLATE "C"
-              FROM unnest(c.conkey) WITH ORDINALITY AS k(attnum, position)
-              JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.attnum
-              ORDER BY k.position) COLLATE "C"
-    FROM pg_constraint c WHERE c.conrelid = 'public.aliases'::regclass
-      AND c.contype IN ('p', 'f', 'u', 'c') ORDER BY c.conname$actual$,
-    $expected$VALUES
-        ('aliases_pk' COLLATE "C", 'p' COLLATE "C", ARRAY['alias_id' COLLATE "C"]::text[] COLLATE "C"),
-        ('als_party_id_fk' COLLATE "C", 'f' COLLATE "C", ARRAY['party_id' COLLATE "C"]::text[] COLLATE "C")$expected$,
-    'exact constraint names, kinds and ordered keys; no unexpected CHECK'
-);
-SELECT results_eq(
-    $actual$SELECT c.conname::text COLLATE "C", n.nspname::text COLLATE "C", r.relname::text COLLATE "C",
-        ARRAY(SELECT a.attname::text COLLATE "C"
-              FROM unnest(c.confkey) WITH ORDINALITY AS k(attnum, position)
-              JOIN pg_attribute a ON a.attrelid = c.confrelid AND a.attnum = k.attnum
-              ORDER BY k.position) COLLATE "C",
-        c.confupdtype::text COLLATE "C", c.confdeltype::text COLLATE "C", c.confmatchtype::text COLLATE "C",
-        c.condeferrable, c.condeferred, c.convalidated
-    FROM pg_constraint c JOIN pg_class r ON r.oid = c.confrelid
-    JOIN pg_namespace n ON n.oid = r.relnamespace
-    WHERE c.conrelid = 'public.aliases'::regclass AND c.contype = 'f'
-    ORDER BY c.conname$actual$,
-    $expected$VALUES ('als_party_id_fk' COLLATE "C", 'public' COLLATE "C", 'parties' COLLATE "C", ARRAY['party_id' COLLATE "C"]::text[] COLLATE "C",
-        'a' COLLATE "C", 'a' COLLATE "C", 's' COLLATE "C", false, false, true)$expected$,
-    'FK endpoint and key are validated, immediate NO ACTION'
-);
-SELECT results_eq(
-    $actual$SELECT r.relname::text COLLATE "C",
-        ARRAY(SELECT a.attname::text COLLATE "C"
-              FROM unnest(i.indkey) WITH ORDINALITY AS k(attnum, position)
-              JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = k.attnum
-              ORDER BY k.position) COLLATE "C",
-        am.amname::text COLLATE "C", i.indisunique, i.indisprimary, i.indisvalid, i.indisready,
-        i.indnkeyatts::integer, i.indnatts::integer,
-        i.indpred IS NULL, i.indexprs IS NULL
-    FROM pg_index i JOIN pg_class r ON r.oid = i.indexrelid
-    JOIN pg_am am ON am.oid = r.relam
-    WHERE i.indrelid = 'public.aliases'::regclass ORDER BY r.relname$actual$,
-    $expected$VALUES
-        ('aliases_party_id_idx' COLLATE "C", ARRAY['party_id' COLLATE "C"]::text[] COLLATE "C", 'btree' COLLATE "C", false, false,
-         true, true, 1, 1, true, true),
-        ('aliases_pk' COLLATE "C", ARRAY['alias_id' COLLATE "C"]::text[] COLLATE "C", 'btree' COLLATE "C", true, true,
-         true, true, 1, 1, true, true)$expected$,
-    'exact index inventory, ordered keys, uniqueness and valid ready btree state'
-);
+CREATE FUNCTION pg_temp.ac_catalogue(
+    p_person_notnull BOOLEAN,
+    p_organisation_type TEXT
+) RETURNS SETOF TEXT
+LANGUAGE plpgsql
+AS $catalogue$
+BEGIN
+    RETURN QUERY SELECT is(
+        (SELECT JSONB_BUILD_ARRAY(n.nspname::TEXT,r.relname::TEXT,r.relkind::TEXT,
+            PG_GET_USERBYID(r.relowner),r.relacl::TEXT,r.reloptions::TEXT,r.relpersistence::TEXT,
+            r.relrowsecurity,r.relforcerowsecurity,r.relreplident::TEXT,r.relispartition,
+            OBJ_DESCRIPTION(r.oid,'pg_class'))
+         FROM pg_class r JOIN pg_namespace n ON n.oid=r.relnamespace
+         WHERE r.oid='public.aliases'::REGCLASS),
+        JSONB_BUILD_ARRAY('public','aliases','r',CURRENT_USER::TEXT,NULL::TEXT,NULL::TEXT,
+            'p',false,false,'d',false,NULL::TEXT),
+        'exact alias relation ownership, ACL, options, persistence, RLS and comment');
 
--- ---------------------------------------------------------------------------
--- Scenario: Only the identifier is generated by an owned sequence.
--- Setup:    Inspect the default expression, identity marker and sequence metadata.
--- Expected: The owned BIGINT sequence uses start 1, increment 1, cache 1 and no cycle.
--- ---------------------------------------------------------------------------
-SELECT is(pg_get_serial_sequence('public.aliases', 'alias_id'),
-    'public.alias_id_seq', 'identifier sequence ownership');
-SELECT is(
-    (SELECT format_type(seqtypid, NULL) || ':' || seqstart || ':' || seqincrement
-            || ':' || seqcache || ':' || seqcycle
-     FROM pg_sequence WHERE seqrelid = 'public.alias_id_seq'::regclass),
-    'bigint:1:1:1:false', 'BIGINT sequence start, increment, cache and cycle'
-);
-SELECT is(
-    (SELECT pg_get_expr(d.adbin, d.adrelid)
-     FROM pg_attrdef d JOIN pg_attribute a
-       ON a.attrelid = d.adrelid AND a.attnum = d.adnum
-     WHERE d.adrelid = 'public.aliases'::regclass AND a.attname = 'alias_id'),
-    'nextval(''alias_id_seq''::regclass)', 'identifier defaults to the owned sequence'
-);
-SELECT is((SELECT count(*) FROM pg_attrdef WHERE adrelid = 'public.aliases'::regclass),
-    1::bigint, 'only the identifier has a database default');
-SELECT is(
-    (SELECT attidentity::text FROM pg_attribute
-     WHERE attrelid = 'public.aliases'::regclass AND attname = 'alias_id'),
-    '', 'identifier is sequence-backed rather than an identity column'
-);
-SELECT is((SELECT count(*) FROM pg_trigger
-           WHERE tgrelid = 'public.aliases'::regclass AND NOT tgisinternal),
-    0::bigint, 'no user triggers introduce undeclared behaviour');
+    RETURN QUERY SELECT is(
+        (SELECT JSONB_AGG(JSONB_BUILD_ARRAY(a.attnum,a.attname::TEXT,
+            FORMAT_TYPE(a.atttypid,a.atttypmod),a.attnotnull,a.attidentity::TEXT,
+            a.attgenerated::TEXT,a.attcollation=CASE
+                WHEN a.atttypid='pg_catalog.varchar'::REGTYPE
+                THEN 'pg_catalog."default"'::REGCOLLATION::OID ELSE 0::OID END,
+            a.attacl::TEXT,PG_GET_EXPR(d.adbin,d.adrelid),COL_DESCRIPTION(a.attrelid,a.attnum))
+            ORDER BY a.attnum)
+         FROM pg_attribute a LEFT JOIN pg_attrdef d
+           ON d.adrelid=a.attrelid AND d.adnum=a.attnum
+         WHERE a.attrelid='public.aliases'::REGCLASS AND a.attnum>0 AND NOT a.attisdropped),
+        JSONB_BUILD_ARRAY(
+            JSONB_BUILD_ARRAY(1,'alias_id','bigint',true,'','',true,NULL::TEXT,
+                'nextval(''alias_id_seq''::regclass)','Unique identifier of the alias'),
+            JSONB_BUILD_ARRAY(2,'party_id','bigint',true,'','',true,NULL::TEXT,NULL::TEXT,
+                'Identifier of the party owning the alias'),
+            JSONB_BUILD_ARRAY(3,'surname','character varying(50)',p_person_notnull,'','',
+                true,NULL::TEXT,NULL::TEXT,'Alias surname'),
+            JSONB_BUILD_ARRAY(4,'forenames','character varying(50)',p_person_notnull,'','',
+                true,NULL::TEXT,NULL::TEXT,'Alias forenames'),
+            JSONB_BUILD_ARRAY(5,'organisation_name',p_organisation_type,false,'','',
+                true,NULL::TEXT,NULL::TEXT,'Alias organisation name'),
+            JSONB_BUILD_ARRAY(6,'sequence_number','integer',true,'','',true,NULL::TEXT,NULL::TEXT,
+                'Sequence of the alias within its party')),
+        'exact ordered alias columns, widths, nullability, defaults, collation, ACL and comments');
+
+    RETURN QUERY SELECT is(
+        (SELECT JSONB_AGG(JSONB_BUILD_ARRAY(c.conname::TEXT,c.contype::TEXT,
+            ARRAY(SELECT a.attname::TEXT FROM UNNEST(c.conkey) WITH ORDINALITY k(attnum,position)
+                JOIN pg_attribute a ON a.attrelid=c.conrelid AND a.attnum=k.attnum
+                ORDER BY k.position),
+            c.convalidated,c.condeferrable,c.condeferred,PG_GET_CONSTRAINTDEF(c.oid,false))
+            ORDER BY c.conname COLLATE "C")
+         FROM pg_constraint c WHERE c.conrelid='public.aliases'::REGCLASS),
+        JSONB_BUILD_ARRAY(
+            JSONB_BUILD_ARRAY('aliases_pk','p',ARRAY['alias_id'],true,false,false,
+                'PRIMARY KEY (alias_id)'),
+            JSONB_BUILD_ARRAY('als_party_id_fk','f',ARRAY['party_id'],true,false,false,
+                'FOREIGN KEY (party_id) REFERENCES parties(party_id)')),
+        'exact alias constraints and definitions; no extra CHECK or uniqueness');
+
+    RETURN QUERY SELECT is(
+        (SELECT JSONB_AGG(JSONB_BUILD_ARRAY(c.conname::TEXT,n.nspname::TEXT,r.relname::TEXT,
+            ARRAY(SELECT a.attname::TEXT FROM UNNEST(c.confkey) WITH ORDINALITY k(attnum,position)
+                JOIN pg_attribute a ON a.attrelid=c.confrelid AND a.attnum=k.attnum
+                ORDER BY k.position),
+            c.confupdtype::TEXT,c.confdeltype::TEXT,c.confmatchtype::TEXT,
+            c.convalidated,c.condeferrable,c.condeferred) ORDER BY c.conname COLLATE "C")
+         FROM pg_constraint c JOIN pg_class r ON r.oid=c.confrelid
+         JOIN pg_namespace n ON n.oid=r.relnamespace
+         WHERE c.conrelid='public.aliases'::REGCLASS AND c.contype='f'),
+        JSONB_BUILD_ARRAY(JSONB_BUILD_ARRAY('als_party_id_fk','public','parties',
+            ARRAY['party_id'],'a','a','s',true,false,false)),
+        'exact immediate validated NO ACTION Party relationship');
+
+    RETURN QUERY SELECT is(
+        (SELECT JSONB_AGG(JSONB_BUILD_ARRAY(n.nspname::TEXT,r.relname::TEXT,
+            ARRAY(SELECT a.attname::TEXT FROM UNNEST(i.indkey) WITH ORDINALITY k(attnum,position)
+                JOIN pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=k.attnum
+                ORDER BY k.position),
+            am.amname::TEXT,i.indisunique,i.indisprimary,i.indisvalid,i.indisready,i.indislive,
+            i.indnkeyatts::INTEGER,i.indnatts::INTEGER,i.indpred IS NULL,i.indexprs IS NULL,
+            PG_GET_INDEXDEF(i.indexrelid),PG_GET_USERBYID(r.relowner),r.relacl::TEXT,
+            r.reloptions::TEXT,OBJ_DESCRIPTION(r.oid,'pg_class')) ORDER BY r.relname COLLATE "C")
+         FROM pg_index i JOIN pg_class r ON r.oid=i.indexrelid
+         JOIN pg_namespace n ON n.oid=r.relnamespace JOIN pg_am am ON am.oid=r.relam
+         WHERE i.indrelid='public.aliases'::REGCLASS),
+        JSONB_BUILD_ARRAY(
+            JSONB_BUILD_ARRAY('public','aliases_party_id_idx',ARRAY['party_id'],'btree',
+                false,false,true,true,true,1,1,true,true,
+                'CREATE INDEX aliases_party_id_idx ON public.aliases USING btree (party_id)',
+                CURRENT_USER::TEXT,NULL::TEXT,NULL::TEXT,NULL::TEXT),
+            JSONB_BUILD_ARRAY('public','aliases_pk',ARRAY['alias_id'],'btree',
+                true,true,true,true,true,1,1,true,true,
+                'CREATE UNIQUE INDEX aliases_pk ON public.aliases USING btree (alias_id)',
+                CURRENT_USER::TEXT,NULL::TEXT,NULL::TEXT,NULL::TEXT)),
+        'exact alias index definitions, ownership, ACL and ready btree properties');
+
+    RETURN QUERY SELECT is(
+        (SELECT JSONB_BUILD_ARRAY(s.seqtypid::REGTYPE::TEXT,s.seqstart,s.seqincrement,
+            s.seqmin,s.seqmax,s.seqcache,s.seqcycle,r.relkind::TEXT,PG_GET_USERBYID(r.relowner),
+            r.relacl::TEXT,r.reloptions::TEXT,OBJ_DESCRIPTION(r.oid,'pg_class'))
+         FROM pg_sequence s JOIN pg_class r ON r.oid=s.seqrelid
+         WHERE s.seqrelid='public.alias_id_seq'::REGCLASS),
+        JSONB_BUILD_ARRAY('bigint',1::BIGINT,1::BIGINT,1::BIGINT,
+            9223372036854775807::BIGINT,1::BIGINT,false,'S',CURRENT_USER::TEXT,
+            NULL::TEXT,NULL::TEXT,NULL::TEXT),
+        'exact alias sequence definition, ownership role, ACL and options');
+
+    RETURN QUERY SELECT is(PG_GET_SERIAL_SEQUENCE('public.aliases','alias_id'),
+        'public.alias_id_seq','alias identifier owns the existing sequence');
+
+    RETURN QUERY SELECT is(
+        (SELECT JSONB_AGG(JSONB_BUILD_ARRAY(n.nspname::TEXT,r.relname::TEXT,a.attname::TEXT,
+            d.deptype::TEXT) ORDER BY d.refobjid,d.refobjsubid,d.deptype)
+         FROM pg_depend d JOIN pg_class r ON r.oid=d.refobjid
+         JOIN pg_namespace n ON n.oid=r.relnamespace
+         JOIN pg_attribute a ON a.attrelid=d.refobjid AND a.attnum=d.refobjsubid
+         WHERE d.classid='pg_class'::REGCLASS AND d.objid='public.alias_id_seq'::REGCLASS
+           AND d.refclassid='pg_class'::REGCLASS),
+        JSONB_BUILD_ARRAY(JSONB_BUILD_ARRAY('public','aliases','alias_id','a')),
+        'exact sequence OWNED BY dependency');
+
+    RETURN QUERY SELECT is((SELECT COUNT(*) FROM pg_trigger
+        WHERE tgrelid='public.aliases'::REGCLASS AND NOT tgisinternal),0::BIGINT,
+        'no alias user triggers');
+    RETURN QUERY SELECT is((SELECT COUNT(*) FROM pg_policy
+        WHERE polrelid='public.aliases'::REGCLASS),0::BIGINT,'no alias RLS policies');
+END;
+$catalogue$;
+
+-- -----------------------------------------------------------------------------
+-- Scenario: Latest fresh and this historical correction share the corrected schema.
+-- Setup: Read all reviewed alias relation/column/key/index/sequence properties.
+-- Expected: Exactly10 catalogue assertions pass; no future helper is required.
+-- -----------------------------------------------------------------------------
+SELECT * FROM pg_temp.ac_catalogue(false,'character varying(80)');
 
 CREATE TEMP TABLE cv_party AS
     WITH inserted AS (
@@ -153,7 +192,7 @@ CREATE TEMP TABLE cv_party AS
 
 -- ---------------------------------------------------------------------------
 -- Scenario: A minimal alias references its own synthetic Party and receives a generated ID.
--- Setup:    Insert only required alias fields using the generated Party key.
+-- Setup:    Insert a personal alias using the generated Party key and identifier default.
 -- Expected: The valid relationship and sequence default allow the row.
 -- ---------------------------------------------------------------------------
 SELECT lives_ok(
@@ -165,77 +204,62 @@ SELECT lives_ok(
 );
 INSERT INTO cv_generated SELECT id FROM cv_subject;
 
--- ---------------------------------------------------------------------------
--- Scenario: All mandatory alias fields reject NULL and organisation name is optional.
--- Setup:    Update only one column of the captured alias in each assertion.
--- Expected: Mandatory NULLs fail with 23502; organisation_name accepts NULL.
--- ---------------------------------------------------------------------------
-SELECT throws_ok(
-    $sql$UPDATE public.aliases SET alias_id = NULL
-    WHERE alias_id = (SELECT id FROM cv_subject)$sql$,
-    '23502', NULL, 'alias_id rejects NULL'
-);
-SELECT throws_ok(
-    $sql$UPDATE public.aliases SET party_id = NULL
-    WHERE alias_id = (SELECT id FROM cv_subject)$sql$,
-    '23502', NULL, 'party_id rejects NULL'
-);
-SELECT throws_ok(
-    $sql$UPDATE public.aliases SET surname = NULL
-    WHERE alias_id = (SELECT id FROM cv_subject)$sql$,
-    '23502', NULL, 'surname rejects NULL'
-);
-SELECT throws_ok(
-    $sql$UPDATE public.aliases SET forenames = NULL
-    WHERE alias_id = (SELECT id FROM cv_subject)$sql$,
-    '23502', NULL, 'forenames rejects NULL'
-);
-SELECT throws_ok(
-    $sql$UPDATE public.aliases SET sequence_number = NULL
-    WHERE alias_id = (SELECT id FROM cv_subject)$sql$,
-    '23502', NULL, 'sequence_number rejects NULL'
-);
-SELECT lives_ok(
-    $sql$UPDATE public.aliases SET organisation_name = NULL
-    WHERE alias_id = (SELECT id FROM cv_subject)$sql$,
-    'organisation_name accepts NULL independently of required person fields'
-);
+-- -----------------------------------------------------------------------------
+-- Scenario: Required identifiers remain mandatory while both personal names allow NULL.
+-- Setup: Update only the captured test-owned alias; reset surname for the second name.
+-- Expected: Native required-column failures persist and each name NULL is stored.
+-- -----------------------------------------------------------------------------
+SELECT throws_ok($sql$UPDATE public.aliases SET alias_id=NULL
+    WHERE alias_id=(SELECT id FROM cv_subject)$sql$,
+    '23502',NULL,'alias_id rejects NULL');
+SELECT throws_ok($sql$UPDATE public.aliases SET party_id=NULL
+    WHERE alias_id=(SELECT id FROM cv_subject)$sql$,
+    '23502',NULL,'party_id rejects NULL');
+SELECT lives_ok($sql$UPDATE public.aliases SET surname=NULL
+    WHERE alias_id=(SELECT id FROM cv_subject)$sql$,'surname accepts NULL');
+SELECT results_eq(
+    $actual$SELECT party_id,surname::TEXT COLLATE "C",forenames::TEXT COLLATE "C"
+      FROM public.aliases WHERE alias_id=(SELECT id FROM cv_subject)$actual$,
+    $expected$SELECT party_id,NULL::TEXT COLLATE "C",'Alias'::TEXT COLLATE "C"
+      FROM cv_party$expected$,
+    'surname NULL persists without changing Party or forenames');
+SELECT lives_ok($sql$UPDATE public.aliases SET surname='Synthetic',forenames=NULL
+    WHERE alias_id=(SELECT id FROM cv_subject)$sql$,'forenames accepts NULL');
+SELECT results_eq(
+    $actual$SELECT party_id,surname::TEXT COLLATE "C",forenames::TEXT COLLATE "C"
+      FROM public.aliases WHERE alias_id=(SELECT id FROM cv_subject)$actual$,
+    $expected$SELECT party_id,'Synthetic'::TEXT COLLATE "C",NULL::TEXT COLLATE "C"
+      FROM cv_party$expected$,
+    'forenames NULL persists with surname independently restored');
+SELECT throws_ok($sql$UPDATE public.aliases SET sequence_number=NULL
+    WHERE alias_id=(SELECT id FROM cv_subject)$sql$,
+    '23502',NULL,'sequence_number rejects NULL');
+SELECT lives_ok($sql$UPDATE public.aliases SET organisation_name=NULL
+    WHERE alias_id=(SELECT id FROM cv_subject)$sql$,'organisation_name remains nullable');
 
--- ---------------------------------------------------------------------------
--- Scenario: All three alias name fields enforce the promoted VARCHAR boundary.
--- Setup:    Update one name field at a time to 50 and then 51 characters.
--- Expected: 50 characters are accepted; 51 characters fail with 22001.
--- ---------------------------------------------------------------------------
-SELECT lives_ok(
-    $sql$UPDATE public.aliases SET surname = repeat('x', 50)
-    WHERE alias_id = (SELECT id FROM cv_subject)$sql$,
-    'surname accepts 50 characters'
-);
-SELECT throws_ok(
-    $sql$UPDATE public.aliases SET surname = repeat('x', 51)
-    WHERE alias_id = (SELECT id FROM cv_subject)$sql$,
-    '22001', NULL, 'surname rejects 51 characters'
-);
-SELECT lives_ok(
-    $sql$UPDATE public.aliases SET forenames = repeat('x', 50)
-    WHERE alias_id = (SELECT id FROM cv_subject)$sql$,
-    'forenames accepts 50 characters'
-);
-SELECT throws_ok(
-    $sql$UPDATE public.aliases SET forenames = repeat('x', 51)
-    WHERE alias_id = (SELECT id FROM cv_subject)$sql$,
-    '22001', NULL, 'forenames rejects 51 characters'
-);
-SELECT lives_ok(
-    $sql$UPDATE public.aliases SET organisation_name = repeat('x', 50)
-    WHERE alias_id = (SELECT id FROM cv_subject)$sql$,
-    'organisation_name accepts 50 characters'
-);
-SELECT throws_ok(
-    $sql$UPDATE public.aliases SET organisation_name = repeat('x', 51)
-    WHERE alias_id = (SELECT id FROM cv_subject)$sql$,
-    '22001', NULL, 'organisation_name rejects 51 characters'
-);
+-- -----------------------------------------------------------------------------
+-- Scenario: Individual physical widths stay50 and organisation capacity becomes80.
+-- Setup: Assign exact boundary text and one-over non-space text to the owning row.
+-- Expected: Full boundary values persist; over-width input raises native22001.
+-- -----------------------------------------------------------------------------
+SELECT lives_ok($sql$UPDATE public.aliases SET surname=REPEAT('x',50)
+    WHERE alias_id=(SELECT id FROM cv_subject)$sql$,'surname accepts 50 characters');
+SELECT throws_ok($sql$UPDATE public.aliases SET surname=REPEAT('x',51)
+    WHERE alias_id=(SELECT id FROM cv_subject)$sql$,'22001',NULL,'surname rejects 51 characters');
+SELECT lives_ok($sql$UPDATE public.aliases SET forenames=REPEAT('y',50)
+    WHERE alias_id=(SELECT id FROM cv_subject)$sql$,'forenames accepts 50 characters');
+SELECT throws_ok($sql$UPDATE public.aliases SET forenames=REPEAT('y',51)
+    WHERE alias_id=(SELECT id FROM cv_subject)$sql$,'22001',NULL,'forenames rejects 51 characters');
+SELECT lives_ok($sql$UPDATE public.aliases SET organisation_name=REPEAT('z',80)
+    WHERE alias_id=(SELECT id FROM cv_subject)$sql$,'organisation_name accepts 80 characters');
+SELECT results_eq(
+    $actual$SELECT organisation_name::TEXT COLLATE "C",CHAR_LENGTH(organisation_name)
+      FROM public.aliases WHERE alias_id=(SELECT id FROM cv_subject)$actual$,
+    $expected$VALUES (REPEAT('z',80) COLLATE "C",80)$expected$,
+    'all80 organisation characters are stored unchanged');
+SELECT throws_ok($sql$UPDATE public.aliases SET organisation_name=REPEAT('z',81)
+    WHERE alias_id=(SELECT id FROM cv_subject)$sql$,'22001',NULL,
+    'organisation_name rejects 81 characters');
 
 -- ---------------------------------------------------------------------------
 -- Scenario: Identifier uniqueness and Party referential integrity are enforced.
@@ -293,11 +317,93 @@ SELECT lives_ok(
 SELECT lives_ok(
     $sql$UPDATE public.aliases SET organisation_name = 'Synthetic organisation'
     WHERE alias_id = (SELECT id FROM cv_subject)$sql$,
-    'organisation_name may coexist with required surname and forenames'
+    'organisation_name may coexist with personal names'
 );
 SELECT ok((SELECT bool_and(id IS NOT NULL) FROM cv_generated),
     'captured sequence-generated alias identifiers are non-null');
 SELECT is((SELECT count(DISTINCT id) FROM cv_generated),
     2::bigint, 'separate successful alias inserts generate distinct identifiers');
+-- -----------------------------------------------------------------------------
+-- Scenario: The relaxed table stores organisation-only and incomplete physical shapes.
+-- Setup: Change only the captured alias after all existing integrity/count assertions.
+-- Expected: NULLs persist exactly; no new table-wide business shape rule appears.
+-- -----------------------------------------------------------------------------
+SELECT lives_ok($sql$UPDATE public.aliases
+    SET surname=NULL,forenames=NULL,organisation_name='Synthetic Organisation'
+    WHERE alias_id=(SELECT id FROM cv_subject)$sql$,'organisation-only physical row succeeds');
+SELECT results_eq(
+    $actual$SELECT party_id,surname::TEXT COLLATE "C",forenames::TEXT COLLATE "C",
+        organisation_name::TEXT COLLATE "C" FROM public.aliases
+      WHERE alias_id=(SELECT id FROM cv_subject)$actual$,
+    $expected$SELECT party_id,NULL::TEXT COLLATE "C",NULL::TEXT COLLATE "C",
+        'Synthetic Organisation'::TEXT COLLATE "C" FROM cv_party$expected$,
+    'organisation-only row stores SQL NULL personal names and correct Party');
+SELECT lives_ok($sql$UPDATE public.aliases
+    SET surname=NULL,forenames=NULL,organisation_name=NULL
+    WHERE alias_id=(SELECT id FROM cv_subject)$sql$,'all-name-NULL physical row remains permitted');
+SELECT results_eq(
+    $actual$SELECT surname::TEXT,forenames::TEXT,organisation_name::TEXT FROM public.aliases
+      WHERE alias_id=(SELECT id FROM cv_subject)$actual$,
+    $expected$VALUES (NULL::TEXT,NULL::TEXT,NULL::TEXT)$expected$,
+    'all-name-NULL state is stored without filler');
+SELECT lives_ok($sql$UPDATE public.aliases
+    SET surname='Synthetic',forenames=NULL,organisation_name=NULL
+    WHERE alias_id=(SELECT id FROM cv_subject)$sql$,'partial physical name remains permitted');
+SELECT results_eq(
+    $actual$SELECT surname::TEXT COLLATE "C",forenames::TEXT,organisation_name::TEXT
+      FROM public.aliases WHERE alias_id=(SELECT id FROM cv_subject)$actual$,
+    $expected$VALUES ('Synthetic'::TEXT COLLATE "C",NULL::TEXT,NULL::TEXT)$expected$,
+    'partial name readback proves no new shape CHECK');
+
+-- -----------------------------------------------------------------------------
+-- Scenario: Physical character limits preserve multibyte and supplementary text.
+-- Setup: Assign50 personal characters and80 organisation characters, then one over.
+-- Expected: Full text/character lengths persist; native22001 rejects51/81 characters.
+-- -----------------------------------------------------------------------------
+SELECT lives_ok($sql$UPDATE public.aliases
+    SET surname=REPEAT(U&'\00E9',50),
+        forenames=REPEAT(U&'\+01F600',50),
+        organisation_name=REPEAT(U&'\00E9',40)||REPEAT(U&'\+01F600',40)
+    WHERE alias_id=(SELECT id FROM cv_subject)$sql$,'multibyte physical boundary text succeeds');
+SELECT results_eq(
+    $actual$SELECT surname::TEXT COLLATE "C",forenames::TEXT COLLATE "C",
+        organisation_name::TEXT COLLATE "C",CHAR_LENGTH(surname),CHAR_LENGTH(forenames),
+        CHAR_LENGTH(organisation_name) FROM public.aliases
+      WHERE alias_id=(SELECT id FROM cv_subject)$actual$,
+    $expected$VALUES (REPEAT(U&'\00E9',50) COLLATE "C",REPEAT(U&'\+01F600',50) COLLATE "C",
+        (REPEAT(U&'\00E9',40)||REPEAT(U&'\+01F600',40)) COLLATE "C",50,50,80)$expected$,
+    'complete multibyte text and character lengths are unchanged');
+SELECT throws_ok($sql$UPDATE public.aliases SET organisation_name=REPEAT(U&'\+01F600',81)
+    WHERE alias_id=(SELECT id FROM cv_subject)$sql$,'22001',NULL,'multibyte organisation81 fails');
+SELECT throws_ok($sql$UPDATE public.aliases SET surname=REPEAT(U&'\00E9',51)
+    WHERE alias_id=(SELECT id FROM cv_subject)$sql$,'22001',NULL,'multibyte surname51 fails');
+SELECT throws_ok($sql$UPDATE public.aliases SET forenames=REPEAT(U&'\+01F600',51)
+    WHERE alias_id=(SELECT id FROM cv_subject)$sql$,'22001',NULL,'supplementary forenames51 fails');
+
+-- -----------------------------------------------------------------------------
+-- Scenario: Accepted storage performs neither trimming nor Unicode normalization.
+-- Setup: Assign exact padded text, then composed/supplementary/decomposed literals.
+-- Expected: Independent full-text comparisons retain every supplied character.
+-- -----------------------------------------------------------------------------
+SELECT lives_ok($sql$UPDATE public.aliases
+    SET surname=' Padded ',forenames='Synthetic ',organisation_name='  Synthetic Organisation  '
+    WHERE alias_id=(SELECT id FROM cv_subject)$sql$,'padded text succeeds unchanged');
+SELECT results_eq(
+    $actual$SELECT surname::TEXT COLLATE "C",forenames::TEXT COLLATE "C",
+        organisation_name::TEXT COLLATE "C" FROM public.aliases
+      WHERE alias_id=(SELECT id FROM cv_subject)$actual$,
+    $expected$VALUES (' Padded '::TEXT COLLATE "C",'Synthetic '::TEXT COLLATE "C",
+        '  Synthetic Organisation  '::TEXT COLLATE "C")$expected$,
+    'padding is stored without trimming');
+SELECT lives_ok($sql$UPDATE public.aliases
+    SET surname=U&'\00E9',forenames=U&'\+01F600e\0301',organisation_name=E'\tSynthetic text'
+    WHERE alias_id=(SELECT id FROM cv_subject)$sql$,'supplementary and decomposed text succeeds');
+SELECT results_eq(
+    $actual$SELECT surname::TEXT COLLATE "C",forenames::TEXT COLLATE "C",
+        organisation_name::TEXT COLLATE "C" FROM public.aliases
+      WHERE alias_id=(SELECT id FROM cv_subject)$actual$,
+    $expected$VALUES (U&'\00E9'::TEXT COLLATE "C",U&'\+01F600e\0301'::TEXT COLLATE "C",
+        E'\tSynthetic text'::TEXT COLLATE "C")$expected$,
+    'composed, supplementary and decomposed strings remain exact');
 SELECT * FROM finish();
 ROLLBACK;

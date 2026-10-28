@@ -1,0 +1,539 @@
+import groovy.json.JsonOutput
+import org.gradle.api.GradleException
+import java.nio.file.Files
+
+// Frankie Moran — PO-10643 — 15/10/2026
+// Frankie Moran — PO-10643 — 22/10/2026 — Verify bounded data observations and owner dispatch.
+// Contracts supply values and identities; SQL support owns database assertions.
+def contractPath = { Object value ->
+  value instanceof String && value ==~ /[A-Za-z0-9_.\/-]+/ && !value.startsWith('/') &&
+    !value.split('/', -1).any { it in ['', '.', '..'] }
+}
+def objectName = { Object value ->
+  value instanceof String && value ==~ /[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*/ &&
+    !value.startsWith('pg_') && !value.startsWith('information_schema.') &&
+    !value.startsWith('opal_test_upgrade_observation.') &&
+    !value.startsWith('opal_db_unit_test_framework_state.')
+}
+def routineName = { Object value ->
+  if (!(value instanceof String)) { return false }
+  def match = value =~ /^([a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*)\((.*)\)$/
+  if (!match.matches() || !objectName(match[0][1])) { return false }
+  def arguments = match[0][2]
+  arguments.isEmpty() || arguments.split(',', -1).every { type ->
+    def scalar = type.endsWith('[]') ? type.substring(0,type.length()-2) : type
+    scalar in ['bigint','integer','smallint','boolean','text','json','jsonb','character varying',
+      'character','timestamp without time zone','timestamp with time zone','date','numeric',
+      'real','double precision','uuid','bytea','time without time zone','time with time zone',
+      'interval','bit','bit varying'] || objectName(scalar)
+  }
+}
+def exactFields = { Object value, List required, List optional, String source ->
+  if (!(value instanceof Map) || !value.keySet().containsAll(required) ||
+      !(required + optional).containsAll(value.keySet())) {
+    throw new GradleException("Unknown or missing contract field at ${source}")
+  }
+}
+// This bounded JSON subset retains duplicate-key evidence before constructing maps.
+// Strings are literal printable ASCII: no escapes, control bytes or scalar SQL fragments.
+def constrainedJson = { String input, String source ->
+  if (input == null || input.length() > 65536) { throw new GradleException("Oversized contract metadata at ${source}") }
+  int position = 0, nodes = 0
+  def fail = { throw new GradleException("Malformed contract metadata at ${source}") }
+  def whitespace = { while (position < input.length() && input.charAt(position) in [' ' as char,'\t' as char,'\r' as char,'\n' as char]) { position++ } }
+  def string = {
+    if (position >= input.length() || input.charAt(position++) != '"' as char) { fail() }
+    def result = new StringBuilder()
+    while (position < input.length() && input.charAt(position) != '"' as char) {
+      char next = input.charAt(position++)
+      if (next < 32 || next > 126 || next == '\\' as char || result.length() >= 4096) { fail() }
+      result.append(next)
+    }
+    if (position >= input.length()) { fail() }
+    position++
+    result.toString()
+  }
+  Closure value
+  value = { int depth ->
+    if (depth > 8 || ++nodes > 4096) { fail() }
+    whitespace()
+    if (position >= input.length()) { fail() }
+    char next = input.charAt(position)
+    if (next == '"' as char) { return string() }
+    if (!(next in ['{' as char,'[' as char])) { fail() }
+    boolean object = next == '{' as char
+    position++; whitespace()
+    char closing = object ? '}' as char : ']' as char
+    def result = object ? [:] : []
+    if (position < input.length() && input.charAt(position) == closing) { position++; return result }
+    while (true) {
+      whitespace()
+      String key = null
+      if (object) {
+        key = string()
+        if (!(key ==~ /[a-z]+/) || result.containsKey(key)) { fail() }
+        whitespace()
+        if (position >= input.length() || input.charAt(position++) != ':' as char) { fail() }
+      }
+      def item = value(depth + 1)
+      if (object) { result[key] = item } else { result.add(item) }
+      whitespace()
+      if (position >= input.length()) { fail() }
+      char separator = input.charAt(position++)
+      if (separator == closing) { return result }
+      if (separator != ',' as char) { fail() }
+    }
+  }
+  def result = value(0)
+  whitespace()
+  if (position != input.length()) { fail() }
+  result
+}
+def validateShape = { Map scenario ->
+  def source = scenario.source ?: scenario.id ?: 'declaration'
+  def contract = scenario.contract
+  if (contract == null) { return null }
+  exactFields(contract, ['type','objects','preserve','assertion'], ['custom','observe'], source)
+  if (!(contract.type in ['additive','replacement','data'])) {
+    throw new GradleException("Invalid declared contract type at ${source}")
+  }
+  if (!(contract.assertion instanceof String) || !(contract.assertion ==~ /[a-z][a-z0-9._-]*/)) {
+    throw new GradleException("Invalid assertion group at ${source}")
+  }
+  exactFields(contract.objects, ['created','replaced'], [], source)
+  def identities = []
+  ['created','replaced'].each { change ->
+    def objects = contract.objects[change]
+    if (!(objects instanceof List)) { throw new GradleException("Invalid changed objects at ${source}") }
+    objects.each { object ->
+      exactFields(object, ['kind','identity'], [], source)
+      if (!(object.kind in ['routine','table','view','enum','sequence']) ||
+          !(object.kind == 'routine' ? routineName(object.identity) : objectName(object.identity)) ||
+          (change == 'replaced' && object.kind != 'routine')) {
+        throw new GradleException("Unsupported changed object at ${source}")
+      }
+      def identity = "${object.kind}:${object.identity}".toString()
+      if (identity in identities) { throw new GradleException("Duplicate changed object at ${source}") }
+      identities.add(identity)
+    }
+  }
+  if ((contract.type == 'additive' && (contract.objects.created.isEmpty() || !contract.objects.replaced.isEmpty())) ||
+      (contract.type == 'replacement' && contract.objects.replaced.isEmpty()) ||
+      (contract.type == 'data' && (!contract.objects.created.isEmpty() || !contract.objects.replaced.isEmpty() ||
+        !(contract.custom instanceof Map) || !contract.custom.containsKey('verify')))) {
+    throw new GradleException("Declared contract type differs from object changes at ${source}")
+  }
+  exactFields(contract.preserve, ['rows','tables','routines','enums','sequences'], [], source)
+  contract.preserve.each { kind, names ->
+    if (!(names instanceof List) || names.toSet().size() != names.size() ||
+        !names.every { kind == 'routines' ? routineName(it) : objectName(it) }) {
+      throw new GradleException("Invalid preservation scope at ${source}")
+    }
+    def objectKind = [rows:'table',tables:'table',routines:'routine',enums:'enum',sequences:'sequence'][kind]
+    if (names.any { "${objectKind}:${it}".toString() in identities }) {
+      throw new GradleException("Changed objects overlap preservation scope at ${source}")
+    }
+  }
+  if (contract.containsKey('observe')) {
+    if (contract.type != 'data') { throw new GradleException("Observation scope requires a data contract at ${source}") }
+    exactFields(contract.observe, ['rows','sequences'], [], source)
+    contract.observe.each { kind, names ->
+      if (!(names instanceof List) || names.toSet().size() != names.size() || !names.every { objectName(it) }) {
+        throw new GradleException("Invalid observation scope at ${source}")
+      }
+      if (names.any { it in contract.preserve[kind] }) {
+        throw new GradleException("Observed objects overlap exact preservation scope at ${source}")
+      }
+    }
+    if (contract.observe.values().every { it.isEmpty() }) {
+      throw new GradleException("Observation scope must not be empty at ${source}")
+    }
+  }
+  if (contract.containsKey('custom')) {
+    exactFields(contract.custom, [], ['prepare','verify'], source)
+    if (contract.custom.isEmpty() || !contract.custom.every { phase, path ->
+        (phase == 'verify' && path == 'owner') ||
+          (contractPath(path) && path.startsWith('src/dbUnitTest/upgradeCases/') &&
+            path.endsWith('.sql') && !path.endsWith('_pgtap_tests.sql')) }) {
+      throw new GradleException("Invalid custom contract case at ${source}")
+    }
+    if (contract.custom.containsKey('prepare') && scenario.data != 'approved-synthetic') {
+      throw new GradleException("Custom preparation requires approved-synthetic at ${source}")
+    }
+  }
+  contract
+}
+ext.parseDbUpgradeContractMetadata = { String input, String source ->
+  def item = constrainedJson(input, source)
+  exactFields(item, ['id','candidate','scope','data'], ['inputs','contract'], source)
+  if (!['id','candidate','scope','data'].every { item[it] instanceof String } ||
+      !(item.id ==~ /[a-z][a-z0-9._-]*/) || !contractPath(item.candidate) ||
+      !(item.scope in ['both','upgrade']) || !(item.data in ['migration-created-only','approved-synthetic'])) {
+    throw new GradleException("Invalid metadata value at ${source}")
+  }
+  if (!item.containsKey('inputs')) { item.inputs = [] }
+  if (!(item.inputs instanceof List) || item.inputs.toSet().size() != item.inputs.size() || !item.inputs.every { contractPath(it) }) {
+    throw new GradleException("Invalid dependency inputs at ${source}")
+  }
+  validateShape(item + [source:source])
+  item
+}
+def regularRepositoryFile = { File repository, String path ->
+  if (!contractPath(path)) { throw new GradleException("Noncanonical contract dependency: ${path}") }
+  def base = repository.canonicalFile.toPath()
+  def component = base
+  path.split('/').each { part ->
+    component = component.resolve(part)
+    if (Files.isSymbolicLink(component)) { throw new GradleException("Symbolic contract dependency: ${path}") }
+  }
+  def target = new File(repository, path)
+  if (!target.isFile() || target.canonicalFile != new File(repository.canonicalFile, path).absoluteFile) {
+    throw new GradleException("Missing or noncanonical contract dependency: ${path}")
+  }
+  target
+}
+def customContractFile = { Map scenario, File repository, String phase, String path ->
+  if (path != 'owner') { return regularRepositoryFile(repository, path) }
+  if (phase != 'verify' || !(scenario.owner instanceof File)) {
+    throw new GradleException('Owner verifier requires its declaring owning SQL file')
+  }
+  def base = repository.absoluteFile.toPath()
+  def owner = scenario.owner.absoluteFile.toPath()
+  if (owner != owner.normalize()) { throw new GradleException('Owner verifier requires a canonical owning SQL path') }
+  if (!owner.startsWith(base)) { throw new GradleException('Owner verifier must be beneath src/dbUnitTest') }
+  def relative = base.relativize(owner).toString().replace(File.separator, '/')
+  if (!contractPath(relative) || !relative.startsWith('src/dbUnitTest/') || !relative.endsWith('.sql')) {
+    throw new GradleException('Owner verifier requires a canonical SQL file beneath src/dbUnitTest')
+  }
+  regularRepositoryFile(repository, relative)
+}
+ext.validateDbUpgradeContract = { Map scenario, File repository ->
+  def contract = validateShape(scenario)
+  if (contract != null) {
+    (contract.custom ?: [:]).each { phase, path -> customContractFile(scenario, repository, phase, path) }
+  }
+  contract
+}
+ext.dbUpgradeContractCustomScripts = { Map scenario, File repository ->
+  def contract = project.ext.validateDbUpgradeContract(scenario, repository)
+  (contract?.custom ?: [:]).collectEntries { phase, path -> [(phase):customContractFile(scenario, repository, phase, path)] }
+}
+ext.dbUpgradeContractVariables = { Map scenario ->
+  def contract = validateShape(scenario)
+  if (contract == null) { throw new GradleException('Shared dispatch requires a compact contract') }
+  [opal_contract_json:JsonOutput.toJson(contract), opal_assertion_group:contract.assertion]
+}
+ext.dbUpgradeSupportFiles = { File repository ->
+  def manifestPath = 'src/dbUnitTest/support/manifest.json'
+  def expected = ['src/dbUnitTest/framework/upgrade_lifecycle.sql',
+    'src/dbUnitTest/support/upgrade_contract.sql','src/dbUnitTest/support/upgrade_dispatch.sql',
+    'src/dbUnitTest/support/parent_transition.sql']
+  def manifest = regularRepositoryFile(repository, manifestPath)
+  def declaration = constrainedJson(manifest.text, manifestPath)
+  exactFields(declaration, ['files'], [], manifestPath)
+  if (declaration.files != expected) { throw new GradleException('Shared support manifest differs from its fixed supported dependency set') }
+  [manifest] + expected.collect { regularRepositoryFile(repository, it) }
+}
+tasks.register('dbUnitTestContractTest') {
+  group = 'Verification'
+  description = 'Verifies compact upgrade contract metadata and support manifests'
+  doLast {
+    def marker = '{"id":"fixture.create","candidate":"ddl/V2_0__fixture.sql","scope":"both",' +
+      '"data":"migration-created-only","contract":{"type":"additive","objects":{"created":[' +
+      '{"kind":"routine","identity":"public.fixture(bigint,json)"}],"replaced":[]},' +
+      '"preserve":{"rows":["public.notes"],"tables":["public.notes"],"routines":[],' +
+      '"enums":[],"sequences":["public.note_id_seq"]},"assertion":"fixture.current"}}'
+    assert project.ext.has('parseDbUpgradeContractMetadata') : 'Compact contract parser is required'
+    def parsed = project.ext.parseDbUpgradeContractMetadata(marker, 'fixed-contract')
+    assert parsed.contract.preserve.rows == ['public.notes']
+    assert parsed.contract.objects.created[0].identity == 'public.fixture(bigint,json)'
+    logger.lifecycle('Contract regression compact declaration: PASS')
+    int checks = 1
+    def correctionFailures = []
+    def correctionCheck = { String name, Closure action ->
+      try { action(); checks++; logger.lifecycle("Contract regression ${name}: PASS") }
+      catch (Throwable failure) { correctionFailures.add("${name}: ${failure.message}") }
+    }
+    def correctionReject = { String name, Closure action ->
+      correctionCheck(name) {
+        boolean rejected = false
+        try { action() } catch (GradleException expected) { rejected = true }
+        assert rejected : "Expected compact data contract rejection: ${name}"
+      }
+    }
+    def copyDeclaration = { Map declaration -> new groovy.json.JsonSlurper().parseText(JsonOutput.toJson(declaration)) }
+    def rejects = { String name, String value ->
+      boolean rejected = false
+      try { project.ext.parseDbUpgradeContractMetadata(value, name) }
+      catch (GradleException expected) { rejected = true }
+      assert rejected : "Expected contract rejection: ${name}"
+      checks++
+    }
+    ['duplicate-root':marker.replace('"id":','"id":"other","id":'),
+     'duplicate-nested':marker.replace('"assertion":','"assertion":"other","assertion":'),
+     'unknown-root':marker.replace('"scope":','"unknown":'),
+     'unknown-nested':marker.replace('"assertion":','"unknown":'),
+     'missing-type':marker.replace('"type":"additive",',''),
+     'unknown-type':marker.replace('"type":"additive"','"type":"unknown"'),
+     'wrong-replacement-type':marker.replace('"type":"additive"','"type":"replacement"'),
+     'wrong-data-type':marker.replace('"type":"additive"','"type":"data"'),
+     'missing-nested':marker.replace('"enums":[],',''),
+     'scalar':marker.replace('"both"','true'),
+     'escape':marker.replace('public.notes','public\\u002enotes'),
+     'raw-sql':marker.replace('public.fixture(bigint,json)','public.fixture(bigint);DROP TABLE public.notes'),
+     'path-traversal':marker.replace('ddl/V2_0__fixture.sql','../V2_0__fixture.sql'),
+     'unknown-kind':marker.replace('"routine"','"trigger"'),
+     'noncanonical-type-alias':marker.replace('public.fixture(bigint,json)','public.fixture(int8,json)'),
+     'unqualified-table':marker.replace('public.notes','notes'),
+     'wrong-scope':marker.replace('"rows":["public.notes"]','"rows":"public.notes"'),
+     'duplicate-scope':marker.replace('"rows":["public.notes"]','"rows":["public.notes","public.notes"]'),
+     'reserved-schema':marker.replace('public.notes','pg_catalog.pg_proc'),
+     'trailing-comma':marker.substring(0,marker.length()-1)+',}',
+     'oversized':' ' * 65537,
+     'excess-depth':'[' * 10 + ']' * 10].each { name, value -> rejects(name, value) }
+    def overlap = new groovy.json.JsonSlurper().parseText(marker)
+    overlap.contract.preserve.routines = ['public.fixture(bigint,json)']
+    rejects('changed-preserved-overlap', JsonOutput.toJson(overlap))
+    def replacement = new groovy.json.JsonSlurper().parseText(marker)
+    replacement.contract.objects.replaced = replacement.contract.objects.created
+    replacement.contract.objects.created = []
+    replacement.contract.type = 'replacement'
+    assert project.ext.parseDbUpgradeContractMetadata(JsonOutput.toJson(replacement), 'routine-replacement').contract.objects.replaced.size() == 1
+    checks++
+    replacement.contract.objects.replaced = [[kind:'table',identity:'public.notes']]
+    rejects('unsupported-table-replacement',JsonOutput.toJson(replacement))
+    def custom = new groovy.json.JsonSlurper().parseText(marker)
+    custom.contract.custom = [prepare:'src/dbUnitTest/upgradeCases/fixture.sql']
+    rejects('unapproved-custom-prepare',JsonOutput.toJson(custom))
+    custom.data = 'approved-synthetic'
+    assert project.ext.parseDbUpgradeContractMetadata(JsonOutput.toJson(custom),'approved-prepare').contract.custom.prepare
+    checks++
+    def dataContract = new groovy.json.JsonSlurper().parseText(marker)
+    dataContract.contract.type='data'
+    dataContract.contract.objects.created=[]
+    rejects('data-contract-missing-verifier',JsonOutput.toJson(dataContract))
+    dataContract.contract.custom=[verify:'src/dbUnitTest/upgradeCases/fixture.sql']
+    assert project.ext.parseDbUpgradeContractMetadata(JsonOutput.toJson(dataContract),'data-contract').contract.type=='data'
+    checks++
+    def dataOwner = copyDeclaration(dataContract)
+    dataOwner.contract.custom = [verify:'owner']
+    dataOwner.contract.observe = [rows:['public.major_creditors'], sequences:['public.major_creditor_id_seq']]
+    correctionCheck('data-observe-owner-token') {
+      def actual = project.ext.parseDbUpgradeContractMetadata(JsonOutput.toJson(dataOwner),'data-observe-owner-token')
+      assert actual.contract.observe == dataOwner.contract.observe
+      assert actual.contract.custom.verify == 'owner'
+      assert !actual.containsKey('owner')
+    }
+    [rows:[rows:['public.major_creditors'], sequences:[]],
+     sequences:[rows:[], sequences:['public.major_creditor_id_seq']]].each { name, scope ->
+      correctionCheck("data-observe-${name}-only") {
+        def declaration = copyDeclaration(dataOwner)
+        declaration.contract.observe = scope
+        assert project.ext.parseDbUpgradeContractMetadata(JsonOutput.toJson(declaration),name.toString()).contract.observe == scope
+      }
+    }
+    correctionCheck('observed-rows-may-retain-exact-table-metadata') {
+      def declaration = copyDeclaration(dataOwner)
+      declaration.contract.preserve.tables.add('public.major_creditors')
+      assert project.ext.parseDbUpgradeContractMetadata(JsonOutput.toJson(declaration),'observed-table-metadata').contract.preserve.tables.contains('public.major_creditors')
+    }
+    correctionCheck('owner-token-without-observe') {
+      def declaration = copyDeclaration(dataOwner)
+      declaration.contract.remove('observe')
+      assert project.ext.parseDbUpgradeContractMetadata(JsonOutput.toJson(declaration),'owner-without-observe').contract.custom.verify == 'owner'
+    }
+    correctionCheck('owner-token-for-existing-additive-contract') {
+      def declaration = copyDeclaration(parsed)
+      declaration.contract.custom = [verify:'owner']
+      assert project.ext.parseDbUpgradeContractMetadata(JsonOutput.toJson(declaration),'additive-owner').contract.custom.verify == 'owner'
+    }
+    correctionCheck('data-observe-existing-custom-path') {
+      def declaration = copyDeclaration(dataOwner)
+      declaration.contract.custom.verify = 'src/dbUnitTest/upgradeCases/fixture.sql'
+      assert project.ext.parseDbUpgradeContractMetadata(JsonOutput.toJson(declaration),'observe-custom-path').contract.custom.verify.endsWith('/fixture.sql')
+    }
+    [scalar:'public.major_creditors', list:[], missingrows:[sequences:[]], missingsequences:[rows:[]],
+     unknown:[rows:['public.major_creditors'], sequences:[], tables:[]], empty:[rows:[], sequences:[]],
+     scalarrows:[rows:'public.major_creditors', sequences:[]],
+     scalarsequences:[rows:[], sequences:'public.major_creditor_id_seq'],
+     duplicaterows:[rows:['public.major_creditors','public.major_creditors'], sequences:[]],
+     duplicatesequences:[rows:[], sequences:['public.major_creditor_id_seq','public.major_creditor_id_seq']],
+     overlappingrows:[rows:['public.notes'], sequences:[]],
+     overlappingsequences:[rows:[], sequences:['public.note_id_seq']]].each { name, scope ->
+      correctionReject("invalid-observe-${name}") {
+        def declaration = copyDeclaration(dataOwner)
+        declaration.contract.observe = scope
+        project.ext.parseDbUpgradeContractMetadata(JsonOutput.toJson(declaration),name.toString())
+      }
+    }
+    ['major_creditors', 'public.MajorCreditors', 'public.major_creditors;DELETE',
+     'pg_catalog.pg_class', 'information_schema.tables', 'opal_test_upgrade_observation.state',
+     'opal_db_unit_test_framework_state.history'].each { identity ->
+      ['rows','sequences'].each { kind ->
+        correctionReject("invalid-observed-${kind}-${identity}") {
+          def declaration = copyDeclaration(dataOwner)
+          declaration.contract.observe = [rows:[], sequences:[]]
+          declaration.contract.observe[kind] = [identity]
+          project.ext.parseDbUpgradeContractMetadata(JsonOutput.toJson(declaration),'invalid-observed-identity')
+        }
+      }
+    }
+    ['additive','replacement'].each { type ->
+      correctionReject("non-data-observe-${type}") {
+        def declaration = copyDeclaration(parsed)
+        declaration.contract.type = type
+        if (type == 'replacement') {
+          declaration.contract.objects.replaced = declaration.contract.objects.created
+          declaration.contract.objects.created = []
+        }
+        declaration.contract.observe = dataOwner.contract.observe
+        project.ext.parseDbUpgradeContractMetadata(JsonOutput.toJson(declaration),'non-data-observe')
+      }
+    }
+    correctionReject('duplicate-observe-field') {
+      def text = JsonOutput.toJson(dataOwner).replace('"observe":','"observe":{"rows":[],"sequences":[]},"observe":')
+      project.ext.parseDbUpgradeContractMetadata(text,'duplicate-observe-field')
+    }
+    ['another-owner','owner.sql','../owner','src/dbUnitTest/another_pgtap_tests.sql'].each { token ->
+      correctionReject("invalid-owner-token-${token}") {
+        def declaration = copyDeclaration(dataOwner)
+        declaration.contract.custom.verify = token
+        project.ext.parseDbUpgradeContractMetadata(JsonOutput.toJson(declaration),'invalid-owner-token')
+      }
+    }
+    correctionReject('owner-token-not-permitted-for-preparation') {
+      def declaration = copyDeclaration(dataOwner)
+      declaration.data = 'approved-synthetic'
+      declaration.contract.custom.prepare = 'owner'
+      project.ext.parseDbUpgradeContractMetadata(JsonOutput.toJson(declaration),'owner-prepare')
+    }
+    correctionCheck('contract-variables-retain-owner-token-and-observation') {
+      def actual = new groovy.json.JsonSlurper().parseText(project.ext.dbUpgradeContractVariables(dataOwner).opal_contract_json)
+      assert actual.custom.verify == 'owner'
+      assert actual.observe == dataOwner.contract.observe
+    }
+    custom.contract.custom.prepare = 'src/dbUnitTest/support/fixture.sql'
+    rejects('custom-case-outside-layout',JsonOutput.toJson(custom))
+    def legacy = '{"id":"fixture.legacy","candidate":"ddl/V2_0__fixture.sql","scope":"both","data":"migration-created-only"}'
+    assert !project.ext.parseDbUpgradeContractMetadata(legacy,'legacy').containsKey('contract')
+    assert project.ext.validateDbUpgradeContract([id:'legacy'],rootDir) == null
+    checks++
+    assert project.ext.dbUpgradeContractVariables(parsed).opal_assertion_group == 'fixture.current'
+    assert new groovy.json.JsonSlurper().parseText(project.ext.dbUpgradeContractVariables(parsed).opal_contract_json) == parsed.contract
+    checks++
+    assert project.ext.dbUpgradeSupportFiles(rootDir).size()==5
+    checks++
+    def temporary = Files.createTempDirectory('opal-contract-metadata-').toFile()
+    def fileRejects = { String name, Closure action ->
+      boolean rejected = false
+      try { action() } catch (GradleException expected) { rejected = true }
+      assert rejected : "Expected filesystem contract rejection: ${name}"
+      checks++
+    }
+    try {
+      def supportPaths = ['src/dbUnitTest/framework/upgrade_lifecycle.sql',
+        'src/dbUnitTest/support/upgrade_contract.sql','src/dbUnitTest/support/upgrade_dispatch.sql',
+        'src/dbUnitTest/support/parent_transition.sql']
+      supportPaths.each { path -> def target = new File(temporary,path); target.parentFile.mkdirs(); target.text='fixed metadata fixture\n' }
+      def manifest = new File(temporary,'src/dbUnitTest/support/manifest.json')
+      manifest.text = JsonOutput.toJson([files:supportPaths])
+      assert project.ext.dbUpgradeSupportFiles(temporary).size()==5
+      checks++
+      def validManifest = manifest.text
+      ['malformed':'{bad}','unknown-field':JsonOutput.toJson([unknown:supportPaths]),
+       'extra-file':JsonOutput.toJson([files:supportPaths+['src/dbUnitTest/support/extra.sql']]),
+       'duplicate-file':JsonOutput.toJson([files:supportPaths+[supportPaths[0]]]),
+       'wrong-order':JsonOutput.toJson([files:supportPaths.reverse()]),
+       'wrong-path':JsonOutput.toJson([files:supportPaths.collect { it.replace('support/','supportx/') }]),
+       'duplicate-key':'{"files":[],"files":[]}'].each { name, content ->
+        manifest.text=content
+        fileRejects(name) { project.ext.dbUpgradeSupportFiles(temporary) }
+      }
+      manifest.delete()
+      fileRejects('missing-manifest') { project.ext.dbUpgradeSupportFiles(temporary) }
+      manifest.text=validManifest
+      def customScenario = new groovy.json.JsonSlurper().parseText(marker)
+      customScenario.data='approved-synthetic'
+      customScenario.contract.custom=[prepare:'src/dbUnitTest/upgradeCases/fixture.sql']
+      fileRejects('missing-custom-case') { project.ext.validateDbUpgradeContract(customScenario,temporary) }
+      def customFile = new File(temporary,customScenario.contract.custom.prepare)
+      customFile.parentFile.mkdirs(); customFile.text='fixed fixture\n'
+      assert project.ext.dbUpgradeContractCustomScripts(customScenario,temporary).prepare == customFile
+      checks++
+      customFile.delete()
+      Files.createSymbolicLink(customFile.toPath(),manifest.toPath())
+      fileRejects('live-leaf-symlink') { project.ext.validateDbUpgradeContract(customScenario,temporary) }
+      Files.delete(customFile.toPath())
+      Files.createSymbolicLink(customFile.toPath(),new File(temporary,'missing.sql').toPath())
+      fileRejects('dangling-leaf-symlink') { project.ext.validateDbUpgradeContract(customScenario,temporary) }
+      Files.delete(customFile.toPath()); customFile.parentFile.delete()
+      def parent = customFile.parentFile.toPath()
+      Files.createSymbolicLink(parent,new File(temporary,'src/dbUnitTest/support').toPath())
+      fileRejects('live-parent-symlink') { project.ext.validateDbUpgradeContract(customScenario,temporary) }
+      Files.delete(parent)
+      Files.createSymbolicLink(parent,new File(temporary,'missing-directory').toPath())
+      fileRejects('dangling-parent-symlink') { project.ext.validateDbUpgradeContract(customScenario,temporary) }
+      Files.delete(parent)
+      def ownerFile = new File(temporary,'src/dbUnitTest/declaring_owner.sql')
+      ownerFile.parentFile.mkdirs(); ownerFile.text = 'declaring owner fixture\n'
+      def otherOwner = new File(temporary,'src/dbUnitTest/other_owner.sql')
+      otherOwner.text = 'other owner fixture\n'
+      def ownerScenario = copyDeclaration(dataOwner) + [owner:ownerFile]
+      correctionCheck('owner-token-validates-declaring-file') {
+        assert project.ext.validateDbUpgradeContract(ownerScenario,temporary) == ownerScenario.contract
+        assert project.ext.dbUpgradeContractCustomScripts(ownerScenario,temporary) == [verify:ownerFile]
+        assert project.ext.dbUpgradeContractCustomScripts(ownerScenario,temporary).verify != otherOwner
+        assert ownerScenario.contract.custom.verify == 'owner'
+      }
+      correctionReject('owner-token-missing-owner-field') {
+        project.ext.validateDbUpgradeContract(copyDeclaration(dataOwner),temporary)
+      }
+      correctionReject('owner-token-requires-file-owner') {
+        project.ext.validateDbUpgradeContract(copyDeclaration(dataOwner) + [owner:ownerFile.path],temporary)
+      }
+      def outsideOwner = new File(temporary,'outside_owner.sql')
+      outsideOwner.text = 'outside database root fixture\n'
+      def nonSqlOwner = new File(temporary,'src/dbUnitTest/not_sql.txt')
+      nonSqlOwner.text = 'not SQL fixture\n'
+      def directoryOwner = new File(temporary,'src/dbUnitTest/directory.sql')
+      directoryOwner.mkdirs()
+      [outside:outsideOwner, nonsql:nonSqlOwner, directory:directoryOwner,
+       missing:new File(temporary,'src/dbUnitTest/missing_owner.sql'),
+       noncanonical:new File(temporary,'src/dbUnitTest/../dbUnitTest/declaring_owner.sql')].each { name, owner ->
+        correctionReject("invalid-owner-file-${name}") {
+          project.ext.validateDbUpgradeContract(copyDeclaration(dataOwner) + [owner:owner],temporary)
+        }
+      }
+      ['live','dangling'].each { kind ->
+        def leaf = new File(temporary,"src/dbUnitTest/${kind}_owner.sql").toPath()
+        Files.createSymbolicLink(leaf,kind == 'live' ? ownerFile.toPath() : new File(temporary,'absent.sql').toPath())
+        correctionReject("owner-leaf-symlink-${kind}") {
+          project.ext.validateDbUpgradeContract(copyDeclaration(dataOwner) + [owner:leaf.toFile()],temporary)
+        }
+        Files.delete(leaf)
+        def ownerParent = new File(temporary,"src/dbUnitTest/${kind}_owner_directory").toPath()
+        Files.createSymbolicLink(ownerParent,kind == 'live' ? ownerFile.parentFile.toPath() : new File(temporary,'absent-directory').toPath())
+        correctionReject("owner-parent-symlink-${kind}") {
+          project.ext.validateDbUpgradeContract(copyDeclaration(dataOwner) + [owner:ownerParent.resolve(ownerFile.name).toFile()],temporary)
+        }
+        Files.delete(ownerParent)
+      }
+      def pathVerifier = new File(temporary,'src/dbUnitTest/upgradeCases/data_owner_verify.sql')
+      pathVerifier.parentFile.mkdirs(); pathVerifier.text = 'existing custom verifier fixture\n'
+      correctionCheck('existing-custom-path-with-observe-resolves-unchanged') {
+        def scenario = copyDeclaration(dataOwner)
+        scenario.contract.custom.verify = 'src/dbUnitTest/upgradeCases/data_owner_verify.sql'
+        assert project.ext.dbUpgradeContractCustomScripts(scenario,temporary) == [verify:pathVerifier]
+      }
+      def helper = new File(temporary,supportPaths[1]); helper.delete()
+      fileRejects('missing-fixed-support') { project.ext.dbUpgradeSupportFiles(temporary) }
+      Files.createSymbolicLink(helper.toPath(),manifest.toPath())
+      fileRejects('symbolic-fixed-support') { project.ext.dbUpgradeSupportFiles(temporary) }
+      Files.delete(helper.toPath())
+    } finally { temporary.deleteDir() }
+    if (!correctionFailures.isEmpty()) {
+      throw new GradleException("Compact data contract regressions failed (${correctionFailures.size()}):\n" + correctionFailures.join('\n'))
+    }
+    logger.lifecycle("Contract metadata regressions: ${checks} passed")
+  }
+}

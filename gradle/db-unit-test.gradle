@@ -1,424 +1,1505 @@
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
+import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 import org.gradle.api.GradleException
 import org.gradle.api.tasks.PathSensitivity
 
-def dbUnitTestDockerfile = file("${rootDir}/docker/postgres-pgtap.Dockerfile")
-def dbUnitTestProfiles = [
-  [name: 'non-live-dev', locations: ['ddl', 'data/allEnvs', 'data/nle', 'data/dev']],
-  [name: 'non-live', locations: ['ddl', 'data/allEnvs', 'data/nle']]
+apply from: "$rootDir/gradle/db-unit-test-profiles.gradle"
+apply from: "$rootDir/gradle/db-upgrade-contract.gradle"
+apply from: "$rootDir/gradle/db-upgrade-selection.gradle"
+apply from: "$rootDir/gradle/db-upgrade-selection-test.gradle"
+
+// Fixed adoption foundation: 847739c9ee40ca1c09687756212f7f0dcbb56e7d.
+// Never advance this list to exempt a new migration from upgrade registration.
+def adoptedMigrations = [
+  'ddl/V1_1__db_description.sql': [version: '1.1', sha256: '7d494b937cb4a4175afd1206291e9b7dfc6c05d1ca493b0c6c91ad3f1902e197'],
+  'ddl/V1_2__create_countries_table.sql': [version: '1.2', sha256: 'c8c93dde4e9c2268477f566ec80cf0c87ba88093d2bf01790f1113c7a810a5de'],
+  'data/dev/V1_3__insert_countries_dev_data.sql': [version: '1.3', sha256: '56201a4d6e859027f79d106b483dbacc8d1d29c8f65d3a35e8acdf279db36b33'],
+  'data/dev/V1_4__insert_inactive_country_dev_data.sql': [version: '1.4', sha256: 'b9e6806fa76efe5dc4a46befed8f22d08a2eec04cc3997b6cb1635e037a1e4d7'],
+  'data/allEnvs/V1_5__insert_countries_reference_data.sql': [version: '1.5', sha256: '113e149fdd70814b79ef7c8036590dedd9a407e4eaa6e013beb24cb9df2faffc'],
+  'ddl/V1_6__create_business_units_table.sql': [version: '1.6', sha256: '1c670bb8ce26bd8dca7a193eeadfdb947eb922de2dac4ca9d9d1c87722422d1b'],
+  'data/allEnvs/V1_7__insert_business_units_reference_data.sql': [version: '1.7', sha256: 'bd12dd122090195354672b675b111ed41bb0e15533cd1d55d852d7f08e2ebb52'],
+  'ddl/V1_8__create_results_table.sql': [version: '1.8', sha256: '75a7735a6ba0ed1fea14ffa41fee8108ccf9f00672cf795737642256955e5a60'],
+  'ddl/V1_9__create_major_creditors_table.sql': [version: '1.9', sha256: 'f5a1aa93036121159a61e985f52dcf3bed5fdabe85b3a90ae040353049a2eef1'],
+  'data/allEnvs/V1_10__insert_major_creditors_reference_data.sql': [version: '1.10', sha256: '078f639c0ad14c9d15bb7bffdb26194e5fe59f4e37bcf91f92aef43320cf665b'],
+  'ddl/V1_11__create_maintenance_applications_table.sql': [version: '1.11', sha256: '7aaa19c05325d3ffcde2987789c062b5eb8341cf4f1623d2d694c21137326567'],
+  'data/allEnvs/V1_12__insert_maintenance_applications_reference_data.sql': [version: '1.12', sha256: 'b4af5fa0ccae6227cbab1785fcf02bcfb29b5a20127487500e0a5e32edce864b'],
+  'data/allEnvs/V1_13__insert_results_reference_data.sql': [version: '1.13', sha256: '65e8a291bf38421c9e2d5e67969525d0ba148a5c8cbedb973e39e83a649798e9'],
+  'ddl/V1_14__create_draft_casefiles_table.sql': [version: '1.14', sha256: '66158433e98290779fcf40474fcd085ccc8821c23b0ce2d6ba89d7f3a95ba43c'],
+  'ddl/V1_15__allow_null_results_permitted_actions.sql': [version: '1.15', sha256: '9f0580f40f23b44d0c7746838008ea672f7a19ef8fb6e2cebb8264fa9cdc96a5'],
+  'data/allEnvs/V1_16__refresh_results_reference_data.sql': [version: '1.16', sha256: '295e00e1ab7b21d9e00425b55b52d1732d33ae5a5f2df04260ddef9442fdeaa6'],
+  'ddl/V1_17__create_associated_record_type_enum.sql': [version: '1.17', sha256: '3cd89626b1e5815e6c184b0feb091d7aff52db602d42e327004ff6304e4b2b9f'],
+  'ddl/V1_18__create_configuration_items_table.sql': [version: '1.18', sha256: 'bbfa44fe290a312b0b26e9bd420cda1cc770399d48fbaf294d40f932e8a004e8'],
+  'data/allEnvs/V1_19__insert_configuration_items_data.sql': [version: '1.19', sha256: '7c35dda698b567129041f27a2ff53c5dfe827068540d014c6f4e6e83a5172a67'],
+  'ddl/V1_20__create_parties_table.sql': [version: '1.20', sha256: '89bc2289b7be8b1c2fd95f44bdbbd0e60b5e9ec89c4a0a2366c32bd247d870a5'],
+  'ddl/V1_21__create_debtor_detail_table.sql': [version: '1.21', sha256: 'ed6cc55c6dae32af182a0fdda036ac8a3a1fa40f9c87496c2aa6d21905226bba'],
+  'ddl/V1_22__create_third_party_contact_table.sql': [version: '1.22', sha256: '843d29bd84c9b541798b15d2c77fe0abd7511374cc832869d2bb9ac386b01fef'],
+  'ddl/V1_23__create_account_number_index_table.sql': [version: '1.23', sha256: '9ce01e94c8293763221e8925a060ae7eaba1f911745c8bd863720ef6843e01d3'],
+  'ddl/V1_24__create_notes_table.sql': [version: '1.24', sha256: '90035b17f7065ced4b5db0374b6347c7a8047a0348eee41f884720b6a81c0d2a'],
+  'ddl/V1_25__create_aliases_table.sql': [version: '1.25', sha256: '01a8a139291946337bb2dab14c5aebcdf3c94f29c8aa43d29004b61d084f96df'],
+  'ddl/V1_26__create_respondent_accounts_table.sql': [version: '1.26', sha256: '0b5ee76a94ce98563b418bda06fe9f92b375f57b975953b88532de0df47aa313'],
+  'ddl/V1_27__create_creditor_accounts_table.sql': [version: '1.27', sha256: 'a4dff45344f89b4bc4eee27e9c5fb2636a323f3f87e25f4c33e6765e8872a5cd'],
+  'ddl/V1_28__create_respondent_account_parties_table.sql': [version: '1.28', sha256: '545f20ac66c5b4fc1a348638d656e4f78916b85fce58e1507fbffc0ac9c30240'],
+  'ddl/V1_29__create_order_terms_table.sql': [version: '1.29', sha256: 'aa4b8ccca3109956cf024353390a3783749429a6357856c04974b98ffeab0024'],
+  'ddl/V1_30__add_draft_casefiles_account_id_foreign_key.sql': [version: '1.30', sha256: '16b80518fde0e8ff2ecc8a734177cc1e3ce77b9485ae3d9aef95df7112c93983'],
+  'ddl/V1_31__create_f_get_check_letter.sql': [version: '1.31', sha256: '8032a1d0d40310b150a1e4f7518cc47d22d9e14afe4651a56a3240745011a480'],
+  'ddl/V1_32__create_f_get_account_number.sql': [version: '1.32', sha256: '6e20cb65117f6a0abfde5ebbfbac8e49974ddf857f35583b1f139272a93bd556']
 ]
-def dbUnitTestMigrationDirectories = dbUnitTestProfiles.collectMany { profile ->
-  profile.locations.collect { location ->
-    file("${rootDir}/src/main/resources/db/migration/${location}")
-  }
-}.unique()
-def dbUnitTestSqlFiles = fileTree("${rootDir}/src/dbUnitTest") {
+
+def migrationRoot = file('src/main/resources/db/migration')
+def supportedLocations = project.ext.dbUnitTestProfiles.collectMany { it.locations }.unique()
+def sqlRoot = file('src/dbUnitTest')
+def frameworkSuite = new File(sqlRoot, 'db_upgrade_framework_pgtap_tests.sql')
+def fixtureRoot = new File(sqlRoot, 'framework/upgrade')
+def dockerfile = file('docker/postgres-pgtap.Dockerfile')
+def postgresImage = 'opal-maintenance-db-unit-test-postgres:17'
+def flywayVersion = providers.provider {
+  def modules = configurations.runtimeClasspath.incoming.resolutionResult.allComponents.collect {
+    def coordinate = it.moduleVersion
+    coordinate == null ? null : [group:coordinate.group, name:coordinate.name, version:coordinate.version]
+  }.findAll { it != null }
+  project.ext.resolveDbUnitTestFlywayVersion(modules)
+}
+def flywayImage = providers.provider { "flyway/flyway:${flywayVersion.get()}".toString() }
+def databaseName = 'opal_maintenance_db_unit_test'
+def sqlFiles = fileTree(sqlRoot) {
   include '**/*_pgtap_tests.sql'
   include '**/*_unit_tests.sql'
+  exclude 'support/**', 'upgradeCases/**', 'framework/**'
 }
-def dbUnitTestFailureFixture = file(
-  "${rootDir}/src/dbUnitTest/framework/failing_pgtap_test.sql"
-)
-def dbUnitTestFixtures = fileTree("${rootDir}/src/dbUnitTest") {
-  include '**/*.csv'
-}
-
-def runDbUnitTestCommand = { List<String> command ->
-  def execOutput = providers.exec {
-    commandLine command
+def digest = { File source -> MessageDigest.getInstance('SHA-256').digest(source.bytes).encodeHex().toString() }
+def relative = { File root, File source -> root.toPath().relativize(source.toPath()).toString().replace(File.separator, '/') }
+def execute = { List command ->
+  def output = providers.exec {
+    commandLine command.collect { it.toString() }
     ignoreExitValue = true
   }
-  def result = execOutput.result.get()
-
-  [
-    exitCode: result.exitValue,
-    stdout: execOutput.standardOutput.asText.get(),
-    stderr: execOutput.standardError.asText.get()
-  ]
+  [exitCode: output.result.get().exitValue, stdout: output.standardOutput.asText.get(),
+   stderr: output.standardError.asText.get()]
 }
-
-def requireSuccessfulDbUnitTestCommand = { String description, List<String> command ->
-  def result = runDbUnitTestCommand(command)
-  if (result.exitCode != 0) {
-    throw new GradleException(
-      "${description} failed with exit code ${result.exitCode}:\n${result.stdout}${result.stderr}"
-    )
+def normalizeVersion = { String value ->
+  if (!(value ==~ /[0-9]+(?:[._][0-9]+)*/)) {
+    throw new GradleException('Unsupported numerical migration version')
+  }
+  def parts = value.split(/[._]/).collect { new BigInteger(it) }
+  while (parts.size() > 1 && parts.last() == BigInteger.ZERO) { parts.removeLast() }
+  parts.join('.')
+}
+def compareVersions = { String left, String right ->
+  def a = left.split(/\./).collect { new BigInteger(it) }
+  def b = right.split(/\./).collect { new BigInteger(it) }
+  int order = 0
+  for (int i = 0; i < Math.max(a.size(), b.size()) && order == 0; i++) {
+    order = (i < a.size() ? a[i] : BigInteger.ZERO) <=> (i < b.size() ? b[i] : BigInteger.ZERO)
+  }
+  order
+}
+def inventory = { File root, List locations ->
+  def entries = locations.collectMany { location ->
+    def directory = new File(root, location)
+    if (!directory.isDirectory()) { throw new GradleException("Missing migration location: ${location}") }
+    fileTree(directory).files.findAll { it.isFile() && it.name != '.gitkeep' }.collect { source ->
+      def path = relative(root, source)
+      def matcher = source.name =~ /^V([0-9]+(?:[._][0-9]+)*)__([A-Za-z0-9_]+)\.sql$/
+      if (!matcher.matches()) { throw new GradleException("Unsupported migration file: ${path}") }
+      [path: path, script: source.name, version: normalizeVersion(matcher[0][1]), sha256: digest(source)]
+    }
+  }.sort { a, b -> compareVersions(a.version, b.version) }
+  if (entries.isEmpty()) { throw new GradleException('No selected migrations') }
+  entries.groupBy { it.version }.each { version, duplicates ->
+    if (duplicates.size() != 1) {
+      throw new GradleException("Duplicate normalized migration version ${version}: ${duplicates*.path.join(', ')}")
+    }
+  }
+  entries
+}
+// The selection module validates constrained registration metadata before JSON parsing.
+def parseMetadata = { String input, String source ->
+  input.contains('"contract"') ? project.ext.parseDbUpgradeContractMetadata(input, source) :
+    project.ext.parseDbUpgradeMetadata(input, source)
+}
+def resolveRegistrations = { List items, List entries ->
+  items.each { item ->
+    def candidate = entries.find { it.path == item.candidate }
+    if (candidate == null) { throw new GradleException("Missing or unselected candidate at ${item.source}: ${item.candidate}") }
+    if (item.contract != null) {
+      item.contract = project.ext.validateDbUpgradeContract(item, rootDir)
+      // Custom assertion/setup files affect their declared owner's selection.
+      def customInputs = (item.contract.custom ?: [:]).values().findAll { it != 'owner' }.toList()
+      item.inputs = ((item.inputs ?: []) + customInputs).unique()
+    }
+    project.ext.validateDbUpgradeInputs(item, rootDir)
+    item.version = candidate.version
+    if (new File(migrationRoot, item.candidate).canonicalFile != new File(migrationRoot, item.candidate).absoluteFile) {
+      throw new GradleException("Noncanonical candidate at ${item.source}")
+    }
+    if (item.data == 'approved-synthetic' && !item.owner.text.contains('Approved data scenario:')) {
+      throw new GradleException("Approved data scenario reference missing at ${item.source}")
+    }
+  }
+  items.groupBy { it.id }.each { id, owners ->
+    if (owners.size() != 1) { throw new GradleException("Duplicate scenario ID ${id}: ${owners*.source.join(', ')}") }
+  }
+  items.groupBy { it.candidate }.each { candidate, owners ->
+    if (owners.size() != 1) { throw new GradleException("Multiple owners for ${candidate}: ${owners*.source.join(', ')}") }
+  }
+  items.sort { a, b -> compareVersions(a.version, b.version) }
+}
+def registrations = { List suites, List entries ->
+  def items = []
+  suites.each { suite ->
+    suite.readLines().eachWithIndex { line, index ->
+      if (line.contains('OPAL-DB-UPGRADE')) {
+        def source = "${relative(sqlRoot, suite)}:${index + 1}"
+        def marker = line =~ /^\s*-- OPAL-DB-UPGRADE (.*)$/
+        if (!marker.matches()) { throw new GradleException("Malformed upgrade declaration at ${source}") }
+        items.add(parseMetadata(marker[0][1], source) + [owner: suite, source: source])
+      }
+    }
+  }
+  resolveRegistrations(items, entries)
+}
+def validateAdoption = { List entries, List scenarios, Map adoption, List requiredLocations = null ->
+  adoption.each { path, original ->
+    def actual = entries.find { it.path == path }
+    if (actual == null || actual.version != original.version || actual.sha256 != original.sha256) {
+      throw new GradleException("Adopted migration missing or altered: ${path}")
+    }
+  }
+  def missing = entries.findAll { entry ->
+    (requiredLocations == null || requiredLocations.any { entry.path.startsWith(it + '/') }) &&
+      !adoption.containsKey(entry.path) && !scenarios.any { it.candidate == entry.path }
+  }
+  if (!missing.isEmpty()) { throw new GradleException("Missing upgrade registration: ${missing*.path.join(', ')}") }
+}
+def validateOptions = { String selection, boolean baseline, List scenarios ->
+  if (selection == null) { return scenarios }
+  if (baseline) { throw new GradleException('dbUnitTestUpgradeSuite is prohibited with check/build') }
+  if (!(selection ==~ /[A-Za-z0-9_\/-]+\.sql/) || selection.startsWith('/') || selection.split('/').contains('..')) {
+    throw new GradleException('Invalid dbUnitTestUpgradeSuite path')
+  }
+  def chosen = scenarios.findAll { relative(sqlRoot, it.owner) == selection }
+  if (chosen.isEmpty()) { throw new GradleException('Unknown suite or no upgrade registrations selected') }
+  chosen
+}
+def refuseExternal = { Map environment ->
+  def names = environment.findAll { name, value ->
+    value != null && !value.toString().isBlank() &&
+      (name.startsWith('FLYWAY_') || name.startsWith('OPAL_MAINTENANCE_DB_') || name in ['PGSERVICE','PGSERVICEFILE','PGOPTIONS'])
+  }.keySet().sort()
+  if (!names.isEmpty()) { throw new GradleException("dbUnitTest refuses external database settings: ${names.join(', ')}") }
+}
+def expectedHistory = { List entries -> JsonOutput.toJson(entries.collect { [version: it.version, script: it.script] }) }
+def newRun = { String mode, Map profile = null ->
+  def reportRoot = layout.buildDirectory.dir('reports/dbUnitTest').get().asFile
+  def base = profile == null ? reportRoot : new File(reportRoot, profile.name)
+  base.mkdirs()
+  def directory = new File(base, "runs/${System.currentTimeMillis()}-${UUID.randomUUID()}")
+  directory.mkdirs()
+  if (profile != null) { project.ext.startDbUnitTestProfileReports(base, directory.name) }
+  def git = execute(['git', 'rev-parse', 'HEAD'])
+  def dirty = execute(['git', 'status', '--short'])
+  def fingerprintFiles = [file('gradle/db-unit-test.gradle'), file('gradle/db-upgrade-contract.gradle'), file('gradle/db-upgrade-selection.gradle'),
+    file('gradle/db-upgrade-selection-test.gradle'), file('gradle/db-unit-test-profiles.gradle'), dockerfile] + fileTree(sqlRoot).files + fileTree(migrationRoot).files
+  def fingerprints = fingerprintFiles.findAll { it.isFile() }.sort { it.path }.collect { "${relative(rootDir, it)} ${digest(it)}" }
+  new File(directory, 'source-sha256.txt').text = fingerprints.join('\n') + '\n'
+  [base: base, directory: directory, started: System.nanoTime(), evidence: ["Mode: ${mode}", "Requested tasks: ${gradle.startParameter.taskNames}",
+    "Started: ${java.time.Instant.now()}", "Git revision: ${git.stdout.trim()}",
+    "Dirty files:\n${dirty.stdout}", "Source fingerprints: source-sha256.txt",
+    'Adoption foundation: 847739c9ee40ca1c09687756212f7f0dcbb56e7d; 32 historical migrations',
+    "Java: ${System.getProperty('java.version')}; Gradle: ${gradle.gradleVersion}", "Flyway image: ${flywayImage.get()}",
+    "Resolved application Flyway core/PostgreSQL runtime: ${flywayVersion.get()}",
+    "Profile: ${profile?.name ?: 'shared framework'}; locations: ${profile?.locations ?: []}"], statuses: [:], discovered: 0, scheduled: 0, attempted: 0, completed: 0]
+}
+def finishRun = { Map run, Throwable failure ->
+  if (failure != null) {
+    run.statuses.replaceAll { name, status -> status == 'RUNNING' ? 'FAILED' : status == 'Not run' ? 'Not run — earlier failure' : status }
+  }
+  run.evidence.add("Upgrade scenarios: discovered ${run.discovered}; selected ${run.scheduled}; attempted ${run.attempted}; completed ${run.completed}")
+  run.evidence.add("Duration milliseconds: ${TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - run.started)}")
+  run.statuses.each { name, status -> run.evidence.add("Scenario ${name}: ${status}") }
+  run.evidence.add(failure == null ? 'Result: PASS' : "Result: FAILED - ${failure.message}")
+  def content = run.evidence.join('\n') + '\n'
+  new File(run.directory, 'summary.txt').text = content
+  new File(run.base, 'summary.txt').text = "Run: ${run.directory.name}\n" + content
+  logger.lifecycle("Database verification report: ${run.directory}")
+}
+def command = { Map target, String label, List args ->
+  def number = target.sequence++
+  def started = System.nanoTime()
+  def result
+  if (target.injection == label) {
+    result = [exitCode: 71, stdout: '', stderr: "fixed framework command failure: ${label}\n"]
+  } else {
+    result = execute(args)
+  }
+  def output = "Command: ${args.collect { it.toString().startsWith('-url=') ? '-url=<disposable target>' : it }.join(' ')}\n" +
+    "Exit: ${result.exitCode}; Duration milliseconds: ${TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started)}\n" + result.stdout + result.stderr
+  new File(target.directory, String.format('%03d-%s.log', number, label)).text = output
+  target.evidence.add("${label}: exit ${result.exitCode}")
+  target.phases[label] = result.exitCode == 0 ? 'PASS' : 'FAILED'
+  result
+}
+def requireCommand = { Map target, String label, List args ->
+  def result = command(target, label, args)
+  if (result.exitCode != 0) { throw new GradleException("${label} failed (exit ${result.exitCode}): ${result.stdout}${result.stderr}") }
+  result
+}
+def prove = { Map target, String label, List suites, Map variables ->
+  def args = ['docker', 'exec', target.name, 'pg_prove', '--verbose', '-h', 'localhost', '-U', 'postgres', '-d', databaseName,
+    '--set', 'ON_ERROR_STOP=1']
+  variables.each { key, value -> args.addAll(['--set', "${key}=${value}"]) }
+  args.addAll(suites.collect { "/tmp/opal-db-unit-test/${relative(sqlRoot, it)}" })
+  def result = command(target, label, args)
+  if (label == 'fresh-suites') { new File(target.base, 'pg-prove.log').text = result.stdout + result.stderr }
+  def plans = (result.stdout =~ /(?m)^\s*1\.\.([0-9]+)(?:\s.*)?$/).collect { it[1].toInteger() }
+  def executed = (result.stdout =~ /(?m)^\s*(?:not )?ok\s+[0-9]+(?:\s.*)?$/).size()
+  target.evidence.add("${label}: planned ${plans.sum() ?: 0}; executed ${executed}; suites ${suites.size()}")
+  if (result.exitCode != 0 || plans.size() != suites.size() || plans.any { it <= 0 } || plans.sum() != executed) {
+    target.phases[label] = 'FAILED'
+    throw new GradleException("${label} pg_prove failed or lacked positive exact plans (exit ${result.exitCode}; planned ${plans}; executed ${executed}); see ${target.directory}")
   }
   result
 }
-
-def runFreshDbUnitTestProfile
-
-tasks.register('dbUnitTest') {
-  description = 'Runs database-owned pgTAP tests against disposable PostgreSQL'
-  group = 'Verification'
-
-  inputs.file(dbUnitTestDockerfile).withPathSensitivity(PathSensitivity.RELATIVE)
-  inputs.files(dbUnitTestMigrationDirectories).withPathSensitivity(PathSensitivity.RELATIVE)
-  inputs.files(dbUnitTestSqlFiles).withPathSensitivity(PathSensitivity.RELATIVE)
-  inputs.file(dbUnitTestFailureFixture).withPathSensitivity(PathSensitivity.RELATIVE)
-  inputs.files(dbUnitTestFixtures).withPathSensitivity(PathSensitivity.RELATIVE)
-  outputs.dir(layout.buildDirectory.dir('reports/dbUnitTest'))
-  outputs.upToDateWhen { false }
-
-  doLast {
-    def rootReportDirectory = layout.buildDirectory.dir('reports/dbUnitTest').get().asFile
-    rootReportDirectory.mkdirs()
-    ['pg-prove.log', 'framework-self-test.log'].each { staleName ->
-      new File(rootReportDirectory, staleName).delete()
+def framework = { Map target, String phase, List entries, Map variables ->
+  prove(target, "framework-${phase}", [frameworkSuite], variables +
+    [opal_framework_phase: phase, opal_expected_history: expectedHistory(entries)])
+}
+def nativeFlyway = { Map target, String operation, String boundary ->
+  def args = target.flyway + ['-outputType=json'] + (boundary == null ? [] : ["-target=${boundary}"]) + [operation]
+  def result = requireCommand(target, "flyway-${operation}-${boundary ?: 'latest'}", args)
+  def parsed
+  try { parsed = new JsonSlurper().parseText(result.stdout) }
+  catch (Exception ignored) { throw new GradleException("Invalid native Flyway JSON for ${operation}; see ${target.directory}") }
+  if (parsed.flywayVersion != flywayVersion.get()) {
+    throw new GradleException("Native Flyway runtime mismatch for ${operation}: expected ${flywayVersion.get()}; observed ${parsed.flywayVersion}")
+  }
+  if (operation == 'validate' && parsed.validationSuccessful != true) {
+    def label = "flyway-${operation}-${boundary ?: 'latest'}"
+    target.phases[label] = 'FAILED'
+    throw new GradleException("${label} failed native validation: ${parsed.allErrorMessages ?: parsed.errorDetails ?: 'validationSuccessful was not true'}; see ${target.directory}")
+  }
+  parsed
+}
+def crossCheckNative = { Map target, List entries ->
+  def info = nativeFlyway(target, 'info', null)
+  def nativeRows = info.migrations
+  if (!(nativeRows instanceof List) || nativeRows.size() != entries.size()) {
+    throw new GradleException('Native Flyway inventory count differs from selected files')
+  }
+  nativeRows.eachWithIndex { row, index ->
+    def path = row.filepath ?: row.filePath ?: row.script
+    if (row.type != 'SQL' || normalizeVersion(row.version.toString()) != entries[index].version || path == null
+      || !path.toString().replace('\\', '/').endsWith('/' + entries[index].path)) {
+      throw new GradleException("Native Flyway identity/order differs at ${entries[index].path}")
     }
-    def aggregateReport = new File(rootReportDirectory, 'summary.txt')
-    aggregateReport.text = 'Result: RUNNING\n'
-    def profileFailures = []
-    def profileOutcomes = []
-    dbUnitTestProfiles.each { profile ->
-      def profileReportDirectory = new File(rootReportDirectory, profile.name)
-      profileReportDirectory.mkdirs()
-      new File(profileReportDirectory, 'summary.txt').text =
-        'Result: RUNNING' + System.lineSeparator()
-      try {
-        runFreshDbUnitTestProfile(profile)
-        profileOutcomes.add("${profile.name}: PASS")
-      } catch (Throwable failure) {
-        profileFailures.add("${profile.name}: ${failure.message}")
-        profileOutcomes.add("${profile.name}: FAILED - ${failure.message}")
-        def profileSummary = new File(profileReportDirectory, 'summary.txt')
-        if (profileSummary.text.startsWith('Result: RUNNING')) {
-          profileSummary.text = "Result: FAILED - ${failure.message}" + System.lineSeparator()
-            + 'Cleanup confirmed: not started' + System.lineSeparator()
+  }
+  target.evidence.add('Native Flyway numerical inventory and paths: verified')
+}
+def targetLifecycle = { Map run, String id, File root, List locations, String injection, Closure body ->
+  def directory = new File(run.directory, id)
+  directory.mkdirs()
+  def target = [name: "opal-maintenance-db-unit-test-${UUID.randomUUID()}", directory: directory,
+    base: run.base, started: System.nanoTime(), sequence: 0, injection: injection, evidence: [], phases: [:], declared: [], created: false, absent: true,
+    volumeNames: [], volumesInspected: false, volumesAbsent: true]
+  Throwable primary = null
+  Throwable cleanup = null
+  try {
+    // Flag before docker run: even a failed/ambiguous start must attempt owned-name cleanup.
+    target.created = true
+    target.absent = false
+    target.volumesAbsent = false
+    requireCommand(target, 'start', ['docker','run','--detach','--rm','--name',target.name,
+      '--env','POSTGRES_HOST_AUTH_METHOD=trust','--env',"POSTGRES_DB=${databaseName}",postgresImage])
+    def mounts = new JsonSlurper().parseText(requireCommand(target, 'owned-volume-mounts',
+      ['docker','inspect','--format','{{json .Mounts}}',target.name]).stdout)
+    if (!(mounts instanceof List)) { throw new GradleException('Cannot identify owned anonymous target volumes') }
+    // docker run supplies no volume names: these mounts were created for this exact UUID target.
+    target.volumeNames = mounts.findAll { it.Type == 'volume' }.collect { it.Name }
+    if (!target.volumeNames.every { it instanceof String && it ==~ /[a-f0-9]{64}/ }) {
+      throw new GradleException('Disposable target contains an unexpected named volume')
+    }
+    target.volumesInspected = true
+    target.evidence.add("Owned anonymous volumes: ${target.volumeNames}")
+    boolean ready = false
+    for (int attempt = 0; attempt < 60; attempt++) {
+      def process = command(target, 'postgres-process', ['docker','exec',target.name,'cat','/proc/1/comm'])
+      if (process.exitCode == 0 && process.stdout.trim() == 'postgres') {
+        def readiness = command(target, 'readiness', ['docker','exec',target.name,'pg_isready','-U','postgres','-d',databaseName])
+        if (readiness.exitCode == 0) { ready = true; break }
+        if (injection == 'readiness') { break }
+      }
+      TimeUnit.SECONDS.sleep(1)
+    }
+    if (!ready) { throw new GradleException('Disposable PostgreSQL readiness failed') }
+    def empty = requireCommand(target, 'empty-start', ['docker','exec',target.name,'psql','-X','-At','-v','ON_ERROR_STOP=1',
+      '-U','postgres','-d',databaseName,'-c',"SELECT count(*) FROM pg_catalog.pg_tables WHERE schemaname = 'public'"])
+    if (empty.stdout.trim() != '0') { throw new GradleException('Disposable database was not empty') }
+    requireCommand(target, 'copy-suites', ['docker','cp',"${sqlRoot}/.","${target.name}:/tmp/opal-db-unit-test"])
+    requireCommand(target, 'copy-replay-migrations', ['docker','cp',"${migrationRoot}/.","${target.name}:/tmp/opal-db-migrations"])
+    target.flyway = ['docker','run','--rm','--network',"container:${target.name}"]
+    locations.each { location -> target.flyway.addAll(['--volume',"${new File(root, location).absolutePath}:/flyway/sql/${location}:ro"]) }
+    target.flyway.addAll([flywayImage.get(),"-url=jdbc:postgresql://localhost:5432/${databaseName}",'-user=postgres',
+      '-locations=' + locations.collect { "filesystem:/flyway/sql/${it}" }.join(','), '-baselineOnMigrate=false','-cleanDisabled=true'])
+    target.evidence.add(requireCommand(target, 'postgres-version', ['docker','exec',target.name,'postgres','--version']).stdout.trim())
+    target.evidence.add(requireCommand(target, 'pg-prove-version', ['docker','exec',target.name,'pg_prove','--version']).stdout.trim())
+    body(target)
+  } catch (Throwable failure) { primary = failure }
+  finally {
+    if (target.created) {
+      def cleanupFailures = []
+      def attemptCleanup = { Closure action ->
+        try { action() } catch (Throwable problem) { cleanupFailures.add(problem) }
+      }
+      attemptCleanup { requireCommand(target, 'remove', ['docker','rm','--force','--volumes',target.name]) }
+      // Each resource needs independent absence evidence despite any earlier cleanup failure.
+      attemptCleanup {
+        def remaining = requireCommand(target, 'absence', ['docker','ps','-a','--format','{{.Names}}'])
+        target.absent = !remaining.stdout.readLines().contains(target.name.toString())
+        if (!target.absent) { throw new GradleException("Owned container remains: ${target.name}") }
+      }
+      if (!target.volumesInspected) {
+        cleanupFailures.add(new GradleException('Owned volume inventory was not confirmed'))
+      }
+      def volumeAbsences = []
+      target.volumeNames.each { volume ->
+        boolean absent = false
+        attemptCleanup {
+          def retained = requireCommand(target, 'volume-absence',
+            ['docker','volume','ls','--quiet','--filter',"name=^${volume}\$".toString()])
+          absent = retained.stdout.isBlank()
+          if (!absent) { throw new GradleException("Owned anonymous volume remains: ${volume}") }
         }
+        volumeAbsences.add(absent)
+      }
+      target.volumesAbsent = target.volumesInspected && volumeAbsences.every { it }
+      if (cleanupFailures.size() == 1) { cleanup = cleanupFailures.first() }
+      else if (!cleanupFailures.isEmpty()) {
+        cleanup = new GradleException('Owned target cleanup failed: ' + cleanupFailures.collect { it.message }.join('; '))
+        cleanupFailures.each { cleanup.addSuppressed(it) }
+      }
+      // Fixed self-test injections must never leak their real container. This cannot turn failure into PASS.
+      if (injection in ['remove','absence','volume-absence']) {
+        def removed = execute(['docker','rm','--force','--volumes',target.name])
+        def remaining = execute(['docker','ps','-a','--format','{{.Names}}'])
+        target.evidence.add("Self-test remediation removal exit: ${removed.exitCode}")
+        target.absent = remaining.exitCode == 0 && !remaining.stdout.readLines().contains(target.name.toString())
+        def remediatedVolumes = target.volumeNames.collect { volume ->
+          def retained = execute(['docker','volume','ls','--quiet','--filter',"name=^${volume}\$".toString()])
+          retained.exitCode == 0 && retained.stdout.isBlank()
+        }
+        target.volumesAbsent = target.volumesInspected && remediatedVolumes.every { it }
+        target.evidence.add("Self-test remediation owned volume absence: ${target.volumesAbsent}")
       }
     }
-    aggregateReport.text = ([
-      "Result: ${profileFailures.isEmpty() ? 'PASS' : 'FAILED'}",
-      'Profiles: ' + dbUnitTestProfiles.collect { it.name }.join(', ')
-    ] + profileOutcomes + dbUnitTestProfiles.collect { profile ->
-      def summary = new File(rootReportDirectory, "${profile.name}/summary.txt")
-      def cleanupLine = summary.isFile()
-        ? summary.readLines().find { it.startsWith('Cleanup confirmed:') }
-        : null
-      "${profile.name} ${cleanupLine ?: 'Cleanup confirmed: not recorded'}"
-    }).join(System.lineSeparator()) + System.lineSeparator()
-    if (!profileFailures.isEmpty()) {
-      throw new GradleException('Database unit-test profile failures:\n' + profileFailures.join('\n'))
+    target.evidence.add("Duration milliseconds: ${TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - target.started)}")
+    target.declared.each { label -> target.evidence.add("Phase ${label}: ${target.phases[label] ?: 'Not run'}") }
+    target.evidence.add("Owned container: ${target.name}; absence confirmed: ${target.absent}; owned volume absence confirmed: ${target.volumesAbsent}")
+    if (primary != null) { target.evidence.add("Primary failure: ${primary.message}") }
+    if (primary != null) {
+      primary.suppressed.each { secondary -> target.evidence.add("Secondary failure: ${secondary.message}") }
+    }
+    if (cleanup != null) { target.evidence.add("Cleanup failure: ${cleanup.message}") }
+    new File(directory, 'summary.txt').text = target.evidence.join('\n') + '\n'
+    run.evidence.add("Target ${id}: ${target.name}; absence confirmed: ${target.absent}; owned volume absence confirmed: ${target.volumesAbsent}")
+    if (primary != null && cleanup != null) { primary.addSuppressed(cleanup) }
+    if ((!target.absent || !target.volumesAbsent) && cleanup == null) { cleanup = new GradleException("Cleanup unconfirmed: ${target.name}") }
+  }
+  if (primary != null) { throw primary }
+  if (cleanup != null) { throw cleanup }
+}
+def runContractUpgrade = { Map target, List entries, Map scenario, String testCase ->
+  int index = entries.findIndexOf { it.path == scenario.candidate }
+  if (index <= 0) { throw new GradleException('Applicable upgrade requires a real predecessor') }
+  def candidate = entries[index]
+  def predecessor = entries[index - 1]
+  def prior = entries.take(index)
+  def current = entries.take(index + 1)
+  def variables = [opal_scenario_id:scenario.id, opal_candidate_version:candidate.version,
+    opal_predecessor_version:predecessor.version] + project.ext.dbUpgradeContractVariables(scenario)
+  if (testCase != null) { variables.opal_test_case = testCase }
+  def dispatcher = new File(sqlRoot, 'support/upgrade_dispatch.sql')
+  def custom = project.ext.dbUpgradeContractCustomScripts(scenario, rootDir)
+  target.evidence.add("Scenario ${scenario.id}; candidate ${candidate.path} (${candidate.version}); predecessor ${predecessor.path} (${predecessor.version}); shared contract; assertion group ${scenario.contract.assertion}")
+  target.declared = ["flyway-migrate-${predecessor.version}", "flyway-validate-${predecessor.version}",
+    'framework-predecessor'] + (custom.prepare ? ['custom-prepare'] : []) + ['shared-prepare',
+    "flyway-migrate-${candidate.version}", "flyway-validate-${candidate.version}", 'framework-candidate',
+    'shared-verify'] + (custom.verify ? ['custom-verify'] : []) + ['owner-verify',
+    'framework-repeat', 'shared-cleanup', 'framework-cleanup']
+  boolean historyCaptured = false
+  boolean preparationAttempted = false
+  Throwable primary = null
+  try {
+    crossCheckNative(target, entries)
+    nativeFlyway(target, 'migrate', predecessor.version)
+    nativeFlyway(target, 'validate', predecessor.version)
+    framework(target, 'predecessor', prior, variables)
+    historyCaptured = true
+    if (custom.prepare) { prove(target, 'custom-prepare', [custom.prepare], variables + [opal_phase:'prepare']) }
+    preparationAttempted = true
+    prove(target, 'shared-prepare', [dispatcher], variables + [opal_phase:'prepare'])
+    nativeFlyway(target, 'migrate', candidate.version)
+    nativeFlyway(target, 'validate', candidate.version)
+    framework(target, 'candidate', current, variables)
+    if (testCase == 'contract-preservation-failure') {
+      requireCommand(target, 'fixed-preservation-mutation', ['docker','exec',target.name,'psql','-X',
+        '-v','ON_ERROR_STOP=1','-U','postgres','-d',databaseName,'-c',
+        "UPDATE public.framework_reference SET label = 'fixed preservation failure' WHERE id = 9"])
+    }
+    // Shared preservation always precedes functional fixture/routine mutations.
+    prove(target, 'shared-verify', [dispatcher], variables + [opal_phase:'verify'])
+    if (testCase == 'contract-data-observation-failure') {
+      requireCommand(target, 'fixed-data-observation-mutation', ['docker','exec',target.name,'psql','-X',
+        '-v','ON_ERROR_STOP=1','-U','postgres','-d',databaseName,'-c',
+        "UPDATE opal_test_upgrade_observation.observation SET payload = jsonb_set(payload, '{observed,rows,public.framework_reference}', '[\"unexpected predecessor row\"]'::jsonb)"])
+    }
+    if (custom.verify) { prove(target, 'custom-verify', [custom.verify], variables + [opal_phase:'verify']) }
+    prove(target, 'owner-verify', [scenario.owner], variables + [opal_phase:'fresh'])
+    def repeat = nativeFlyway(target, 'migrate', candidate.version)
+    if (repeat.migrationsExecuted != 0) { throw new GradleException('Native repeat migrate did not report zero applied migrations') }
+    nativeFlyway(target, 'validate', candidate.version)
+    framework(target, 'repeat', current, variables)
+  } catch (Throwable problem) { primary = problem }
+  finally {
+    // Attempt both observation cleanups after a primary error, retaining each
+    // diagnostic. Container/volume cleanup remains independently mandatory.
+    if (preparationAttempted) {
+      try { prove(target, 'shared-cleanup', [dispatcher], variables + [opal_phase:'cleanup']) }
+      catch (Throwable cleanup) { if (primary == null) { primary = cleanup } else { primary.addSuppressed(cleanup) } }
+    }
+    if (historyCaptured) {
+      try { framework(target, 'cleanup', current, variables) }
+      catch (Throwable cleanup) { if (primary == null) { primary = cleanup } else { primary.addSuppressed(cleanup) } }
+    }
+  }
+  if (primary != null) { throw primary }
+}
+def runUpgrade = { Map target, List entries, Map scenario, String testCase ->
+  if (scenario.contract != null) { runContractUpgrade(target, entries, scenario, testCase); return }
+  int index = entries.findIndexOf { it.path == scenario.candidate }
+  if (index <= 0) { throw new GradleException('Applicable upgrade requires a real predecessor') }
+  def candidate = entries[index]
+  def predecessor = entries[index - 1]
+  def prior = entries.take(index)
+  def current = entries.take(index + 1)
+  def variables = [opal_scenario_id: scenario.id, opal_candidate_version: candidate.version,
+    opal_predecessor_version: predecessor.version]
+  if (testCase != null) { variables.opal_test_case = testCase }
+  target.evidence.add("Scenario ${scenario.id}; candidate ${candidate.path} (${candidate.version}); predecessor ${predecessor.path} (${predecessor.version})")
+  target.declared = ["flyway-migrate-${predecessor.version}", "flyway-validate-${predecessor.version}",
+    'framework-predecessor', 'owner-prepare', "flyway-migrate-${candidate.version}",
+    "flyway-validate-${candidate.version}", 'framework-candidate', 'owner-verify',
+    'framework-repeat', 'owner-cleanup', 'framework-cleanup']
+  crossCheckNative(target, entries)
+  nativeFlyway(target, 'migrate', predecessor.version)
+  nativeFlyway(target, 'validate', predecessor.version)
+  framework(target, 'predecessor', prior, variables)
+  prove(target, 'owner-prepare', [scenario.owner], variables + [opal_phase: 'prepare'])
+  if (testCase == 'retry') {
+    def candidateBefore = digest(new File(fixtureRoot, candidate.path))
+    try {
+      nativeFlyway(target, 'migrate', candidate.version)
+      throw new GradleException('Expected controlled candidate failure did not occur')
+    } catch (GradleException failure) {
+      if (!failure.message.contains('fixed framework candidate gate is closed')) { throw failure }
+      target.evidence.add('Controlled candidate failure retained; verification Not run before cause resolution')
+    }
+    prove(target, 'owner-resolve', [scenario.owner], variables + [opal_phase: 'prepare', opal_test_case: 'resolve'])
+    framework(target, 'repeat', prior, variables)
+    if (digest(new File(fixtureRoot, candidate.path)) != candidateBefore) { throw new GradleException('Retry changed candidate bytes') }
+    target.evidence.add('Retry candidate SHA-256 unchanged: ' + candidateBefore)
+  }
+  if (testCase == 'failed-history') { framework(target, 'fresh', prior, variables) }
+  nativeFlyway(target, 'migrate', candidate.version)
+  nativeFlyway(target, 'validate', candidate.version)
+  framework(target, 'candidate', current, variables)
+  prove(target, 'owner-verify', [scenario.owner], variables + [opal_phase: 'verify'])
+  def repeat = nativeFlyway(target, 'migrate', candidate.version)
+  if (repeat.migrationsExecuted != 0) { throw new GradleException('Native repeat migrate did not report zero applied migrations') }
+  nativeFlyway(target, 'validate', candidate.version)
+  framework(target, 'repeat', current, variables)
+  prove(target, 'owner-cleanup', [scenario.owner], variables + [opal_phase: 'cleanup'])
+  framework(target, 'cleanup', current, variables)
+}
+def runRegisteredScenario = { Map run, List entries, Map scenario, File root, List locations, String testCase ->
+  if (entries.first().path == scenario.candidate) {
+    if (run.statuses.fresh != 'PASS') { throw new GradleException('Initial migration N/A requires completed fresh evidence') }
+    run.statuses[scenario.id] = 'Not applicable — initial migration; full fresh path PASS'
+  } else {
+    run.statuses[scenario.id] = 'RUNNING'
+    run.attempted++
+    targetLifecycle(run, "upgrades/${scenario.id}", root, locations, null) { target ->
+      runUpgrade(target, entries, scenario, testCase)
+    }
+    run.statuses[scenario.id] = 'PASS'
+    run.completed++
+  }
+}
+def buildImage = { Map run ->
+  def result = execute(['docker','build','--file',dockerfile.absolutePath,'--tag',postgresImage,rootDir.absolutePath])
+  new File(run.directory, 'image-build.log').text = result.stdout + result.stderr
+  if (result.exitCode != 0) { throw new GradleException('Building pgTAP image failed; see image-build.log') }
+}
+
+def runFresh = { Map run, List entries, List suites, List locations ->
+  run.statuses.fresh = 'RUNNING'
+  targetLifecycle(run, 'fresh', migrationRoot, locations, null) { target ->
+    crossCheckNative(target, entries)
+    nativeFlyway(target, 'migrate', null)
+    nativeFlyway(target, 'validate', null)
+    def vars = [opal_scenario_id: 'fresh', opal_phase: 'fresh']
+    framework(target, 'snapshot', entries, vars)
+    def repeat = nativeFlyway(target, 'migrate', null)
+    if (repeat.migrationsExecuted != 0) { throw new GradleException('Fresh repeat did not report zero applied migrations') }
+    nativeFlyway(target, 'validate', null)
+    framework(target, 'repeat', entries, vars)
+    def fixture = command(target, 'known-failure', ['docker','exec',target.name,'pg_prove','--verbose','-h','localhost',
+      '-U','postgres','-d',databaseName,'--set','ON_ERROR_STOP=1','/tmp/opal-db-unit-test/framework/failing_pgtap_test.sql'])
+    new File(run.base, 'framework-self-test.log').text = fixture.stdout + fixture.stderr
+    if (fixture.exitCode == 0 || !fixture.stdout.contains('deliberate pgTAP failure used to verify the database unit-test framework')) {
+      throw new GradleException('Known failing pgTAP fixture did not fail with its expected diagnostic')
+    }
+    def result = prove(target, 'fresh-suites', suites, vars + [opal_framework_phase: 'fresh', opal_expected_history: expectedHistory(entries)])
+    new File(run.base, 'pg-prove.log').text = result.stdout + result.stderr
+    framework(target, 'cleanup', entries, vars)
+  }
+  run.statuses.fresh = 'PASS'
+}
+
+project.ext.dbUpgradeFrameworkTestsRequired = false
+tasks.register('dbUnitTest') {
+  description = 'Runs both fixed fresh profiles and applicable registered predecessor SQL contracts'
+  group = 'Verification'
+  inputs.files(dockerfile, file('gradle/db-unit-test.gradle'), file('gradle/db-unit-test-profiles.gradle'),
+    file('gradle/db-upgrade-selection.gradle'), file('gradle/db-upgrade-contract.gradle'))
+    .withPathSensitivity(PathSensitivity.RELATIVE)
+  inputs.files(fileTree(migrationRoot), fileTree(sqlRoot)).withPathSensitivity(PathSensitivity.RELATIVE)
+  outputs.dir(layout.buildDirectory.dir('reports/dbUnitTest'))
+  outputs.upToDateWhen { false }
+  doLast {
+    def reportRoot = layout.buildDirectory.dir('reports/dbUnitTest').get().asFile
+    reportRoot.mkdirs()
+    def aggregateReport = new File(reportRoot, 'summary.txt')
+    aggregateReport.text = 'Result: RUNNING\n'
+    ['pg-prove.log','framework-self-test.log'].each { new File(reportRoot, it).delete() }
+    project.ext.dbUpgradeFrameworkTestsRequired = false
+    try {
+      refuseExternal(System.getenv())
+      def suites = sqlFiles.files.sort { it.path }
+      if (suites.isEmpty()) { throw new GradleException('No pgTAP suites discovered') }
+      // Registration ownership/adoption is global; eligibility is profile-specific.
+      def completeEntries = inventory(migrationRoot, ['.'])
+      def allScenarios = registrations(suites, completeEntries)
+      validateAdoption(completeEntries, allScenarios, adoptedMigrations, supportedLocations)
+      def diagnostic = providers.gradleProperty('dbUnitTestUpgradeSuite').orNull
+      def eligibleDiagnostic = validateOptions(diagnostic,
+        gradle.taskGraph.allTasks.any { it.name in ['check', 'build'] }, allScenarios)
+      project.ext.dbUpgradeSupportFiles(rootDir)
+      def preparation = newRun('shared profile image preparation', [name:'preparation', locations:supportedLocations])
+      Throwable preparationFailure = null
+      try { buildImage(preparation) }
+      catch (Throwable problem) { preparationFailure = problem; throw problem }
+      finally { finishRun(preparation, preparationFailure) }
+      def declaredInputs = allScenarios.collectMany { project.ext.validateDbUpgradeInputs(it, rootDir) }.unique().sort()
+      def declaredEvidence = declaredInputs.collect { path ->
+        def source = new File(rootDir, path)
+        [path:path, status:source.isFile() ? 'present' : 'absent tracked dependency', sha256:source.isFile() ? digest(source) : null]
+      }
+      def results = project.ext.runDbUnitTestProfiles { profile ->
+        def run = newRun('complete fresh plus selected registered upgrades', profile)
+        Throwable failure = null
+        try {
+          def entries = inventory(migrationRoot, profile.locations)
+          def selection = project.ext.selectDbUpgradeScenarios(allScenarios, rootDir, [
+            comparisonRef:providers.gradleProperty('dbUnitTestComparisonRef').orNull,
+            mode:providers.gradleProperty('dbUnitTestUpgradeMode').orElse('affected').get(),
+            selectedLocations:profile.locations, environment:System.getenv()])
+          project.ext.dbUpgradeFrameworkTestsRequired = project.ext.dbUpgradeFrameworkTestsRequired || selection.frameworkTestsRequired
+          def inProfile = { scenario -> entries.any { it.path == scenario.candidate } }
+          def scenarios = diagnostic == null ? selection.selected : eligibleDiagnostic.findAll(inProfile)
+          run.discovered = allScenarios.size()
+          run.scheduled = scenarios.size()
+          new File(run.directory, 'declared-inputs.json').text = JsonOutput.prettyPrint(JsonOutput.toJson(declaredEvidence)) + '\n'
+          def fingerprints = new File(run.directory, 'source-sha256.txt')
+          fingerprints.text = (fingerprints.readLines() + declaredEvidence.findAll { it.sha256 }.collect {
+            "${it.path} ${it.sha256}".toString()
+          }).unique().sort().join('\n') + '\n'
+          run.evidence.add('Declared dependency bytes and tracked absences: declared-inputs.json; source-sha256.txt')
+          run.evidence.add("Selected locations: ${profile.locations}; discovered ${allScenarios.size()}; selected ${scenarios.size()}")
+          run.evidence.add("Upgrade selection mode: ${diagnostic == null ? selection.mode : 'diagnostic'}; context: ${selection.context}")
+          run.evidence.add("Comparison ref: ${selection.comparisonRef}; base SHA: ${selection.baseSha}; merge base SHA: ${selection.mergeBaseSha}; tested source SHA: ${selection.testedSourceSha}")
+          run.evidence.add("Comparison boundary: ${selection.boundary}; fallback: ${selection.fallbackReason ?: 'none'}")
+          run.evidence.add("Changed paths: ${selection.changedPaths}")
+          run.evidence.add("Migration history validation: ${JsonOutput.toJson(selection.historyValidation)}")
+          run.evidence.add("Native framework regressions required: ${selection.frameworkTestsRequired}")
+          selection.unverifiedMigrations.each { migration ->
+            run.evidence.add("Unverified migration: ${migration.path} (${migration.version}); ${migration.reason}")
+          }
+          run.statuses.fresh = 'Not run'
+          allScenarios.each { scenario ->
+            boolean selected = scenarios.any { it.id == scenario.id }
+            def reason = !inProfile(scenario) ? 'Not selected — outside selected profile locations' :
+              selected ? 'Not run' : diagnostic == null ? 'Not selected — unchanged' : 'Not selected — manual owner diagnostic'
+            run.statuses[scenario.id] = reason
+            run.evidence.add("Selection ${scenario.id}: ${diagnostic == null ? selection.reasons[scenario.id] : reason}")
+          }
+          runFresh(run, entries, suites, profile.locations)
+          scenarios.each { scenario -> runRegisteredScenario(run, entries, scenario, migrationRoot, profile.locations, null) }
+          return run.directory.name
+        } catch (Throwable problem) { failure = problem; throw problem }
+        finally { finishRun(run, failure) }
+      }
+      aggregateReport.text = (["Result: ${results.failure == null ? 'PASS' : 'FAILED'}",
+        'Profiles: ' + project.ext.dbUnitTestProfiles.collect { it.name }.join(', ')] + results.outcomes.collect {
+          "${it.name}: ${it.status}; locations: ${it.locations}; run: ${it.result ?: 'see profile summary'}".toString()
+        } + results.outcomes.collect { outcome ->
+          def summary = new File(reportRoot, "${outcome.name}/summary.txt")
+          "${outcome.name} cleanup: " + (summary.isFile() ? summary.readLines().findAll { it.startsWith('Target ') }.join('; ') : 'not started')
+        }).join('\n') + '\n'
+      if (results.failure != null) { throw results.failure }
+    } catch (Throwable problem) {
+      if (aggregateReport.text.startsWith('Result: RUNNING')) {
+        aggregateReport.text = "Result: FAILED - ${problem.message}\nProfiles: not started; global preflight/preparation failed\n"
+      }
+      throw problem
     }
   }
 }
 
-runFreshDbUnitTestProfile = { profile ->
-    def migrationDirectories = profile.locations.collect { location ->
-      file("${rootDir}/src/main/resources/db/migration/${location}")
-    }
-    def sqlFiles = dbUnitTestSqlFiles.files.findAll { it.isFile() }.sort { it.path }
-    if (sqlFiles.isEmpty()) {
-      throw new GradleException('No pgTAP test files found beneath src/dbUnitTest')
-    }
-    migrationDirectories.each { migrationDirectory ->
-      if (!migrationDirectory.isDirectory()) {
-        throw new GradleException("Required migration directory does not exist: ${migrationDirectory}")
-      }
-    }
-    def expectedMigrationScripts = migrationDirectories.collectMany { migrationDirectory ->
-      fileTree(migrationDirectory) {
-        include 'V*__*.sql'
-      }.files.collect { migrationFile -> migrationFile.name }
-    }.sort()
-    if (expectedMigrationScripts.isEmpty()) {
-      throw new GradleException('No Flyway migrations found in the dbUnitTest locations')
-    }
-
-    def reportDirectory = layout.buildDirectory.dir("reports/dbUnitTest/${profile.name}").get().asFile
-    reportDirectory.mkdirs()
-    def pgProveReport = new File(reportDirectory, 'pg-prove.log')
-    def frameworkSelfTestReport = new File(reportDirectory, 'framework-self-test.log')
-    def summaryReport = new File(reportDirectory, 'summary.txt')
-    pgProveReport.text = ''
-    frameworkSelfTestReport.text = ''
-
-    def imageName = 'opal-maintenance-db-unit-test-postgres:17'
-    def flywayImageName = 'flyway/flyway:13.10.0'
-    def containerName = "opal-maintenance-db-unit-test-${UUID.randomUUID()}"
-    def databaseName = 'opal_maintenance_db_unit_test'
-    def containerStarted = false
-    def cleanupConfirmed = true
-    def evidence = []
-    def startedAt = System.nanoTime()
-    Throwable primaryFailure = null
-
-    try {
-      def externalDatabaseSettings = [
-        'FLYWAY_URL',
-        'FLYWAY_USER',
-        'FLYWAY_PASSWORD',
-        'FLYWAY_LOCATIONS',
-        'OPAL_MAINTENANCE_DB_HOST',
-        'OPAL_MAINTENANCE_DB_PORT',
-        'OPAL_MAINTENANCE_DB_NAME',
-        'OPAL_MAINTENANCE_DB_USERNAME',
-        'OPAL_MAINTENANCE_DB_PASSWORD',
-        'OPAL_MAINTENANCE_DB_OPTIONS'
-      ].findAll { settingName ->
-        def settingValue = System.getenv(settingName)
-        settingValue != null && !settingValue.isBlank()
-      }
-      if (!externalDatabaseSettings.isEmpty()) {
-        throw new GradleException(
-          'dbUnitTest refuses external database settings: '
-            + externalDatabaseSettings.join(', ')
-        )
-      }
-
-      requireSuccessfulDbUnitTestCommand(
-        'Building the pgTAP PostgreSQL image',
-        [
-          'docker', 'build',
-          '--file', dbUnitTestDockerfile.absolutePath,
-          '--tag', imageName,
-          rootDir.absolutePath
-        ]
-      )
-
-      requireSuccessfulDbUnitTestCommand(
-        'Starting disposable PostgreSQL',
-        [
-          'docker', 'run', '--detach', '--rm',
-          '--name', containerName,
-          '--env', 'POSTGRES_HOST_AUTH_METHOD=trust',
-          '--env', "POSTGRES_DB=${databaseName}",
-          imageName
-        ]
-      )
-      containerStarted = true
-      cleanupConfirmed = false
-
-      boolean databaseReady = false
-      for (int attempt = 1; attempt <= 60; attempt++) {
-        def postgresProcessResult = runDbUnitTestCommand(
-          ['docker', 'exec', containerName, 'cat', '/proc/1/comm']
-        )
-        if (postgresProcessResult.exitCode == 0 && postgresProcessResult.stdout.trim() == 'postgres') {
-          def readinessResult = runDbUnitTestCommand(
-            ['docker', 'exec', containerName, 'pg_isready', '-U', 'postgres', '-d', databaseName]
-          )
-          if (readinessResult.exitCode == 0) {
-            databaseReady = true
-            break
-          }
-        }
-        TimeUnit.SECONDS.sleep(1)
-      }
-      if (!databaseReady) {
-        throw new GradleException('Disposable PostgreSQL did not become ready within 60 seconds')
-      }
-
-      def initialObjectCount = requireSuccessfulDbUnitTestCommand(
-        'Confirming the database starts empty',
-        [
-          'docker', 'exec', containerName,
-          'psql', '-X', '-v', 'ON_ERROR_STOP=1', '-At',
-          '-U', 'postgres', '-d', databaseName,
-          '-c', "SELECT count(*) FROM pg_catalog.pg_tables WHERE schemaname = 'public'"
-        ]
-      ).stdout.trim()
-      if (initialObjectCount != '0') {
-        throw new GradleException(
-          "Disposable PostgreSQL did not start empty: found ${initialObjectCount} public tables"
-        )
-      }
-
-      def flywayMounts = profile.locations.collect { location ->
-        [file("${rootDir}/src/main/resources/db/migration/${location}"),
-         "/flyway/sql/${location}"]
-      }
-      def locationsArgument = '-locations=' + profile.locations.collect { location ->
-        "filesystem:/flyway/sql/${location}"
-      }.join(',')
-      def flywayBaseCommand = [
-        'docker', 'run', '--rm',
-        '--network', "container:${containerName}"
-      ]
-      flywayMounts.each { mount ->
-        flywayBaseCommand.addAll(['--volume', "${mount[0].absolutePath}:${mount[1]}:ro"])
-      }
-      flywayBaseCommand.addAll([
-        flywayImageName,
-        '-url=jdbc:postgresql://localhost:5432/' + databaseName,
-        '-user=postgres',
-        locationsArgument,
-        '-baselineOnMigrate=false',
-        '-cleanDisabled=true'
-      ])
-
-      requireSuccessfulDbUnitTestCommand(
-        'Applying Flyway migrations',
-        flywayBaseCommand + ['migrate']
-      )
-      def appliedMigrationScripts = requireSuccessfulDbUnitTestCommand(
-        'Reading the applied Flyway migrations',
-        [
-          'docker', 'exec', containerName,
-          'psql', '-X', '-v', 'ON_ERROR_STOP=1', '-At',
-          '-U', 'postgres', '-d', databaseName,
-          '-c', 'SELECT script FROM public.flyway_schema_history WHERE success IS TRUE ORDER BY installed_rank'
-        ]
-      ).stdout.readLines().collect { it.trim() }.findAll { !it.isEmpty() }
-      if (appliedMigrationScripts.toSorted() != expectedMigrationScripts) {
-        throw new GradleException(
-          'Flyway applied an unexpected migration set. Expected '
-            + expectedMigrationScripts.join(', ')
-            + '; applied '
-            + appliedMigrationScripts.join(', ')
-        )
-      }
-
-      requireSuccessfulDbUnitTestCommand(
-        'Validating Flyway migrations',
-        flywayBaseCommand + ['validate']
-      )
-      requireSuccessfulDbUnitTestCommand(
-        'Re-running Flyway migrations',
-        flywayBaseCommand + ['migrate']
-      )
-      def secondMigrationScripts = requireSuccessfulDbUnitTestCommand(
-        'Confirming the second Flyway run is a no-op',
-        [
-          'docker', 'exec', containerName,
-          'psql', '-X', '-v', 'ON_ERROR_STOP=1', '-At',
-          '-U', 'postgres', '-d', databaseName,
-          '-c', 'SELECT script FROM public.flyway_schema_history WHERE success IS TRUE ORDER BY installed_rank'
-        ]
-      ).stdout.readLines().collect { it.trim() }.findAll { !it.isEmpty() }
-      if (secondMigrationScripts != appliedMigrationScripts) {
-        throw new GradleException(
-          'Flyway migration set changed on the second run: '
-            + appliedMigrationScripts.join(', ')
-            + ' to '
-            + secondMigrationScripts.join(', ')
-        )
-      }
-
-      requireSuccessfulDbUnitTestCommand(
-        'Preparing the pgTAP test directory',
-        ['docker', 'exec', containerName, 'mkdir', '-p', '/tmp/opal-db-unit-test']
-      )
-      requireSuccessfulDbUnitTestCommand(
-        'Copying pgTAP tests into the disposable database container',
-        ['docker', 'cp', "${rootDir}/src/dbUnitTest/.", "${containerName}:/tmp/opal-db-unit-test"]
-      )
-      requireSuccessfulDbUnitTestCommand(
-        'Copying actual migrations for direct SQL rerun tests',
-        [
-          'docker', 'cp',
-          "${rootDir}/src/main/resources/db/migration/.",
-          "${containerName}:/tmp/opal-db-migrations"
-        ]
-      )
-
-      def containerSqlFiles = sqlFiles.collect { sqlFile ->
-        def relativePath = file("${rootDir}/src/dbUnitTest").toPath().relativize(sqlFile.toPath())
-        "/tmp/opal-db-unit-test/${relativePath.toString().replace(File.separator, '/')}"
-      }
-      def failureFixturePath = '/tmp/opal-db-unit-test/framework/failing_pgtap_test.sql'
-      def frameworkSelfTestResult = runDbUnitTestCommand(
-        [
-          'docker', 'exec', containerName,
-          'pg_prove', '--verbose',
-          '-h', 'localhost', '-U', 'postgres', '-d', databaseName,
-          failureFixturePath
-        ]
-      )
-      frameworkSelfTestReport.text =
-        frameworkSelfTestResult.stdout + frameworkSelfTestResult.stderr
-      if (frameworkSelfTestResult.exitCode == 0) {
-        throw new GradleException('The deliberate failing pgTAP fixture did not fail pg_prove')
-      }
-      if (!frameworkSelfTestReport.text.contains(
-        'deliberate pgTAP failure used to verify the database unit-test framework'
-      )) {
-        throw new GradleException(
-          "The pgTAP framework self-test failed without the expected diagnostic; see ${frameworkSelfTestReport}"
-        )
-      }
-
-      def pgProveResult = runDbUnitTestCommand(
-        [
-          'docker', 'exec', containerName,
-          'pg_prove', '--verbose',
-          '-h', 'localhost', '-U', 'postgres', '-d', databaseName
-        ] + containerSqlFiles
-      )
-      pgProveReport.text = pgProveResult.stdout + pgProveResult.stderr
-      if (pgProveResult.exitCode != 0) {
-        throw new GradleException(
-          "pg_prove failed with exit code ${pgProveResult.exitCode}; see ${pgProveReport}"
-        )
-      }
-      def postgresVersion = requireSuccessfulDbUnitTestCommand(
-        'Reading the PostgreSQL version',
-        ['docker', 'exec', containerName, 'postgres', '--version']
-      ).stdout.trim()
-      evidence.add("PostgreSQL: ${postgresVersion}")
-      evidence.add("Flyway image: ${flywayImageName}")
-      evidence.add("Profile: ${profile.name}")
-      evidence.add("Migration locations: ${profile.locations.join(', ')}")
-      evidence.add("Migrations applied: ${appliedMigrationScripts.join(', ')}")
-      evidence.add('Second Flyway migrate: no changes')
-      evidence.add('Fail-closed pgTAP framework self-test: passed')
-      evidence.add("pgTAP files executed: ${sqlFiles.size()}")
-      logger.lifecycle("Database unit-test report: ${pgProveReport}")
-    } catch (Throwable failure) {
-      primaryFailure = failure
-      evidence.add("Result: FAILED - ${failure.message}")
-      throw failure
-    } finally {
-      Throwable cleanupFailure = null
-      if (containerStarted) {
-        def removeResult = runDbUnitTestCommand(['docker', 'rm', '--force', containerName])
-        if (removeResult.exitCode != 0) {
-          cleanupFailure = new GradleException(
-            "Unable to destroy disposable PostgreSQL: ${removeResult.stdout}${removeResult.stderr}"
-          )
-        } else {
-          def remainingContainers = runDbUnitTestCommand(
-            ['docker', 'ps', '-a', '--format', '{{.Names}}']
-          )
-          cleanupConfirmed = remainingContainers.exitCode == 0
-            && !remainingContainers.stdout.readLines().contains(containerName.toString())
-          if (!cleanupConfirmed) {
-            cleanupFailure = new GradleException(
-              'Disposable PostgreSQL removal could not be verified: '
-                + remainingContainers.stdout + remainingContainers.stderr
-            )
-          }
-        }
-      }
-
-      if (primaryFailure == null && cleanupFailure == null) {
-        evidence.add('Result: PASS')
-      } else if (primaryFailure == null) {
-        evidence.add("Result: FAILED - ${cleanupFailure.message}")
-      }
-      def durationMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt)
-      evidence.add("Duration milliseconds: ${durationMillis}")
-      evidence.add("Cleanup confirmed: ${cleanupConfirmed}")
-      summaryReport.text = evidence.join(System.lineSeparator()) + System.lineSeparator()
-
-      if (cleanupFailure != null) {
-        if (primaryFailure != null) {
-          primaryFailure.addSuppressed(cleanupFailure)
-        } else {
-          throw cleanupFailure
-        }
-      }
-    }
-}
-
 tasks.register('dbUnitTestFrameworkTest') {
-  description = 'Verifies failing pgTAP assertions fail the database unit-test framework'
+  description = 'Exercises fixed regression cases through the maintained upgrade lifecycle'
   group = 'Verification'
-  dependsOn tasks.named('dbUnitTest')
+  mustRunAfter tasks.named('dbUnitTest')
+  onlyIf {
+    def databaseTask = tasks.named('dbUnitTest').get()
+    !databaseTask.state.executed || (databaseTask.state.failure == null &&
+      (project.ext.dbUpgradeFrameworkTestsRequired || gradle.startParameter.taskNames.any {
+        it.tokenize(':').last() == 'dbUnitTestFrameworkTest'
+      }))
+  }
+  doLast {
+    def aggregateReport = layout.buildDirectory.file('reports/dbUnitTest/summary.txt').get().asFile
+    def aggregateBefore = aggregateReport.isFile() ? aggregateReport.text : null
+    def run = newRun('framework regressions', [name:'framework', locations:['ddl','data']])
+    Throwable failure = null
+    def expectFailure = { String name, String diagnostic, Closure action ->
+      GradleException observed = null
+      try { action() }
+      catch (GradleException expected) { observed = expected }
+      if (observed == null) { throw new GradleException("Expected regression failure was absent: ${name}") }
+      if (!observed.message.contains(diagnostic)) { throw observed }
+      if (!(name in ['primary-plus-cleanup','shared-primary-plus-cleanup','remove','absence','volume-absence']) && observed.suppressed.length != 0) { throw observed }
+      run.evidence.add("Regression ${name}: expected failure verified (${diagnostic})")
+    }
+    try {
+      refuseExternal(System.getenv())
+      project.ext.dbUpgradeSupportFiles(rootDir)
+      boolean rejectedMissingFailure = false
+      try { expectFailure('negative-helper-control', 'negative-helper-control', {}) }
+      catch (GradleException expected) {
+        rejectedMissingFailure = expected.message == 'Expected regression failure was absent: negative-helper-control'
+      }
+      if (!rejectedMissingFailure) { throw new GradleException('Negative helper accepted a successful action') }
+      run.evidence.add('Regression negative-helper-control: successful action correctly rejected')
+      def valid = '{"id":"framework.candidate","candidate":"ddl/V1_10__candidate.sql","scope":"both","data":"migration-created-only"}'
+      parseMetadata(valid, 'fixed-valid')
+      [
+        'malformed': '{bad}',
+        'duplicate-field': valid.replace('"id":', '"id":"duplicate","id":'),
+        'unknown-field': valid.replace('"scope":', '"unknown":'),
+        'missing-field': '{"id":"missing"}',
+        'invalid-id': valid.replace('framework.candidate','Invalid'),
+        'invalid-scope': valid.replace('both','never'),
+        'invalid-data': valid.replace('migration-created-only','unapproved'),
+        'trailing-comma': valid.replace('}', ',}'),
+        'non-string': valid.replace('\"both\"','5'),
+        'traversal': valid.replace('ddl/V1_10__candidate.sql','../V1_10__candidate.sql')
+      ].each { name, value -> expectFailure(name, name, { parseMetadata(value, name) }) }
+      expectFailure('external-settings', 'FLYWAY_URL', { refuseExternal([FLYWAY_URL:'synthetic-private-value']) })
+      expectFailure('focused-build', 'prohibited', { validateOptions('owner.sql', true, []) })
+      expectFailure('focused-unknown', 'no upgrade registrations', { validateOptions('owner.sql', false, []) })
+      def entries = inventory(fixtureRoot, ['ddl','data'])
+      if (entries*.version != ['1.1','1.9','1.10','1.11']) { throw new GradleException('Numerical ordering regression') }
+      expectFailure('normalized-duplicate', 'Duplicate normalized', { inventory(fixtureRoot, ['ddl','data','duplicate']) })
+      expectFailure('unsupported-file', 'Unsupported migration file', { inventory(fixtureRoot, ['.']) })
+      expectFailure('missing-registration', 'Missing upgrade registration', { validateAdoption(entries, [], [:]) })
+      def scenario = [id:'framework.candidate', candidate:'ddl/V1_10__candidate.sql', owner:new File(fixtureRoot,'owner.sql')]
+      def record = parseMetadata(valid, 'fixed-owner') + [owner: scenario.owner, source: 'fixed-owner']
+      resolveRegistrations([record], entries)
+      def sharedOwner = new File(sqlRoot, 'framework/contract/owner.sql')
+      def sharedScenario = registrations([sharedOwner], entries).first()
+      if (sharedScenario.contract == null || sharedScenario.contract.type != 'additive') {
+        throw new GradleException('Shared framework fixture must declare its compact additive contract')
+      }
+      if (registrations([scenario.owner], entries).size() != 1) { throw new GradleException('Registration marker discovery failed') }
+      expectFailure('missing-candidate', 'Missing or unselected', {
+        resolveRegistrations([record + [candidate:'ddl/V9_1__missing.sql']], entries)
+      })
+      expectFailure('unselected-candidate', 'Missing or unselected', {
+        resolveRegistrations([record + [candidate:'data/nle/V1_10__candidate.sql']], entries)
+      })
+      expectFailure('duplicate-id', 'Duplicate scenario ID', {
+        resolveRegistrations([record, record + [candidate:entries[1].path]], entries)
+      })
+      expectFailure('multiple-owners', 'Multiple owners', {
+        resolveRegistrations([record, record + [id:'other.owner']], entries)
+      })
+      expectFailure('altered-adoption', 'missing or altered', {
+        validateAdoption(entries, [], [(entries[0].path): [version:entries[0].version, sha256:'wrong']])
+      })
+      expectFailure('missing-adoption', 'missing or altered', {
+        validateAdoption(entries, [], ['ddl/missing.sql': [version:'1', sha256:'wrong']])
+      })
+      def productionEntries = inventory(migrationRoot, ['.'])
+      def productionScenarios = registrations(sqlFiles.files.sort { it.path }, productionEntries)
+      validateAdoption(productionEntries, productionScenarios, adoptedMigrations, supportedLocations)
+      def omittedDev = adoptedMigrations.find { path, identity -> path.startsWith('data/dev/') }
+      expectFailure('missing-global-dev-adoption', 'missing or altered', {
+        validateAdoption(productionEntries.findAll { it.path != omittedDev.key }, productionScenarios, adoptedMigrations, supportedLocations)
+      })
+      expectFailure('altered-global-dev-adoption', 'missing or altered', {
+        validateAdoption(productionEntries.collect { it.path == omittedDev.key ? it + [sha256:'wrong'] : it },
+          productionScenarios, adoptedMigrations, supportedLocations)
+      })
+      run.evidence.add('Regression global-adoption: all 32 adopted paths verified globally; DEV omission from non-live history grants no exemption')
+      buildImage(run)
+      targetLifecycle(run, 'framework-self-tests/data-observation-sql', fixtureRoot, ['ddl','data'], null) { target ->
+        prove(target, 'data-observation-contract-controls', [new File(sqlRoot,'db_upgrade_contract_pgtap_tests.sql')], [opal_phase:'fresh'])
+      }
+      run.evidence.add('Regression data-observation-sql: bounded exact row/sequence observation guards passed')
+      ['readiness','flyway-info-latest','remove','absence','volume-absence'].each { injection ->
+        expectFailure(injection, injection == 'readiness' ? 'readiness failed' : "${injection} failed", {
+          targetLifecycle(run, "framework-self-tests/${injection}", fixtureRoot, ['ddl','data'], injection) { target ->
+            crossCheckNative(target, entries)
+          }
+        })
+        if (injection in ['remove','absence','volume-absence']) {
+          def logs = fileTree(new File(run.directory, "framework-self-tests/${injection}")) { include '*.log' }.files*.name
+          if (!logs.any { it ==~ /[0-9]+-absence\.log/ } || !logs.any { it ==~ /[0-9]+-volume-absence\.log/ }) {
+            throw new GradleException('Cleanup confirmations were skipped after an earlier failure')
+          }
+          run.evidence.add("Regression ${injection}: later container/volume confirmations attempted independently")
+        }
+      }
+      def profileControl = project.ext.runDbUnitTestProfiles { profile ->
+        targetLifecycle(run, "framework-self-tests/profile-${profile.name}", fixtureRoot, ['ddl','data'], null) { target ->
+          runUpgrade(target, entries, scenario, profile.name == 'non-live-dev' ? 'sql-prepare' : 'good')
+        }
+        'native profile target completed'
+      }
+      if (profileControl.failure == null || profileControl.outcomes*.status != ['FAILED','PASS'] ||
+          !profileControl.outcomes.first().failure.message.contains('owner-prepare pg_prove failed') ||
+          profileControl.failure.suppressed.length != 1 ||
+          !profileControl.failure.suppressed[0].is(profileControl.outcomes.first().failure)) {
+        throw new GradleException('Native profile failure aggregation did not retain first failure and complete second target')
+      }
+      profileControl.outcomes.each { outcome ->
+        def receipt = new File(run.directory, "framework-self-tests/profile-${outcome.name}/summary.txt")
+        if (!receipt.isFile() || !receipt.text.contains('absence confirmed: true; owned volume absence confirmed: true')) {
+          throw new GradleException('Native profile control cleanup was not independently confirmed')
+        }
+      }
+      run.evidence.add('Regression native-profile-aggregation: first native SQL failure retained; second target completed; both independent cleanups confirmed')
+      def dataScenario = [id:'framework.data_candidate', candidate:'data/V1_9__reference.sql',
+        scope:'both', data:'migration-created-only', owner:sharedOwner, source:'fixed-data-contract',
+        contract:[type:'data', objects:[created:[],replaced:[]],
+          preserve:[rows:[],tables:['public.framework_reference','public.framework_gate'],routines:[],enums:[],sequences:[]],
+          observe:[rows:['public.framework_reference'],sequences:[]],
+          assertion:'fixture.data', custom:[verify:'owner']]]
+      resolveRegistrations([dataScenario], entries)
+      ['contract-data-good','contract-data-observation-failure'].each { name ->
+        run.statuses[name] = 'RUNNING'
+        def action = {
+          targetLifecycle(run, "framework-self-tests/${name}", fixtureRoot, ['ddl','data'], null) { target ->
+            runUpgrade(target, entries, dataScenario, name)
+          }
+        }
+        if (name == 'contract-data-good') { action() }
+        else {
+          expectFailure(name, 'custom-verify pg_prove failed', action)
+          def receipt = new File(run.directory, "framework-self-tests/${name}/summary.txt").text
+          def logs = fileTree(new File(run.directory, "framework-self-tests/${name}")) { include '*.log' }.files*.text.join('\n')
+          if (!receipt.contains('Phase shared-cleanup: PASS') || !receipt.contains('Phase framework-cleanup: PASS') ||
+              !logs.contains('data owner reads exact empty predecessor observation')) {
+            throw new GradleException('Data owner failure lost its intended diagnostic or shared cleanup evidence')
+          }
+        }
+        run.statuses[name] = 'PASS (compact data observation and declaring-owner verification; shared cleanup confirmed)'
+      }
+      // Native rejection is independently exercised, beyond the local preflight collision check.
+      expectFailure('native-normalized-duplicate', 'more than one migration', {
+        targetLifecycle(run, 'framework-self-tests/native-duplicate', fixtureRoot, ['ddl','data','duplicate'], null) { target ->
+          nativeFlyway(target, 'info', null)
+        }
+      })
+      // Latest fresh is deliberately incompatible with C's view assertions: this
+      // negative control proves fresh-only execution cannot substitute for staging.
+      targetLifecycle(run, 'framework-self-tests/fresh-initial-and-later-control', fixtureRoot, ['ddl','data'], null) { target ->
+        crossCheckNative(target, entries)
+        // Exercise include-time guards in native new connections. These controls
+        // require the actual SQL diagnostic, independently of positive TAP parsing.
+        def helperCommand = ['docker','exec',target.name,'psql','-X','-v','ON_ERROR_STOP=1',
+          '-U','postgres','-d',databaseName,'-f','/tmp/opal-db-unit-test/framework/upgrade_lifecycle.sql']
+        requireCommand(target, 'helper-default-fresh', helperCommand)
+        def guardCases = [
+          'unknown-phase':[variables:[opal_phase:'unknown'], diagnostic:'Unknown upgrade lifecycle phase'],
+          'missing-scenario':[variables:[opal_phase:'prepare',opal_candidate_version:'1.10',opal_predecessor_version:'1.9'], diagnostic:'requires scenario identity'],
+          'missing-candidate':[variables:[opal_phase:'prepare',opal_scenario_id:scenario.id,opal_predecessor_version:'1.9'], diagnostic:'requires candidate identity'],
+          'missing-predecessor':[variables:[opal_phase:'prepare',opal_scenario_id:scenario.id,opal_candidate_version:'1.10'], diagnostic:'requires predecessor identity'],
+          'wrong-database':[variables:[:], diagnostic:'requires its disposable harness database and role'],
+          'wrong-role':[variables:[:], diagnostic:'requires its disposable harness database and role']]
+        guardCases.each { name, control ->
+          def args = new ArrayList(helperCommand)
+          if (name == 'wrong-database') { args[args.indexOf('-d') + 1] = 'postgres' }
+          if (name == 'wrong-role') { args.addAll(2, ['--env','PGOPTIONS=-c role=pg_read_all_data']) }
+          control.variables.each { key, value -> args.addAll(['--set',"${key}=${value}"]) }
+          def outcome = command(target, "helper-${name}", args)
+          if (outcome.exitCode == 0 || !(outcome.stdout + outcome.stderr).contains(control.diagnostic)) {
+            throw new GradleException("Shared helper guard ${name} failed without its intended SQL diagnostic")
+          }
+          run.evidence.add("Regression helper-${name}: actual native rejection and SQL diagnostic verified")
+        }
+        def vars = [opal_scenario_id:scenario.id, opal_candidate_version:'1.10', opal_predecessor_version:'1.9', opal_test_case:'good']
+        nativeFlyway(target, 'migrate', '1.9')
+        nativeFlyway(target, 'validate', '1.9')
+        framework(target, 'predecessor', entries.take(2), vars)
+        expectFailure('wrong-predecessor-prefix', 'pg_prove failed', {
+          framework(target, 'fresh', entries.take(1), vars)
+        })
+        prove(target, 'owner-prepare', [scenario.owner], vars + [opal_phase:'prepare'])
+        nativeFlyway(target, 'migrate', null)
+        nativeFlyway(target, 'validate', null)
+        framework(target, 'fresh', entries, vars)
+        prove(target, 'owner-fresh', [scenario.owner], vars + [opal_phase:'fresh'])
+        prove(target, 'shared-owner-fresh', [sharedOwner], vars +
+          [opal_phase:'fresh', opal_assertion_group:'fixture.current'])
+        expectFailure('wrong-candidate-prefix', 'pg_prove failed', {
+          framework(target, 'fresh', entries.take(3), vars)
+        })
+        expectFailure('later-sentinel-negative-control', 'owner-verify pg_prove failed', {
+          prove(target, 'owner-verify', [scenario.owner], vars + [opal_phase:'verify'])
+        })
+        prove(target, 'owner-cleanup', [scenario.owner], vars + [opal_phase:'cleanup'])
+        framework(target, 'cleanup', entries, vars)
+      }
+      run.statuses.fresh = 'PASS'
+      runRegisteredScenario(run, entries, scenario + [id:'framework.initial', candidate:entries.first().path], fixtureRoot, ['ddl','data'], null)
+      def customContract = sharedScenario.contract + [custom:[
+        prepare:'src/dbUnitTest/upgradeCases/framework_contract_prepare.sql',
+        verify:'src/dbUnitTest/upgradeCases/framework_contract_verify.sql']]
+      def customScenario = sharedScenario + [data:'approved-synthetic', contract:customContract]
+      resolveRegistrations([customScenario], entries)
+      def sharedCases = ['contract-good','contract-custom-good','contract-preservation-failure',
+        'contract-future-dependency','contract-custom-prepare-error','contract-cleanup-error',
+        'shared-primary-plus-cleanup']
+      sharedCases.each { run.statuses[it] = 'Not run' }
+      sharedCases.each { name ->
+        run.statuses[name] = 'RUNNING'
+        boolean customCase = name in ['contract-custom-good','contract-custom-prepare-error']
+        String injection = name in ['contract-cleanup-error','shared-primary-plus-cleanup'] ? 'shared-cleanup' : null
+        String testCase = name == 'shared-primary-plus-cleanup' ? 'contract-future-dependency' : name
+        def action = {
+          try {
+            targetLifecycle(run, "framework-self-tests/${name}", fixtureRoot, ['ddl','data'], injection) { target ->
+              runUpgrade(target, entries, customCase ? customScenario : sharedScenario, testCase)
+            }
+          } catch (GradleException primary) {
+            if (name == 'shared-primary-plus-cleanup' && (primary.suppressed.size() != 1 ||
+                !primary.suppressed[0].message.contains('shared-cleanup pg_prove failed'))) {
+              throw new GradleException('Shared SQL cleanup failure did not remain secondary to the owner failure')
+            }
+            throw primary
+          }
+        }
+        if (name in ['contract-good','contract-custom-good']) { action() }
+        else {
+          def diagnostic = name == 'contract-custom-prepare-error' ? 'custom-prepare pg_prove failed' :
+            name == 'contract-cleanup-error' ? 'shared-cleanup pg_prove failed' :
+            name == 'contract-preservation-failure' ? 'shared-verify pg_prove failed' : 'owner-verify pg_prove failed'
+          expectFailure(name, diagnostic, action)
+          def logs = fileTree(new File(run.directory, "framework-self-tests/${name}")) { include '*.log' }
+            .files.collect { it.text }.join('\n')
+          def marker = name == 'contract-custom-prepare-error' ? 'fixed shared custom preparation failure' :
+            name == 'contract-cleanup-error' ? 'fixed framework command failure: shared-cleanup' :
+            name == 'contract-preservation-failure' ? 'not ok 2 - all declared predecessor row text preserved' :
+            'relation "public.framework_future_only" does not exist'
+          if (!logs.contains(marker)) { throw new GradleException("Shared regression ${name} lost its intended SQL diagnostic") }
+          if (name == 'shared-primary-plus-cleanup' &&
+              !new File(run.directory, "framework-self-tests/${name}/summary.txt").text.contains('Secondary failure: shared-cleanup')) {
+            throw new GradleException('Shared primary and SQL cleanup evidence was not retained')
+          }
+        }
+        run.statuses[name] = 'PASS (shared regression expectation and actual target absence)'
+      }
+      def cases = ['good','retry','migration-failure','temp','rollback','mutation','failed-history'] +
+        ['prepare','verify','cleanup'].collectMany { phase -> ['sql','tap','zero','plan'].collect { "${it}-${phase}" } }
+      cases.each { run.statuses[it] = 'Not run' }
+      cases.each { name ->
+        run.statuses[name] = 'RUNNING'
+        def action = {
+          targetLifecycle(run, "framework-self-tests/${name}", fixtureRoot, ['ddl','data'], null) { target ->
+            runUpgrade(target, entries, scenario, name)
+          }
+        }
+        if (name in ['good','retry']) { action() }
+        else {
+          def diagnostic = name == 'migration-failure' ? 'fixed framework candidate gate is closed' : 'pg_prove failed'
+          expectFailure(name, diagnostic, action)
+          def marker = name.startsWith('sql-') ? 'ERROR:  fixed hard SQL error after passing assertions' :
+            name.startsWith('tap-') ? 'fixed failing phase assertion' :
+            name.startsWith('zero-') ? 'fixed zero-plan regression' :
+            name.startsWith('plan-') ? 'You planned 99 tests but ran' :
+            name in ['temp','rollback'] ? 'relation "opal_framework_owner_state.observation" does not exist' :
+            name == 'mutation' ? 'not ok 2 - Named application rows preserved' :
+            name == 'failed-history' ? 'not ok 2 - Every selected migration succeeded' :
+            'fixed framework candidate gate is closed'
+          def phaseLogs = fileTree(new File(run.directory, "framework-self-tests/${name}")) {
+            include '*.log'
+          }.files.collect { it.text }.join('\n')
+          if (!phaseLogs.contains(marker)) { throw new GradleException("Regression ${name} failed without its intended diagnostic") }
+          if (name.startsWith('zero-')) {
+            def zeroPhase = name.substring('zero-'.length())
+            def zeroLog = fileTree(new File(run.directory, "framework-self-tests/${name}")) {
+              include "*-owner-${zeroPhase}.log"
+            }.singleFile.text
+            if (!zeroLog.contains('\nExit: 0;') || !zeroLog.contains('Tests=0')) {
+              throw new GradleException("Regression ${name} did not produce native successful zero-test TAP")
+            }
+            run.evidence.add("Regression ${name}: native pg_prove exit 0 with zero tests rejected by positive-plan guard")
+          }
+          run.evidence.add("Regression ${name}: intended command diagnostic retained")
+        }
+        run.statuses[name] = 'PASS (regression expectation and actual target absence)'
+      }
+      // A nested run exercises the same summary finalization after early discovery
+      // and a later scenario failure without overwriting any completed target report.
+      def earlyRun = newRun('framework expected early discovery failure', [name:'framework', locations:['ddl','data']])
+      earlyRun.statuses.pending = 'Not run'
+      Throwable earlyFailure = null
+      try { inventory(fixtureRoot, ['absent-fixed-location']) }
+      catch (GradleException expected) { earlyFailure = expected }
+      finishRun(earlyRun, earlyFailure)
+      if (earlyFailure == null || !new File(earlyRun.directory, 'summary.txt').text.contains('Not run — earlier failure')) {
+        throw new GradleException('Early failure summary was not retained')
+      }
+      def scheduledRun = newRun('framework expected later scenario failure', [name:'framework', locations:['ddl','data']])
+      scheduledRun.statuses.fresh = 'PASS'
+      [scenario.id,'failing','pending'].each { scheduledRun.statuses[it] = 'Not run' }
+      Throwable scenarioFailure = null
+      try {
+        // Retain the owner's exact registered tuple; reporting labels belong to
+        // targets/statuses and must never replace the identity supplied to SQL.
+        runRegisteredScenario(scheduledRun, entries, scenario, fixtureRoot, ['ddl','data'], 'good')
+        scheduledRun.statuses.failing = 'RUNNING'
+        scheduledRun.attempted++
+        targetLifecycle(scheduledRun, 'upgrades/failing', fixtureRoot, ['ddl','data'], null) { target ->
+          runUpgrade(target, entries, scenario, 'sql-prepare')
+        }
+        scheduledRun.statuses.failing = 'PASS'
+        scheduledRun.completed++
+      } catch (GradleException expected) { scenarioFailure = expected }
+      finishRun(scheduledRun, scenarioFailure)
+      def scheduledSummary = new File(scheduledRun.directory, 'summary.txt').text
+      if (scenarioFailure == null || !scheduledSummary.contains("Scenario ${scenario.id}: PASS")
+        || !scheduledSummary.contains('Scenario failing: FAILED') || !scheduledSummary.contains('Scenario pending: Not run')
+        || !new File(scheduledRun.directory, "upgrades/${scenario.id}/summary.txt").isFile()
+        || new File(scheduledRun.directory, 'upgrades/pending').exists()) {
+        throw new GradleException('Failed run lost completed evidence or unexecuted scenario status')
+      }
+      run.evidence.add("Early failure report: ${earlyRun.directory.name}; later failure report: ${scheduledRun.directory.name}")
+      if ((aggregateReport.isFile() ? aggregateReport.text : null) != aggregateBefore) {
+        throw new GradleException('Framework negative controls overwrote the fixed-profile aggregate report')
+      }
+      run.evidence.add('Regression profile-aggregate-retention: expected nested failures leave actual profile aggregate unchanged')
+      expectFailure('primary-plus-cleanup', 'owner-prepare pg_prove failed', {
+        try {
+          targetLifecycle(run, 'framework-self-tests/dual-failure', fixtureRoot, ['ddl','data'], 'remove') { target ->
+            runUpgrade(target, entries, scenario, 'sql-prepare')
+          }
+        } catch (GradleException primary) {
+          if (primary.suppressed.size() != 1 || !primary.suppressed[0].message.contains('remove failed')) {
+            throw new GradleException('Cleanup diagnostic did not remain suppressed on primary failure')
+          }
+          throw primary
+        }
+      })
+    } catch (Throwable problem) {
+      failure = problem
+    }
+    finally {
+      finishRun(run, failure)
+      new File(run.base, 'framework-self-test.log').text = "Framework regression run: ${run.directory.name}\n" + new File(run.directory, 'summary.txt').text
+    }
+    if (failure != null) { throw failure }
+  }
 }
 
+tasks.named('dbUnitTest') { finalizedBy tasks.named('dbUnitTestFrameworkTest') }
 tasks.named('check') {
-  dependsOn tasks.named('dbUnitTest')
+  dependsOn tasks.named('dbUnitTest'), tasks.named('dbUnitTestProfileTest'), tasks.named('dbUnitTestSelectionTest'),
+    tasks.named('dbUnitTestContractTest'), tasks.named('dbUnitTestFrameworkTest')
 }
+
+// Frankie Moran — parent-transition maintenance — 22/10/2026.
+// A retained target applies an exact Git comparison inventory, then the complete batch.
+def parentDelta = { List scenarios ->
+  def delta = [routines:[], aliases:false, responses:false]
+  scenarios.each { scenario ->
+    if (scenario.contract == null) { throw new GradleException("Parent transition requires compact contract: ${scenario.id}") }
+    if (scenario.contract.type == 'data') {
+      def known = [
+        'aliases.names_correction':['ddl/V1_60__alter_aliases_name_columns.sql','aliases.corrected',
+          'src/dbUnitTest/upgradeCases/aliases_correction_verify.sql','aliases'],
+        'order_terms.result_responses':['ddl/V1_62__add_order_terms_result_responses.sql','order_terms.responses',
+          'src/dbUnitTest/upgradeCases/order_terms_result_responses_verify.sql','responses']][scenario.id]
+      if (known == null || scenario.candidate != known[0] || scenario.contract.assertion != known[1] ||
+          scenario.contract.custom?.verify != known[2]) {
+        throw new GradleException("Unsupported parent structural delta: ${scenario.id}")
+      }
+      delta[known[3]] = true
+    } else {
+      (scenario.contract.objects.created + scenario.contract.objects.replaced).each { object ->
+        if (object.kind != 'routine') { throw new GradleException('Parent batch supports only declared routine additions/replacements') }
+        delta.routines.add(object.identity)
+      }
+    }
+  }
+  delta.routines = delta.routines.unique().sort()
+  delta
+}
+def runParentTransition = { Map target, List base, List entries, Map delta, List owners, String testCase ->
+  def dispatcher = new File(sqlRoot,'support/parent_transition.sql')
+  def variables = [opal_scenario_id:'parent.transition',opal_predecessor_version:base.last().version,
+    opal_candidate_version:entries.last().version,opal_parent_delta:JsonOutput.toJson(delta)]
+  if (testCase != null) { variables.opal_test_case = testCase }
+  target.declared = ["flyway-migrate-${base.last().version}","flyway-validate-${base.last().version}",
+    'parent-prepare',"flyway-migrate-${entries.last().version}","flyway-validate-${entries.last().version}",
+    'parent-verify'] + (owners.isEmpty() ? [] : ['parent-owners']) + ['parent-repeat','parent-cleanup','parent-session-absence']
+  target.evidence.add("Parent migrations: ${base.size()}; incoming selected: ${entries.size()-base.size()}; final owning suites selected: ${owners.size()}")
+  def fixedMutation = { String label, String sql ->
+    requireCommand(target,label,['docker','exec',target.name,'psql','-X','-v','ON_ERROR_STOP=1',
+      '-U','postgres','-d',databaseName,'-c',sql])
+  }
+  boolean prepared = false
+  Throwable primary = null
+  try {
+    crossCheckNative(target,entries)
+    def migratedBase = nativeFlyway(target,'migrate',base.last().version)
+    if (migratedBase.migrationsExecuted != base.size()) { throw new GradleException('Native base migration count differs from exact parent inventory') }
+    nativeFlyway(target,'validate',base.last().version)
+    if (testCase in ['undeclared-routine-remove','undeclared-routine-body']) {
+      fixedMutation('fixed-base-undeclared-routine',
+        "CREATE FUNCTION public.framework_undeclared_base() RETURNS integer LANGUAGE SQL AS 'SELECT 1'")
+    }
+    prepared = true
+    prove(target,'parent-prepare',[dispatcher],variables + [opal_phase:'prepare',opal_expected_history:expectedHistory(base)])
+    if (testCase=='native-failure') {
+      fixedMutation('fixed-native-failure',"CREATE FUNCTION public.framework_new(public.framework_enum) RETURNS integer LANGUAGE SQL AS 'SELECT 0'")
+    }
+    def migrated = nativeFlyway(target,'migrate',entries.last().version)
+    if (migrated.migrationsExecuted != entries.size()-base.size()) { throw new GradleException('Native batch migration count differs from exact additions') }
+    target.evidence.add("Incoming applied: ${migrated.migrationsExecuted}; native batch complete")
+    if (testCase=='validate-failure') {
+      fixedMutation('fixed-validate-checksum',
+        "UPDATE public.flyway_schema_history SET checksum=CASE WHEN checksum=0 THEN 1 ELSE 0 END WHERE version='1.1'")
+    }
+    nativeFlyway(target,'validate',entries.last().version)
+    if (testCase in ['rows','primary-plus-cleanup']) {
+      fixedMutation('fixed-row-mutation',"UPDATE public.framework_reference SET original='{}' WHERE id=1")
+    }
+    def catalogueMutations = [
+      'routine-comment':"COMMENT ON FUNCTION public.framework_existing(public.framework_enum) IS 'unexpected comment'",
+      'routine-property':"ALTER FUNCTION public.framework_existing(public.framework_enum) STRICT",
+      'routine-privilege':"REVOKE EXECUTE ON FUNCTION public.framework_existing(public.framework_enum) FROM PUBLIC",
+      'enum-privilege':"REVOKE USAGE ON TYPE public.framework_enum FROM PUBLIC",
+      'sequence-state':"SELECT nextval('public.framework_sequence')",
+      'constraint-comment':"COMMENT ON CONSTRAINT framework_reference_pkey ON public.framework_reference IS 'unexpected comment'",
+      'index-comment':"COMMENT ON INDEX public.framework_reference_pkey IS 'unexpected comment'",
+      'trigger-comment':"COMMENT ON TRIGGER framework_reference_trigger ON public.framework_reference IS 'unexpected comment'",
+      'policy-comment':"COMMENT ON POLICY framework_reference_policy ON public.framework_reference IS 'unexpected comment'",
+      'internal-trigger':"ALTER TABLE public.framework_child DISABLE TRIGGER ALL",
+      'index-clustering':"ALTER TABLE public.framework_reference CLUSTER ON framework_reference_pkey"
+    ]
+    if (catalogueMutations.containsKey(testCase)) {
+      fixedMutation("fixed-${testCase}",catalogueMutations[testCase])
+    }
+    if (testCase=='sequence-comment') {
+      fixedMutation('fixed-sequence-comment',"COMMENT ON SEQUENCE public.framework_sequence IS 'unexpected comment'")
+    }
+    if (testCase=='enum-comment') {
+      fixedMutation('fixed-enum-comment',"COMMENT ON TYPE public.framework_enum IS 'unexpected comment'")
+    }
+    if (testCase=='catalogue') {
+      fixedMutation('fixed-catalogue-mutation',"COMMENT ON COLUMN public.framework_reference.original IS 'unexpected mutation'")
+    }
+    def additionalMutations = [
+      'undeclared-routine-add':"CREATE FUNCTION public.framework_undeclared() RETURNS integer LANGUAGE SQL AS 'SELECT 1'",
+      'undeclared-routine-remove':"DROP FUNCTION public.framework_undeclared_base()",
+      'undeclared-routine-body':"CREATE OR REPLACE FUNCTION public.framework_undeclared_base() RETURNS integer LANGUAGE SQL AS 'SELECT 2'",
+      'enum-label':"ALTER TYPE public.framework_enum ADD VALUE 'three'",
+      'sequence-privilege':"GRANT USAGE ON SEQUENCE public.framework_sequence TO PUBLIC",
+      'provenance':"UPDATE opal_test_upgrade_observation.observation SET predecessor_version='unexpected'"
+    ]
+    if (additionalMutations.containsKey(testCase)) {
+      fixedMutation("fixed-${testCase}",additionalMutations[testCase])
+    }
+    prove(target,'parent-verify',[dispatcher],variables + [opal_phase:'verify',opal_expected_history:expectedHistory(entries)])
+    if (!owners.isEmpty()) {
+      def ownerResult = prove(target,'parent-owners',owners,[opal_phase:'fresh',opal_framework_phase:'fresh',
+        opal_expected_history:expectedHistory(entries),opal_test_case:testCase ?: 'good'])
+      new File(target.base,'pg-prove.log').text = ownerResult.stdout + ownerResult.stderr
+    }
+    if (testCase=='repeat') {
+      fixedMutation('fixed-repeat-history-removal',"DELETE FROM public.flyway_schema_history WHERE version='1.10'")
+    }
+    def repeat = nativeFlyway(target,'migrate',entries.last().version)
+    if (repeat.migrationsExecuted != 0) { throw new GradleException('Native parent repeat did not report zero applied migrations') }
+    nativeFlyway(target,'validate',entries.last().version)
+    if (testCase=='history') {
+      fixedMutation('fixed-history-mutation',"UPDATE public.flyway_schema_history SET execution_time=execution_time+1 WHERE installed_rank=1")
+    }
+    prove(target,'parent-repeat',[dispatcher],variables + [opal_phase:'verify',opal_parent_repeat:true])
+  } catch (Throwable problem) { primary = problem }
+  finally {
+    if (prepared) {
+      def retainCleanup = { Throwable problem ->
+        if (primary == null) { primary = problem } else { primary.addSuppressed(problem) }
+      }
+      if (testCase in ['observation','primary-plus-cleanup']) {
+        try { fixedMutation('fixed-observation-leak','CREATE TABLE opal_test_upgrade_observation.unexpected(id integer)') }
+        catch (Throwable problem) { retainCleanup(problem) }
+      }
+      try { prove(target,'parent-cleanup',[dispatcher],variables + [opal_phase:'cleanup']) }
+      catch (Throwable cleanup) { retainCleanup(cleanup) }
+      // An independent connection checks that owner/observation backends have ended.
+      try {
+        boolean sessionsAbsent = false
+        for (int attempt = 0; attempt < 20; attempt++) {
+          def sessions = requireCommand(target,'parent-session-absence',['docker','exec',target.name,
+            'psql','-X','-At','-v','ON_ERROR_STOP=1','-U','postgres','-d',databaseName,'-c',
+            "SELECT count(*) FROM pg_catalog.pg_stat_activity WHERE datname=current_database() AND backend_type='client backend' AND pid<>pg_backend_pid()"])
+          if (sessions.stdout.trim() == '0') { sessionsAbsent = true; break }
+          TimeUnit.MILLISECONDS.sleep(50)
+        }
+        target.evidence.add("Owned parent-session absence confirmed: ${sessionsAbsent}")
+        if (!sessionsAbsent) {
+          target.phases['parent-session-absence'] = 'FAILED'
+          throw new GradleException('Parent cleanup retained other client sessions')
+        }
+      } catch (Throwable problem) { retainCleanup(problem) }
+    }
+  }
+  if (primary != null) { throw primary }
+}
+
+tasks.register('dbUnitTestParentTransitionTest') {
+  description = 'Verifies the exact actual-parent inventory on a retained target in both fixed profiles'
+  group = 'Verification'
+  mustRunAfter tasks.named('dbUnitTest'), tasks.named('dbUnitTestFrameworkTest')
+  doLast {
+    def reportRoot = layout.buildDirectory.dir('reports/dbUnitTest/parent-transition').get().asFile
+    reportRoot.mkdirs()
+    def aggregate = new File(reportRoot,'summary.txt')
+    aggregate.text = 'Result: RUNNING\n'
+    try {
+      refuseExternal(System.getenv())
+      if (providers.gradleProperty('dbUnitTestUpgradeSuite').isPresent()) {
+        throw new GradleException('Parent transition prohibits diagnostic owner filtering')
+      }
+      def suites = sqlFiles.files.sort { it.path }
+      if (suites.isEmpty()) { throw new GradleException('No pgTAP suites discovered') }
+      def completeEntries = inventory(migrationRoot,['.'])
+      def scenarios = registrations(suites,completeEntries)
+      validateAdoption(completeEntries,scenarios,adoptedMigrations,supportedLocations)
+      project.ext.dbUpgradeSupportFiles(rootDir)
+      def preparation = newRun('parent profile image preparation',
+        [name:'parent-transition/preparation',locations:supportedLocations])
+      Throwable preparationFailure = null
+      try { buildImage(preparation) }
+      catch (Throwable problem) { preparationFailure = problem; throw problem }
+      finally { finishRun(preparation,preparationFailure) }
+      def declaredInputs = scenarios.collectMany { project.ext.validateDbUpgradeInputs(it,rootDir) }.unique().sort()
+      def declaredEvidence = declaredInputs.collect { path ->
+        def inputFile = new File(rootDir,path)
+        [path:path,status:inputFile.isFile() ? 'present' : 'absent tracked dependency',
+          sha256:inputFile.isFile() ? digest(inputFile) : null]
+      }
+      def results = project.ext.runDbUnitTestProfiles { profile ->
+        def run = newRun('actual parent batch transition',
+          [name:"parent-transition/${profile.name}".toString(),locations:profile.locations])
+        Throwable failure = null
+        try {
+          def entries = inventory(migrationRoot,profile.locations)
+          def selection = project.ext.selectDbParentTransition(scenarios,rootDir,[
+            comparisonRef:providers.gradleProperty('dbUnitTestComparisonRef').orNull,
+            selectedLocations:profile.locations])
+          def actualIdentities = entries.collect { entry ->
+            byte[] bytes = new File(migrationRoot,entry.path).bytes
+            def hash = MessageDigest.getInstance('SHA-1')
+            hash.update("blob ${bytes.length}\u0000".getBytes('UTF-8')); hash.update(bytes)
+            [path:entry.path,version:entry.version,contentId:hash.digest().encodeHex().toString()]
+          }
+          if (selection.testedEntries != actualIdentities) {
+            throw new GradleException('Actual-parent runner inventory differs from independently verified selected source')
+          }
+          def base = entries.take(selection.baseEntries.size())
+          def incoming = scenarios.findAll { item -> selection.additions.any { it.path == item.candidate } }
+          def delta = parentDelta(incoming)
+          def ownerSuites = suites.findAll { !(it.name in ['db_upgrade_contract_pgtap_tests.sql',
+            'db_upgrade_framework_pgtap_tests.sql','db_upgrade_lifecycle_pgtap_tests.sql']) }
+          new File(run.directory,'declared-inputs.json').text = JsonOutput.prettyPrint(JsonOutput.toJson(declaredEvidence))+'\n'
+          def fingerprints = new File(run.directory,'source-sha256.txt')
+          fingerprints.text = (fingerprints.readLines()+declaredEvidence.findAll { it.sha256 }.collect {
+            "${it.path} ${it.sha256}".toString()
+          }).unique().sort().join('\n')+'\n'
+          new File(run.directory,'parent-selection.json').text = JsonOutput.prettyPrint(JsonOutput.toJson(selection))+'\n'
+          new File(run.directory,'parent-delta.json').text = JsonOutput.prettyPrint(JsonOutput.toJson(delta))+'\n'
+          run.discovered = scenarios.size(); run.scheduled = incoming.size()
+          run.statuses['parent.transition'] = 'Not run'
+          incoming.each { run.statuses[it.id] = 'Not run' }
+          run.evidence.add("Actual comparison ${selection.baseSha}; tested HEAD ${selection.testedSourceSha}; HEAD tree ${selection.testedHeadTree}")
+          run.evidence.add("Parent provenance: ${selection.parentProvenance}; comparison kind: ${selection.comparisonKind}; candidate mode: ${selection.candidateMode}")
+          run.evidence.add("Overlay paths: ${selection.overlayPaths}; tested HEAD parents: ${selection.testedParents}")
+          run.evidence.add("Independent profile history: parent ${base.size()}; candidate ${entries.size()}; incoming ${selection.additions.size()}")
+          run.evidence.add("Selected locations: ${profile.locations}; exact prefix ${base*.version}; additions ${selection.additions*.version}")
+          run.evidence.add('Only fixed framework self-suites excluded from retained owner phase; all application owners remain selected')
+          selection.unverifiedMigrations.each { run.evidence.add("Unverified outside selected locations: ${it.path}") }
+          run.statuses['parent.transition'] = 'RUNNING'; run.attempted = incoming.size()
+          incoming.each { run.statuses[it.id] = 'RUNNING' }
+          targetLifecycle(run,'parent-transition',migrationRoot,profile.locations,null) { target ->
+            runParentTransition(target,base,entries,delta,ownerSuites,null)
+          }
+          run.completed = incoming.size()
+          incoming.each { run.statuses[it.id] = 'PASS — batch applied and final owners verified' }
+          run.statuses['parent.transition'] = 'PASS'
+          return run.directory.name
+        } catch (Throwable problem) { failure = problem; throw problem }
+        finally { finishRun(run,failure) }
+      }
+      aggregate.text = (["Result: ${results.failure == null ? 'PASS' : 'FAILED'}",
+        'Profiles: '+project.ext.dbUnitTestProfiles.collect { it.name }.join(', ')] + results.outcomes.collect {
+          "${it.name}: ${it.status}; locations: ${it.locations}; run: ${it.result ?: 'see profile summary'}".toString()
+        } + results.outcomes.collect { outcome ->
+          def receipt = new File(reportRoot,"${outcome.name}/summary.txt")
+          "${outcome.name} cleanup: "+(receipt.isFile() ? receipt.readLines().findAll { it.startsWith('Target ') }.join('; ') : 'not started')
+        }).join('\n')+'\n'
+      if (results.failure != null) { throw results.failure }
+    } catch (Throwable problem) {
+      if (aggregate.text.startsWith('Result: RUNNING')) {
+        aggregate.text = "Result: FAILED - ${problem.message}\nProfiles: not started; global preflight/preparation failed\n"
+      }
+      throw problem
+    }
+  }
+}
+
+tasks.register('dbUnitTestParentTransitionFrameworkTest') {
+  group = 'Verification'
+  description = 'Runs fixed retained-parent batch preservation and failure controls'
+  mustRunAfter tasks.named('dbUnitTest')
+  onlyIf {
+    def database=tasks.named('dbUnitTest').get()
+    !database.state.executed || (database.state.failure==null &&
+      (project.ext.dbUpgradeFrameworkTestsRequired || gradle.startParameter.taskNames.any {
+        it.tokenize(':').last() in ['dbUnitTestFrameworkTest','dbUnitTestParentTransitionFrameworkTest']
+      }))
+  }
+  doLast {
+    def run=newRun('parent transition fixed regressions',[name:'parent-framework',locations:['ddl','data']])
+    Throwable failure=null
+    try {
+      refuseExternal(System.getenv())
+      project.ext.dbUpgradeSupportFiles(rootDir)
+      buildImage(run)
+      def reportRoot=layout.buildDirectory.dir('reports/dbUnitTest').get().asFile
+      def protectedReports=['summary.txt','non-live-dev/summary.txt','non-live/summary.txt','parent-transition/summary.txt']
+      def protectedBytes=protectedReports.collectEntries { path ->
+        def report=new File(reportRoot,path)
+        [(path):report.isFile() ? report.text : null]
+      }
+      def root=new File(sqlRoot,'framework/parent')
+      def entries=inventory(root,['ddl','data'])
+      def repeatRoot=new File(run.directory,'repeat-migrations')
+      entries.take(3).each { entry ->
+        def destination=new File(repeatRoot,entry.path)
+        destination.parentFile.mkdirs(); destination.bytes=new File(root,entry.path).bytes
+      }
+      def delta=[routines:['public.framework_existing(public.framework_enum)','public.framework_new(public.framework_enum)'],aliases:true,responses:true]
+      def cases=['good','noop','validate-failure','owner-sql','owner-tap','owner-zero','owner-wrong-plan','provenance',
+        'undeclared-routine-add','undeclared-routine-remove','undeclared-routine-body','enum-label','sequence-privilege','session-absence','primary-plus-session-cleanup','routine-comment','routine-property','routine-privilege','enum-privilege','sequence-state','internal-trigger','constraint-comment','index-comment','trigger-comment','policy-comment','index-clustering','sequence-comment','enum-comment','native-failure','rows','catalogue','repeat','history','observation','remove','absence','volume-absence','primary-plus-cleanup']
+      run.discovered=cases.size()+1; run.scheduled=cases.size()+1
+      cases.each { run.statuses[it]='Not run' }
+      cases.each { testCase ->
+        run.attempted++; run.statuses[testCase]='RUNNING'
+        GradleException observed=null
+        Map ownedTarget=null
+        try {
+          targetLifecycle(run,"parent-${testCase}",testCase=='repeat' ? repeatRoot : root,['ddl','data'],
+            testCase in ['session-absence','primary-plus-session-cleanup'] ? 'parent-session-absence' :
+              testCase in ['remove','absence','volume-absence'] ? testCase : null) { target ->
+            ownedTarget=target
+            runParentTransition(target,testCase=='noop' ? entries : entries.take(1),testCase=='repeat' ? entries.take(3) : entries,
+              testCase=='noop' ? [routines:[],aliases:false,responses:false] :
+                testCase=='repeat' ? delta + [aliases:false,responses:false] : delta,[new File(root,'owner.sql')],testCase=='primary-plus-session-cleanup' ? 'rows' : testCase)
+          }
+        } catch (GradleException problem) { observed=problem }
+        def diagnostic=[
+          'validate-failure':'flyway-validate-1.11 failed',          'session-absence':'parent-session-absence failed',
+          'primary-plus-session-cleanup':'parent-verify pg_prove failed',
+          'owner-sql':'parent-owners pg_prove failed',
+          'owner-tap':'parent-owners pg_prove failed',
+          'owner-zero':'parent-owners pg_prove failed',
+          'owner-wrong-plan':'parent-owners pg_prove failed',
+          'provenance':'parent-verify pg_prove failed',
+          'undeclared-routine-add':'parent-verify pg_prove failed',
+          'undeclared-routine-remove':'parent-verify pg_prove failed',
+          'undeclared-routine-body':'parent-verify pg_prove failed',
+          'enum-label':'parent-verify pg_prove failed',
+          'sequence-privilege':'parent-verify pg_prove failed',
+          'native-failure':'flyway-migrate-1.11 failed',
+          'rows':'parent-verify pg_prove failed',
+          'catalogue':'parent-verify pg_prove failed',
+          'routine-comment':'parent-verify pg_prove failed',
+          'routine-property':'parent-verify pg_prove failed',
+          'routine-privilege':'parent-verify pg_prove failed',
+          'enum-privilege':'parent-verify pg_prove failed',
+          'sequence-state':'parent-verify pg_prove failed',
+          'internal-trigger':'parent-verify pg_prove failed',
+          'constraint-comment':'parent-verify pg_prove failed',
+          'index-comment':'parent-verify pg_prove failed',
+          'trigger-comment':'parent-verify pg_prove failed',
+          'policy-comment':'parent-verify pg_prove failed',
+          'index-clustering':'parent-verify pg_prove failed',
+          'sequence-comment':'parent-verify pg_prove failed',
+          'enum-comment':'parent-verify pg_prove failed',
+          'repeat':'Native parent repeat',
+          'history':'parent-repeat pg_prove failed',
+          'observation':'parent-cleanup pg_prove failed',
+          'remove':'remove failed',
+          'absence':'absence failed',
+          'volume-absence':'volume-absence failed',
+          'primary-plus-cleanup':'parent-verify pg_prove failed'][testCase]
+        if (testCase in ['good','noop']) {
+          if (observed != null) { throw observed }
+        } else if (observed == null || !observed.message.contains(diagnostic)) {
+          throw new GradleException("Parent regression ${testCase} did not fail for ${diagnostic}",observed)
+        }
+        if (testCase in ['primary-plus-cleanup','provenance','primary-plus-session-cleanup']) {
+          if (observed.suppressed.size()!=1 || !observed.suppressed[0].message.contains(testCase=='primary-plus-session-cleanup' ? 'parent-session-absence failed' : 'parent-cleanup pg_prove failed')) {
+            throw new GradleException('Parent regression lost exact independent cleanup failure',observed)
+          }
+        } else if (testCase=='remove') {
+          if (observed.suppressed.length!=3 ||
+              !observed.suppressed.any { it.message.contains('remove failed') } ||
+              !observed.suppressed.any { it.message.contains('Owned container remains') } ||
+              !observed.suppressed.any { it.message.contains('Owned anonymous volume remains') }) {
+            throw new GradleException('Parent removal control lost independent cleanup failures',observed)
+          }
+        } else if (observed != null && observed.suppressed.length!=0) {
+          throw new GradleException('Parent regression has unexpected suppressed cleanup failure',observed)
+        }
+        // Expected failure is never permission to retain an owned container or volume.
+        if (ownedTarget == null || !ownedTarget.absent || !ownedTarget.volumesInspected || !ownedTarget.volumesAbsent) {
+          throw new GradleException("Parent regression ${testCase} has unconfirmed owned resource cleanup",observed)
+        }
+        def remaining=requireCommand(ownedTarget,'regression-container-absence',
+          ['docker','ps','-a','--format','{{.Names}}'])
+        if (remaining.stdout.readLines().contains(ownedTarget.name.toString())) {
+          throw new GradleException("Parent regression retained owned container: ${ownedTarget.name}")
+        }
+        ownedTarget.volumeNames.each { volume ->
+          def retained=requireCommand(ownedTarget,'regression-volume-absence',
+            ['docker','volume','ls','--quiet','--filter',"name=^${volume}\$".toString()])
+          if (!retained.stdout.isBlank()) { throw new GradleException("Parent regression retained owned volume: ${volume}") }
+        }
+        run.evidence.add("Parent regression ${testCase}: independently confirmed ${ownedTarget.name} and owned volumes absent")
+        def expectedTap=[
+          'primary-plus-session-cleanup':'all original row text and multiplicity preserved',
+          'owner-tap':'parent owner fixed TAP failure',
+          'undeclared-routine-add':'undeclared routines cannot be added removed or changed',
+          'undeclared-routine-remove':'undeclared routines cannot be added removed or changed',
+          'undeclared-routine-body':'undeclared routines cannot be added removed or changed',
+          'enum-label':'all application catalogue and sequence state matches exact allowed delta',
+          'sequence-privilege':'all application catalogue and sequence state matches exact allowed delta',rows:'all original row text and multiplicity preserved',
+          catalogue:'all application catalogue and sequence state matches exact allowed delta',
+          'routine-comment':'base routine identities properties comments and privileges preserved',
+          'routine-property':'base routine identities properties comments and privileges preserved',
+          'routine-privilege':'base routine identities properties comments and privileges preserved',
+          'enum-privilege':'all application catalogue and sequence state matches exact allowed delta',
+          'sequence-state':'all application catalogue and sequence state matches exact allowed delta',
+          'internal-trigger':'all application catalogue and sequence state matches exact allowed delta',
+          'constraint-comment':'all application catalogue and sequence state matches exact allowed delta',
+          'index-comment':'all application catalogue and sequence state matches exact allowed delta',
+          'trigger-comment':'all application catalogue and sequence state matches exact allowed delta',
+          'policy-comment':'all application catalogue and sequence state matches exact allowed delta',
+          'index-clustering':'all application catalogue and sequence state matches exact allowed delta',
+          'sequence-comment':'all application catalogue and sequence state matches exact allowed delta',
+          'enum-comment':'all application catalogue and sequence state matches exact allowed delta',
+          history:'native repeat preserves every complete final history field',
+          'primary-plus-cleanup':'all original row text and multiplicity preserved'][testCase]
+        if (expectedTap != null) {
+          def logs=fileTree(new File(run.directory,"parent-${testCase}")).matching { include '*.log' }.files
+          if (!logs.any { it.text =~ /(?m)^not ok [0-9]+ - ${java.util.regex.Pattern.quote(expectedTap)}$/ }) {
+            throw new GradleException("Parent regression ${testCase} lacks its intended failing TAP assertion")
+          }
+        }
+        def controlLogs=fileTree(new File(run.directory,"parent-${testCase}")).matching { include '*.log' }.files*.text.join('\n')
+        def sqlDiagnostic=['validate-failure':'checksum mismatch','owner-sql':'Parent owner fixed SQL failure',
+          provenance:'Upgrade observation provenance mismatch',
+          observation:'Upgrade observation namespace has unexpected objects',
+          'primary-plus-cleanup':'Upgrade observation namespace has unexpected objects',
+          'native-failure':'already exists with same argument types'][testCase]
+        if (sqlDiagnostic != null && !controlLogs.contains(sqlDiagnostic)) {
+          throw new GradleException("Parent regression ${testCase} lost its intended SQL diagnostic",observed)
+        }
+        if (testCase=='owner-zero') {
+          def ownerLogs=fileTree(new File(run.directory,"parent-${testCase}")).matching { include '*-parent-owners.log' }.files
+          if (ownerLogs.size()!=1 || !ownerLogs.first().text.contains('Exit: 0;') ||
+              !ownerLogs.first().text.contains('skipped: fixed parent owner zero-plan regression') ||
+              !ownerLogs.first().text.contains('Files=1, Tests=0,') ||
+              !ownerLogs.first().text.contains('Result: NOTESTS')) {
+            throw new GradleException('Parent zero-plan control did not execute its intended plan')
+          }
+        }
+        if (testCase=='owner-wrong-plan' &&
+            (!controlLogs.contains('parent owner wrong-plan passing assertion') ||
+             !(controlLogs =~ /(?m)^\s*1\.\.2/))) {
+          throw new GradleException('Parent wrong-plan control did not retain its positive mismatched plan')
+        }
+        run.completed++; run.statuses[testCase]='PASS'
+        run.evidence.add("Parent regression ${testCase}: PASS; expected diagnostic ${diagnostic ?: 'none'}")
+      }
+      run.statuses['profile-aggregation']='RUNNING'; run.attempted++
+      def profileResults=project.ext.runDbUnitTestProfiles { profile ->
+        targetLifecycle(run,"profile-${profile.name}",root,['ddl','data'],null) { target ->
+          runParentTransition(target,entries.take(1),entries,delta,[new File(root,'owner.sql')],
+            profile.name=='non-live-dev' ? 'rows' : 'good')
+        }
+      }
+      if (profileResults.outcomes*.status != ['FAILED','PASS'] || profileResults.failure == null ||
+          !profileResults.outcomes.first().failure.message.contains('parent-verify pg_prove failed') ||
+          profileResults.failure.suppressed.length!=1 ||
+          !profileResults.failure.suppressed[0].is(profileResults.outcomes.first().failure)) {
+        throw new GradleException('Parent profile aggregation lost primary failure or skipped second profile')
+      }
+      profileResults.outcomes.each { outcome ->
+        def receipt=new File(run.directory,"profile-${outcome.name}/summary.txt")
+        if (!receipt.isFile() || !receipt.text.contains('absence confirmed: true; owned volume absence confirmed: true')) {
+          throw new GradleException('Parent profile aggregation cleanup was not independently confirmed')
+        }
+      }
+      protectedBytes.each { path, original ->
+        def report=new File(reportRoot,path)
+        if ((report.isFile() ? report.text : null) != original) {
+          throw new GradleException("Parent framework overwrote independent profile/aggregate report: ${path}")
+        }
+      }
+      run.completed++; run.statuses['profile-aggregation']='PASS'
+      run.evidence.add('Parent profile aggregation: first SQL/TAP failure retained, second profile completed; both independent cleanups and separate reports confirmed')
+    } catch (Throwable problem) { failure=problem }
+    finally { finishRun(run,failure) }
+    if (failure != null) { throw failure }
+  }
+}
+tasks.named('dbUnitTestFrameworkTest') { dependsOn tasks.named('dbUnitTestParentTransitionFrameworkTest') }
