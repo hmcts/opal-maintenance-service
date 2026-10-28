@@ -1049,9 +1049,9 @@ def parentDelta = { List scenarios ->
     if (scenario.contract == null) { throw new GradleException("Parent transition requires compact contract: ${scenario.id}") }
     if (scenario.contract.type == 'data') {
       def known = [
-        'aliases.names_correction':['ddl/V1_44__alter_aliases_name_columns.sql','aliases.corrected',
+        'aliases.names_correction':['ddl/V1_60__alter_aliases_name_columns.sql','aliases.corrected',
           'src/dbUnitTest/upgradeCases/aliases_correction_verify.sql','aliases'],
-        'order_terms.result_responses':['ddl/V1_46__add_order_terms_result_responses.sql','order_terms.responses',
+        'order_terms.result_responses':['ddl/V1_62__add_order_terms_result_responses.sql','order_terms.responses',
           'src/dbUnitTest/upgradeCases/order_terms_result_responses_verify.sql','responses']][scenario.id]
       if (known == null || scenario.candidate != known[0] || scenario.contract.assertion != known[1] ||
           scenario.contract.custom?.verify != known[2]) {
