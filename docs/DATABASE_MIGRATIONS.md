@@ -714,6 +714,12 @@ Fines precedent: another service's routine and business rules do not establish
 this service's enforcement. Record unresolved ownership or coverage as a gap
 and do not claim that the affected contract is complete.
 
+Selector-driven mapping integrity remains database-owned when unused or
+conflicting members would otherwise be discarded. Distinguish omission from
+a supplied JSON null, empty object or other value, and reject unused groups
+before allocation. Detailed selected-group completeness, formatting and field
+validation remain upstream-owned; this guard does not establish backend coverage.
+
 For Notes, the agreed split assigns required/non-null input values, JSON shape
 and types, blank/whitespace rules, and applicable input lengths to the backend,
 with UI checks where appropriate. Retain the respondent-account existence check
