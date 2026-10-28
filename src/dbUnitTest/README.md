@@ -362,7 +362,7 @@ Unsupported incoming data/structure fails closed; compact `observe` grants no
 implicit exemption. Historical seeds retain full registered replay and are not
 incoming additions. No synthetic preparation is borrowed. Only the three fixed
 framework self-suites requiring absent observations are excluded from retained
-owners; all application owners remain and all 41 fresh suites run. Shared
+owners; all application owners remain and all 42 fresh suites run. Shared
 committed observation cleanup, distinct-backend absence and an independent
 no-other-client-sessions probe on the test-owned target, plus owned container/
 every-volume absence, remain mandatory after failure. Both profiles are attempted
