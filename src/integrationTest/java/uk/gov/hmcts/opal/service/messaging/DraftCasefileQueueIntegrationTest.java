@@ -32,7 +32,6 @@ import uk.gov.hmcts.opal.BaseIntegrationTest;
 import uk.gov.hmcts.opal.common.user.authorisation.model.Permission;
 import uk.gov.hmcts.opal.logging.integration.service.LoggingService;
 import uk.gov.hmcts.opal.repository.DraftCasefileRepository;
-import uk.gov.hmcts.opal.repository.PublicationEvidenceRepository;
 import uk.gov.hmcts.opal.support.DraftCasefileHttpFixture;
 
 import java.net.ServerSocket;
@@ -52,7 +51,6 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.context.jdbc.Sql.ExecutionPhase.AFTER_TEST_METHOD;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /** Opt-in tests require an otherwise unused queue provisioned for this test run. */
@@ -71,9 +69,7 @@ class DraftCasefileQueueIntegrationTest extends BaseIntegrationTest {
     @Autowired
     private DraftCasefileRepository drafts;
     @Autowired
-    private PublicationEvidenceRepository evidence;
-    @Autowired
-    private DraftCasefileQueuePublisher observed;
+    private DraftCasefileQueuePublisher selectedPublisher;
     @MockitoSpyBean
     private DraftCasefileQueuePublisherImpl publisher;
     @MockitoBean
@@ -118,21 +114,19 @@ class DraftCasefileQueueIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
-    void actualApprovalUsesObservedPublisherAndAcknowledgesRealBrokerSend() throws Exception {
-        long id = registeredDraft();
-        assertThat(observed).isInstanceOf(ObservedDraftCasefileQueuePublisher.class);
+    void actualApprovalUsesBasePublisherAndSendsOnceToRealBroker() throws Exception {
+        long id = submittedDraft();
+        assertThat(selectedPublisher).isInstanceOf(DraftCasefileQueuePublisherImpl.class);
         approve(id).andExpect(status().isOk());
         assertMessage(sentMessage(id));
-        assertAcknowledged(id);
         approve(id).andExpect(status().isConflict());
-        assertAcknowledged(id);
         verify(publisher, times(1)).publish(argThat(message -> message.draftCasefileId().equals(id)));
         assertNoReplay();
     }
 
     @Test
-    void acceptedMessageAndAcknowledgmentSurviveDatabaseCommitFailureWithoutAudit() throws Exception {
-        long id = registeredDraft();
+    void acceptedMessageSurvivesDatabaseCommitFailureWithoutAudit() throws Exception {
+        long id = submittedDraft();
         final var before = drafts.findById(id).orElseThrow();
         clearInvocations(logging);
         doAnswer(invocation -> {
@@ -149,7 +143,6 @@ class DraftCasefileQueueIntegrationTest extends BaseIntegrationTest {
         assertThat(drafts.findById(id).orElseThrow()).usingRecursiveComparison().isEqualTo(before);
         verifyNoInteractions(logging);
         assertMessage(sentMessage(id));
-        assertAcknowledged(id);
         verify(publisher, times(1)).publish(argThat(message -> message.draftCasefileId().equals(id)));
         assertNoReplay();
     }
@@ -188,7 +181,7 @@ class DraftCasefileQueueIntegrationTest extends BaseIntegrationTest {
         assertThat(message.getJMSDeliveryMode()).isEqualTo(DeliveryMode.PERSISTENT);
     }
 
-    private long registeredDraft() throws Exception {
+    private long submittedDraft() throws Exception {
         var body = JSON.readTree(DraftCasefileHttpFixture.requestBody());
         ((ObjectNode) body.at("/casefile/respondent_account"))
             .put("remo_reference", "E2E-0123456789abcdef");
@@ -196,10 +189,6 @@ class DraftCasefileQueueIntegrationTest extends BaseIntegrationTest {
             .content(body.toString()).with(authentication(DraftCasefileHttpFixture.token((short) 1))))
             .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
         long id = JSON.readTree(created).get("draft_casefile_id").longValue();
-        mockMvc.perform(post("/testing-support/draft-casefiles/{id}/publication-evidence", id)
-            .with(authentication(DraftCasefileHttpFixture.token((short) 1)))
-            .header("Test-Run-Reference", "E2E-0123456789abcdef"))
-            .andExpect(status().isCreated()).andExpect(jsonPath("$.send_attempt_count").value(0));
         return id;
     }
 
@@ -211,16 +200,6 @@ class DraftCasefileQueueIntegrationTest extends BaseIntegrationTest {
             .contentType(MediaType.APPLICATION_JSON)
             .content("{\"business_unit_id\":1,\"casefile_status\":\"PUBLISHING_PENDING\"}")
             .with(authentication(checker)));
-    }
-
-    private void assertAcknowledged(long id) {
-        var observation = evidence.findObservation(id).orElseThrow();
-        var counts = evidence.counts(observation.observationId());
-        assertThat(counts.sendAttemptCount()).isEqualTo(1L);
-        assertThat(counts.acknowledgedSendCount()).isEqualTo(1L);
-        assertThat(counts.uncertainSendCount()).isZero();
-        assertThat(counts.unfinishedSendCount()).isZero();
-        assertThat(counts.evidenceComplete()).isTrue();
     }
 
     private void assertNoReplay() {
