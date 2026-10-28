@@ -51,6 +51,13 @@ the implementation has not yet run it.
   identify the confirmed responsible human contributor rather than an agent.
 - Secret handling, log safety, configuration defaults, operational endpoints,
   and dependency suppressions.
+- For procedure changes, verify the
+  [common explicit error handler](DATABASE_MIGRATIONS.md#exception-messages-and-defaults),
+  preserved SQLSTATE and applicable diagnostics, and the
+  [declared validation owner](DATABASE_MIGRATIONS.md#validation-ownership-and-integrity).
+  An unchanged rethrow does not sanitise native errors; changed exposure requires
+  separate caller response/log evidence. Keep database and backend coverage
+  distinct and report a missing owner or test dependency accurately.
 - Test coverage for likely regressions and evidence for required checks.
 - Check [SQL layout](DATABASE_MIGRATIONS.md#sql-readability),
   [pgTAP file headers](TESTING.md#pgtap-file-headers), and
@@ -84,20 +91,41 @@ against the changed contract and its delivery evidence:
   simplification preserves the required SQLSTATE, diagnostic context, atomicity,
   and caller behaviour. Failures propagate rather than becoming successful
   results.
+- New Maintenance procedures have the common explicit catch/rethrow block; this
+  does not impose constraint-duplicating prechecks or replacement messages for
+  native failures. A SQLSTATE appearing only in error text is not preserved code.
+  Any agreed translation or removal of a sanitising wrapper has a documented
+  contract and applicable diagnostics/response/log checks. Preserve immutable
+  migrations and do not treat INSERT formatting as a runtime defect.
 - Parameters, outputs, affected rows, transaction ownership, run-status
   ownership, locks, retry behaviour, and compatibility match the agreed routine
   scope. Additional guards, locks, or cross-layer changes need evidence of the
   supported scenario and owner, rather than a speculative requirement.
-- Each routine has one self-contained owning suite under the authoritative
+- Each routine has one owning suite under the authoritative
   [pgTAP suite layout](TESTING.md#pgtap-suite-layout), with catalogue and
-  behavioural assertions, fixtures, test-only SQL helpers, and cleanup.
+  behavioural assertions, independent expectations, fixtures and real-session
+  coordination. Migration declarations identify created/replaced objects,
+  relevant preservation scope and compatible fresh/candidate assertion groups.
   Database assertions and test coordination stay in SQL/pgTAP and run through
   the existing Gradle-owned `dbUnitTest` framework. New suites are directly
-  under `src/dbUnitTest`, with no new subdirectories or separate support SQL;
-  existing paths remain unless relocation is explicitly in scope.
+  under `src/dbUnitTest`; existing paths remain unless relocation is in scope.
+  The fixed support manifest controls shared lifecycle/capture/comparison and
+  helper fingerprints. Optional `upgradeCases/` scripts are explicitly declared
+  for approved synthetic preparation or risk-specific transitions; fixed
+  regressions remain under `framework/`. None is discovered as a fresh owning
+  suite. New suites reuse shared dispatch rather than copying observation,
+  transaction and cleanup phases. Existing legacy registrations retain their
+  covered interface until separately reviewed adaptation is verified.
   Consolidation retains all applicable coverage and uses existing discovery.
   Do not introduce separate Python or shell database test runners, including
   temporary, ignored, or generated scripts and executable runbook recipes.
+- Selection validates committed HEAD and comparison migration paths/bytes and
+  append-only selected history before creating targets. Full fallback must not
+  conceal immutable-history or duplicate-version errors. Evidence records the
+  actual PR base/tested revision, selected/excluded outcomes and Unverified
+  locations. Shared infrastructure changes require full replay and the automatic
+  native framework matrix; framework acceptance is separate from each consumer's
+  passing fresh and affected/full boundary execution.
 - Required upgrade or multiple-session concurrency coverage identifies an
   actual supported mechanism and execution evidence. Concurrency may be
   coordinated inside the owning SQL/pgTAP suite, including test-only `dblink`,

@@ -77,6 +77,10 @@ Use both [docs/CODE_REVIEW_GUIDELINES.md](docs/CODE_REVIEW_GUIDELINES.md) and [d
 
 ## Task-specific workflows
 
+Follow the maintained [database coverage and ownership contract](docs/TESTING.md#maintained-predecessor-upgrade-contract) and [pgTAP suite layout](docs/TESTING.md#pgtap-suite-layout) for database verification.
+
+For stored procedures, follow the canonical [exception contract](docs/DATABASE_MIGRATIONS.md#exception-messages-and-defaults) and [validation ownership guidance](docs/DATABASE_MIGRATIONS.md#validation-ownership-and-integrity).
+
 Use an available task-specific skill when its description matches the requested work.
 
 Repository standards apply whether or not a relevant skill is available,
