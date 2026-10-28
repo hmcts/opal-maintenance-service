@@ -64,6 +64,7 @@ class DraftCasefileCleanupServiceTest {
         ordered.verify(users).requireAuthorisedUser((short) 1, CREATE_MANAGE_DRAFT_CASEFILES);
         ordered.verify(repository).delete(draft);
         ordered.verify(repository).flush();
+        verifyNoInteractions(graphs);
     }
 
     @ParameterizedTest
@@ -78,6 +79,7 @@ class DraftCasefileCleanupServiceTest {
         service.cleanup(41L, RUN);
         verify(repository).delete(draft);
         verify(repository).flush();
+        verifyNoInteractions(graphs);
     }
 
     @Test
@@ -98,15 +100,17 @@ class DraftCasefileCleanupServiceTest {
         assertNoDeletion();
     }
 
-    @Test
-    void rejectsDifferentStoredSubmitter() {
-        found(ownedDraft().toBuilder().submittedBy("BUU-OTHER").build());
+    @ParameterizedTest
+    @EnumSource(DraftCasefileStatus.class)
+    void rejectsDifferentStoredSubmitter(DraftCasefileStatus status) {
+        found(ownedDraft().toBuilder().casefileStatus(status).submittedBy("BUU-OTHER").build());
         assertDenied();
     }
 
-    @Test
-    void missingPermissionRejectsWithoutDeletion() {
-        found(ownedDraft());
+    @ParameterizedTest
+    @EnumSource(DraftCasefileStatus.class)
+    void missingPermissionRejectsWithoutDeletion(DraftCasefileStatus status) {
+        found(ownedDraft().toBuilder().casefileStatus(status).build());
         AccessDeniedException failure = new AccessDeniedException("Permission is required");
         when(users.requireAuthorisedUser((short) 1, CREATE_MANAGE_DRAFT_CASEFILES)).thenThrow(failure);
         assertThatThrownBy(() -> service.cleanup(41L, RUN)).isSameAs(failure);
@@ -229,6 +233,7 @@ class DraftCasefileCleanupServiceTest {
     private void assertNoDeletion() {
         verify(repository, never()).delete(any(DraftCasefileEntity.class));
         verify(repository, never()).flush();
+        verifyNoInteractions(graphs);
     }
 
     private static Stream<DraftCasefileEntity> publicationFields() {

@@ -2,6 +2,8 @@ package uk.gov.hmcts.opal.repository;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.dao.DataAccessException;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -12,6 +14,7 @@ import uk.gov.hmcts.opal.exception.DraftCasefileError;
 import uk.gov.hmcts.opal.mapper.DraftCasefilePublicationMapper;
 
 import java.math.BigDecimal;
+import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -25,6 +28,23 @@ import java.util.Set;
 public class DraftCasefileCleanupRepository {
     private final NamedParameterJdbcTemplate jdbc;
     private final DraftCasefilePublicationMapper mapper;
+
+    public void lockPublicationTargetsForCleanup() {
+        // Polymorphic helpers validate these targets without row locks. Exclude their reads until commit.
+        // NOWAIT bounds acquisition: rollback lets an existing writer finish before a later cleanup retry.
+        try {
+            jdbc.getJdbcTemplate().execute("""
+                LOCK TABLE public.respondent_accounts, public.creditor_accounts, public.parties
+                IN ACCESS EXCLUSIVE MODE NOWAIT
+                """);
+        } catch (DataAccessException failure) {
+            // The configured JDBC translator leaves PostgreSQL lock_not_available uncategorised.
+            if (failure.getMostSpecificCause() instanceof SQLException sql && "55P03".equals(sql.getSQLState())) {
+                throw new DataAccessResourceFailureException("Test cleanup targets are currently in use", failure);
+            }
+            throw failure;
+        }
+    }
 
     public void deleteUnversionedDraft(Long draftId) {
         // Spring Data treats a null @Version as new and otherwise silently skips deletion.
@@ -141,7 +161,7 @@ public class DraftCasefileCleanupRepository {
                 SELECT debtor_detail_id FROM debtor_detail WHERE debtor_detail_id=:id FOR UPDATE
                 """, Map.of("id", debtor), Long.class).size() == 1);
         }
-        // Recheck all graph references before deleting. Cleanup-only writer protection is added separately.
+        // Recheck all graph references while the cleanup transaction excludes target-validating writers.
         require(count("""
             SELECT COUNT(*) FROM draft_casefiles WHERE account_id=:respondent AND draft_casefile_id<>:draft
             """, parameters) == 0);
