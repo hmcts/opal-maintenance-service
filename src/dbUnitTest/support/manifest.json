@@ -1,0 +1,8 @@
+{
+  "files": [
+    "src/dbUnitTest/framework/upgrade_lifecycle.sql",
+    "src/dbUnitTest/support/upgrade_contract.sql",
+    "src/dbUnitTest/support/upgrade_dispatch.sql",
+    "src/dbUnitTest/support/parent_transition.sql"
+  ]
+}
