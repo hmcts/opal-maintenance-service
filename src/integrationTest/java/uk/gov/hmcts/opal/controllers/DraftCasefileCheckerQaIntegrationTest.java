@@ -288,7 +288,7 @@ class DraftCasefileCheckerQaIntegrationTest extends BaseIntegrationTest {
 
     private void assertDeniedDecision(OwnedDraft draft, OpalJwtAuthenticationToken caller, String etag,
                                       int expectedStatus, String type) throws Exception {
-        State before = state(draft);
+        final State before = state(draft);
 
         clearInvocations(logging);
         assertProblem(decision(draft, caller, etag, "PUBLISHING_PENDING"), expectedStatus, type, draft);
