@@ -16,6 +16,8 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.context.jdbc.Sql;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.json.JsonMapper;
 import uk.gov.hmcts.opal.BaseIntegrationTest;
 import uk.gov.hmcts.opal.authorisation.MaintenanceUser;
@@ -41,6 +43,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
@@ -81,6 +84,8 @@ class DraftCasefilePublishedCleanupIntegrationTest extends BaseIntegrationTest {
     private DraftCasefilePublicationFailureService failures;
     @Autowired
     private MockMvc mvc;
+    @Autowired
+    private PlatformTransactionManager transactionManager;
     @MockitoSpyBean
     private DraftCasefileRepository drafts;
     @MockitoSpyBean
@@ -97,6 +102,24 @@ class DraftCasefilePublishedCleanupIntegrationTest extends BaseIntegrationTest {
         when(users.requireAuthorisedUser((short) 32055, CREATE_MANAGE_DRAFT_CASEFILES))
             .thenReturn(new MaintenanceUser(123L, "P55_SUBMIT", "Synthetic saved submitter", "192.0.2.1"));
         when(logging.personalDataAccessLogAsync(any())).thenReturn(true);
+    }
+
+    @Test
+    void cleansPublishedGraphWhileOtherTransactionReadsTargetTables() {
+        final var before = graphRows();
+        publish(ID);
+        try (var workers = Executors.newSingleThreadExecutor()) {
+            new TransactionTemplate(transactionManager).executeWithoutResult(transaction -> {
+                // Keep ordinary reader table locks until cleanup finishes on another connection.
+                for (String table : List.of("respondent_accounts", "creditor_accounts", "parties")) {
+                    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM " + table, Long.class)).isPositive();
+                }
+                var deletion = workers.submit(() -> cleanup.cleanup(ID, RUN));
+                assertThatCode(() -> deletion.get(15, TimeUnit.SECONDS)).doesNotThrowAnyException();
+            });
+        }
+        assertAbsent();
+        assertThat(graphRows()).isEqualTo(before);
     }
 
     @Test
