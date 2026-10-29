@@ -7,6 +7,11 @@ import io.restassured.RestAssured;
 import io.restassured.builder.ResponseBuilder;
 import io.restassured.response.Response;
 import io.restassured.specification.RequestSpecification;
+import java.net.URI;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import net.serenitybdd.rest.SerenityRest;
 import org.junit.jupiter.api.Test;
@@ -22,6 +27,51 @@ class DraftCasefileActionsTest {
     @Test
     void approvalUsesPatchBodyAndStrongIfMatch() {
         assertRequest("PATCH", "{\"decision\":\"APPROVE\"}", "\"4\"");
+    }
+
+    @Test
+    void listPreservesDecodedQueryValuesWithoutInjectionOrDuplicates() {
+        Map<String, String> filters = new LinkedHashMap<>();
+        filters.put("business_unit_id", "44");
+        filters.put("submitted_by", "Synthetic user+unit/one&restrict=counts");
+        filters.put("casefile_status", "SUBMITTED,REJECTED");
+        assertListRequest(filters);
+    }
+
+    @Test
+    void listWithoutFiltersHasNoQueryDelimiter() {
+        assertListRequest(Map.of());
+    }
+
+    private void assertListRequest(Map<String, String> filters) {
+        AtomicBoolean requested = new AtomicBoolean();
+        RequestSpecification request = RestAssured.given().filter((outgoing, response, context) -> {
+            requested.set(true);
+            URI uri = URI.create(outgoing.getURI());
+            assertThat(outgoing.getMethod()).isEqualTo("GET");
+            assertThat(uri.getPath()).isEqualTo("/draft-casefiles");
+            assertThat(outgoing.getHeaders().getValue("Authorization")).isEqualTo("Bearer synthetic-test-token");
+            Map<String, String> decoded = new LinkedHashMap<>();
+            if (uri.getRawQuery() == null) {
+                assertThat(filters).isEmpty();
+                assertThat(outgoing.getURI()).doesNotContain("?");
+            } else {
+                for (String parameter : uri.getRawQuery().split("&")) {
+                    String[] pair = parameter.split("=", 2);
+                    String key = URLDecoder.decode(pair[0], StandardCharsets.UTF_8);
+                    assertThat(decoded).doesNotContainKey(key);
+                    decoded.put(key, URLDecoder.decode(pair[1], StandardCharsets.UTF_8));
+                }
+            }
+            assertThat(decoded).isEqualTo(filters);
+            return new ResponseBuilder().setStatusCode(200).setBody("{}").build();
+        });
+        try (MockedStatic<SerenityRest> http = mockStatic(SerenityRest.class)) {
+            http.when(SerenityRest::given).thenReturn(request);
+            Response result = new DraftCasefileActions().list("synthetic-test-token", filters);
+            assertThat(requested).isTrue();
+            assertThat(result.statusCode()).isEqualTo(200);
+        }
     }
 
     private void assertRequest(String method, String body, String etag) {

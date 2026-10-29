@@ -234,6 +234,105 @@ reports. Never retain bearer tokens, request/response bodies or participant data
 in error messages, report attachments or handoff evidence. A local runtime of
 unknown source revision does not establish live verification of the branch.
 
+### Draft Casefile list journeys (PO-10619)
+
+`draftCasefiles/list/GetDraftCasefiles.feature` contains exactly seven independent
+journeys tagged `@Opal`, `@PO10619` and `@JIRA-STORY:PO-10619`:
+
+1. Filter summaries by owning Business Unit, submitter inclusion and exclusion,
+   reviewable lifecycle and inclusive UTC status dates, with owned positives and negatives.
+2. Count rejected work with the same normal-list filters and no summaries in the counts response.
+3. Count real failed-publication work with the same filters and no summaries in the counts response.
+4. Let the checker review another user's submission while excluding their own.
+5. Return count zero and an empty array for an authorised contradictory filter.
+6. Pair a real published summary with full GET, including respondent, applicant
+   and two minor-creditor identities, validation and unchanged approval history.
+7. Independently pair a real failed summary with full GET, explicit null identities,
+   validation and unchanged approval history.
+
+The split follows the Fines approach: deployed HTTP journeys demonstrate user
+workflows; database integration checks prove boundaries, logging and controlled
+edge cases. Synthetic HTTP glue regressions prove scenario wiring and assertions,
+not deployment behaviour. The counts logging evidence is zero calls to a mocked
+`LoggingService` after the completed HTTP transaction; it does not observe a
+deployed downstream logging sink. Historical dates, foreign Business Units and
+two rejected submitters are controlled integration-fixture proof, not deployed
+setup or authority. Coverage is mapped explicitly:
+
+| Acceptance criterion | Live journey evidence | Supporting integration evidence |
+| --- | --- | --- |
+| AC1: owning unit and combined filters | Journey 1 checks every returned row and owned positive/negative IDs | Foreign Business Unit isolation |
+| AC2: counts restriction | Journeys 2 and 3 compare counts with matching normal-list totals and require count-only responses | Counts path performs no personal-data-access logging |
+| AC3: checker review work | Journey 4 excludes the actual checker submitter identity | Submitter exclusion filtering |
+| AC4: rejected work visibility | Rejected owned fixture supports journeys 1 and 2 | Two rejected submissions and foreign-unit isolation |
+| AC5: authorised empty collection | Journey 5 uses contradictory filters for an actual owned submitter | Empty envelope contract |
+| AC6: date boundaries | Journey 1 uses a UTC day derived from the POST timestamp | Both inclusive seven-day boundaries, immediately before/after them, and an old rejected draft with unbounded listing |
+| AC7: publication summaries | Journeys 6 and 7 pair terminal lists with complete GET assertions | Supporting projection and snapshot coverage |
+
+Each run owns every fixture it creates; the two failed-publication journeys use
+separate new drafts. Each POST receives its own fresh `E2E-` marker, and positive
+Long IDs are captured before later metadata assertions. Filters derive Business
+Unit User IDs from actual POST `submitted_by`, rather than guessing seeded IDs.
+The default inputter is `opal-test@dev.platform.hmcts.net`; the different checker
+and second creator is `opal-test-10@dev.platform.hmcts.net`. Optional overrides
+are `RM_DRAFT_CASEFILE_INPUTTER_USER` and `RM_DRAFT_CASEFILE_CHECKER_USER`.
+Both need create permission 21 for Business Unit 44, and the checker also needs
+check/validate permission 22. Distinct configured users and, where both POSTs
+are available, distinct Business Unit User IDs are required. No users or roles
+are provisioned by these tests.
+
+Use the PO-10618 reference-data prerequisites, compatible Maintenance and User
+services, and non-live testing support. Real approval requires a working broker,
+consumer and database provider `public.p_process_draft_casefiles`. The complete
+fixture has two minor creditors; the failed fixture uses `not-an-amount` and must
+actually reach `PUBLISHING_FAILED`. Polling uses the same strict 60-second deadline
+and 500 ms interval as PO-10618. Unexpected states, missing provider delivery and
+deadline expiry fail; no alternative state, integration fixture or skip substitutes
+for a real terminal outcome. An unknown local image source revision does not
+establish live verification of the branch.
+
+Cleanup attempts every captured draft using its original creator token and marker,
+even after earlier 409 responses or request exceptions. Only 204 confirms cleanup.
+A passing journey fails when cleanup fails; an already failed journey keeps its
+primary failure and receives a safe retained-resource ledger of IDs, markers and
+statuses. Ambiguous POSTs retain a marker for operator follow-up, never retry or
+guess an ID. Credentials are cleared after the hook, including attachment failure.
+Every non-201 create response retains that fixture's unknown ownership and marker
+for operator follow-up. The after hook still attempts all other captured drafts.
+No POST is replayed and unknown IDs are never guessed for cleanup.
+The current cleanup API supports eligible pending drafts and exclusively owned
+initial published graphs. Its authorization, ownership and graph guards remain
+mandatory. Published cleanup follows the updated accepted concurrent-writer risk;
+actual deployed graph read/delete privileges remain unverified. Shared pending drafts are never
+reused or altered. Preserve the safe ledger before another functional invocation
+clears its reports; never retain tokens, request/response payloads or participant data.
+
+Run actual helper/glue JUnit checks without a Cucumber tag property:
+
+```bash
+./gradlew functionalOpal --tests 'uk.gov.hmcts.opal.*.DraftCasefile*Test' --tests 'uk.gov.hmcts.opal.steps.GetDraftCasefileStepDefTest' --tests 'uk.gov.hmcts.opal.steps.ListDraftCasefilesStepDefTest' -Dcucumber.execution.dry-run=true
+./gradlew checkstyleFunctionalTest
+```
+
+Discovery must find exactly seven PO-10619 scenarios, with no undefined or
+ambiguous steps. Discovery does not execute scenario actions:
+
+```bash
+./gradlew functionalOpal -Dcucumber.filter.tags=@PO10619 -Dcucumber.execution.dry-run=true
+```
+
+For actual live verification, set `TEST_URL` and `OPAL_USER_SERVICE_API_URL` to the
+intended non-live environment and satisfy the prerequisites above:
+
+```bash
+./gradlew functionalOpal -Dcucumber.filter.tags=@PO10619
+```
+
+Record actual JUnit counts, seven-scenario discovery and live results separately.
+Normal lists can contain other legitimate matching drafts in the shared unit:
+assert owned inclusion/exclusion and every row's filters, with count equal to
+summary length, rather than asserting that the total equals owned fixture count.
+
 ## Draft Casefile publication tests
 
 The normal integration suite tests HTTP decisions and PostgreSQL transaction

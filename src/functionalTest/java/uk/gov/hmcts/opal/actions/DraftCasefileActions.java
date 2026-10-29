@@ -1,9 +1,14 @@
 package uk.gov.hmcts.opal.actions;
 
 import io.restassured.response.Response;
+import java.util.Map;
 import uk.gov.hmcts.opal.steps.BaseStepDef;
 
 public final class DraftCasefileActions extends BaseStepDef {
+
+    public Response list(String token, Map<String, String> filters) {
+        return getWithBearer("/draft-casefiles", token, filters);
+    }
 
     public Response get(String token, long id) {
         return getWithBearer("/draft-casefiles/" + id, token);
