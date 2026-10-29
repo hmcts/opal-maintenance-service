@@ -139,6 +139,7 @@ opal:
     password: ${OPAL_TEST_USER_PASSWORD:}
   draft-casefile:
     service-bus:
+      consumer-enabled: ${SERVICEBUS_RM_PUBLISH_DRAFT_CASEFILE_CONSUMER_ENABLED:true}
       queue-name: ${SERVICEBUS_RM_PUBLISH_DRAFT_CASEFILE_QUEUE_NAME:rm-publish-draft-casefile-queue}
   common:
     domain: maintenance
@@ -169,6 +170,8 @@ logging:
     opal.UserStateClientService: ERROR
     # Library 0.0.14 exposes payload identifiers and raw JMS errors; the listener logs safe final failures.
     uk.gov.hmcts.opal.logging.integration.service.PdpoAsyncPublisherImpl: "OFF"
+    # Hibernate otherwise logs PostgreSQL failing-row details before consumer exception handling.
+    org.hibernate.orm.jdbc.error: "OFF"
     org:
       hibernate:
         stat: INFO

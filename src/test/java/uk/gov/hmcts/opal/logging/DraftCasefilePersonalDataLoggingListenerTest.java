@@ -93,6 +93,33 @@ class DraftCasefilePersonalDataLoggingListenerTest {
     }
 
     @Test
+    void publicationUsesExactAuditMapping() {
+        when(logging.personalDataAccessLogAsync(any())).thenReturn(true);
+        var resubmission = new DraftCasefilePersonalDataEvent(Operation.PUBLICATION, event.draftId(),
+            event.userId(), event.ipAddress(), event.occurredAt(), event.participantCategories());
+        listener.onPersonalDataAccess(resubmission);
+        ArgumentCaptor<PersonalDataProcessingLogDetails> payloads =
+            ArgumentCaptor.forClass(PersonalDataProcessingLogDetails.class);
+        verify(logging, times(4)).personalDataAccessLogAsync(payloads.capture());
+        assertThat(payloads.getAllValues()).extracting(PersonalDataProcessingLogDetails::getBusinessIdentifier)
+            .containsExactly("Publish Approved Casefile - Respondent",
+                "Publish Approved Casefile - Applicant / Beneficiary",
+                "Publish Approved Casefile - Related parties", "Publish Approved Casefile - Minor Creditor");
+        assertThat(payloads.getAllValues()).allSatisfy(payload -> {
+            assertThat(payload.getCategory()).isEqualTo(PersonalDataProcessingCategory.ALTERATION);
+            assertThat(payload.getCreatedAt()).isEqualTo(event.occurredAt().atOffset(ZoneOffset.UTC));
+            assertThat(payload.getCreatedBy().getIdentifier()).isEqualTo("99");
+            assertThat(payload.getCreatedBy().getType().getType()).isEqualTo("OPAL_USER_ID");
+            assertThat(payload.getIpAddress()).isEqualTo("192.0.2.1");
+            assertThat(payload.getRecipient()).isNull();
+            assertThat(payload.getIndividuals()).singleElement().satisfies(individual -> {
+                assertThat(individual.getIdentifier()).isEqualTo("123");
+                assertThat(individual.getType().getType()).isEqualTo("RM_DRAFT_CASEFILE");
+            });
+        });
+    }
+
+    @Test
     void sendsConsultationMetadataOncePerCategory() {
         Instant viewedAt = Instant.parse("2026-10-03T12:00:00Z");
         var viewEvent = new DraftCasefilePersonalDataEvent(Operation.VIEW, 123L, 99L, "192.0.2.1",
@@ -121,7 +148,7 @@ class DraftCasefilePersonalDataLoggingListenerTest {
 
     @ParameterizedTest
     @EnumSource(value = Operation.class,
-        names = {"SUBMISSION", "VIEW", "RESUBMISSION", "APPROVAL", "REJECTION", "DELETION"})
+        names = {"SUBMISSION", "VIEW", "RESUBMISSION", "APPROVAL", "REJECTION", "DELETION", "PUBLICATION"})
     void falseResultsDoNotEscapeOrPreventLaterCategoriesAndDiagnosticsAreSafe(Operation operation) {
         when(logging.personalDataAccessLogAsync(any())).thenReturn(false);
         assertSafeFailureDiagnostics(operation);
@@ -129,7 +156,7 @@ class DraftCasefilePersonalDataLoggingListenerTest {
 
     @ParameterizedTest
     @EnumSource(value = Operation.class,
-        names = {"SUBMISSION", "VIEW", "RESUBMISSION", "APPROVAL", "REJECTION", "DELETION"})
+        names = {"SUBMISSION", "VIEW", "RESUBMISSION", "APPROVAL", "REJECTION", "DELETION", "PUBLICATION"})
     void exceptionsDoNotEscapeOrPreventLaterCategoriesAndDiagnosticsAreSafe(Operation operation) {
         when(logging.personalDataAccessLogAsync(any())).thenThrow(new IllegalStateException(
             "SYNTHETIC_CASEFILE SYNTHETIC_NAME SYNTHETIC_BANK 192.0.2.1"));
@@ -212,6 +239,7 @@ class DraftCasefilePersonalDataLoggingListenerTest {
             case SUBMISSION -> "Submit Draft Casefile - ";
             case RESUBMISSION -> "Resubmit Draft Casefile - ";
             case APPROVAL -> "Approve Draft Casefile - ";
+            case PUBLICATION -> "Publish Approved Casefile - ";
             case REJECTION -> "Reject Draft Casefile - ";
             case DELETION -> "Delete Draft Casefile - ";
             case VIEW, LIST_VIEW -> "View Draft Casefile - ";

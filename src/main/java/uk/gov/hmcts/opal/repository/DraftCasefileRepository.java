@@ -22,6 +22,10 @@ public interface DraftCasefileRepository extends JpaRepository<DraftCasefileEnti
     @Query("select draft from DraftCasefileEntity draft where draft.draftCasefileId = :draftCasefileId")
     Optional<DraftCasefileEntity> findForCleanupById(@Param("draftCasefileId") Long draftCasefileId);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select draft from DraftCasefileEntity draft where draft.draftCasefileId = :draftCasefileId")
+    Optional<DraftCasefileEntity> findForPublicationById(@Param("draftCasefileId") Long draftCasefileId);
+
     default List<DraftCasefileSummaryProjection> findSummaries(DraftCasefileFilter filter) {
         return findBy(DraftCasefileSpecs.matches(filter), query -> query
             .as(DraftCasefileSummaryProjection.class)

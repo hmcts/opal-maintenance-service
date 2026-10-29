@@ -10,7 +10,8 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 @Testcontainers
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+    properties = "opal.draft-casefile.service-bus.consumer-enabled=false")
 @ActiveProfiles({"integration"})
 @SuppressWarnings("HideUtilityClassConstructor")
 public class BaseIntegrationTest {

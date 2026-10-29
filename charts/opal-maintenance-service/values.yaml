@@ -47,6 +47,7 @@ java:
     FLYWAY_LOCATIONS: classpath:db/migration/ddl,classpath:db/migration/data/allEnvs
     SERVICEBUS_LOGGING_PDPL_PROTOCOL: amqps
     SERVICEBUS_PROTOCOL: amqps
+    SERVICEBUS_RM_PUBLISH_DRAFT_CASEFILE_CONSUMER_ENABLED: true
   postgresql:
     enabled: false
     image:

@@ -98,4 +98,20 @@ public class DraftCasefileEntity {
     @Column(name = "version_number")
     @Version
     private Long versionNumber;
+
+    public void markPublished(Long publishedAccountId, String publishedAccountNumber, String snapshotJson,
+                              LocalDateTime publishedAt) {
+        accountId = publishedAccountId;
+        accountNumber = publishedAccountNumber;
+        casefileSnapshot = snapshotJson;
+        casefileStatus = DraftCasefileStatus.PUBLISHED;
+        casefileStatusDate = publishedAt;
+        statusMessage = null;
+    }
+
+    public void markPublishingFailed(String safeStatusMessage, LocalDateTime failedAt) {
+        casefileStatus = DraftCasefileStatus.PUBLISHING_FAILED;
+        casefileStatusDate = failedAt;
+        statusMessage = safeStatusMessage;
+    }
 }

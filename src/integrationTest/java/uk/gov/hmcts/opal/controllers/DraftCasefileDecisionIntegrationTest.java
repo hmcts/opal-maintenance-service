@@ -40,6 +40,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
@@ -123,7 +124,7 @@ class DraftCasefileDecisionIntegrationTest extends BaseIntegrationTest {
             assertThat(after.get(column)).as(column).isEqualTo(before.get(column));
         }
         if (target.equals("PUBLISHING_PENDING")) {
-            verify(publisher).publish(id);
+            verify(publisher).publish(argThat(message -> message.draftCasefileId().equals(id)));
             assertThat(after.get("status_message")).isNull();
             assertThat(after.get("validated_by")).isEqualTo("BUU-1");
             assertThat(after.get("validated_by_name")).isEqualTo("Synthetic Submitter");
@@ -240,7 +241,8 @@ class DraftCasefileDecisionIntegrationTest extends BaseIntegrationTest {
     void failedSendRollsBackAndReturnsSafe503(CapturedOutput output) throws Exception {
         long id = draft("SUBMITTED");
         Map<String, Object> before = row(id);
-        doThrow(new UncategorizedJmsException(PRIVATE)).when(publisher).publish(id);
+        doThrow(new UncategorizedJmsException(PRIVATE)).when(publisher)
+            .publish(argThat(message -> message.draftCasefileId().equals(id)));
         int start = output.getAll().length();
         String response = mockMvc.perform(request(id, body("PUBLISHING_PENDING")))
             .andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.operation_id").isNotEmpty())
