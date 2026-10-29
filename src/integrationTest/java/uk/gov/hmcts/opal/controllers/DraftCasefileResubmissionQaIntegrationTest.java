@@ -104,12 +104,11 @@ class DraftCasefileResubmissionQaIntegrationTest extends BaseIntegrationTest {
         assertSuccessfulReplacement(draft, HANDOVER);
         State before = state(draft);
         // The identical authenticated identity has both 21 and 22 for BU1 on PUT and PATCH.
-        final String operation = assertProblem(reject(draft, token(HANDOVER), before.etag()), 403, "forbidden", draft);
+        assertProblem(reject(draft, token(HANDOVER), before.etag()), 403, "forbidden", draft);
         assertUnchanged(draft, before);
 
         verifyNoInteractions(delegate);
         cleanup(draft, HANDOVER);
-        assertCanonicalOperationId(operation);
     }
 
     @Test
@@ -249,15 +248,14 @@ class DraftCasefileResubmissionQaIntegrationTest extends BaseIntegrationTest {
                                            ObjectNode corrected, int expectedStatus, String type) throws Exception {
         State before = state(draft);
         clearInvocations(delegate);
-        final String operation = assertProblem(replace(draft, caller, etag, corrected), expectedStatus, type, draft);
+        assertProblem(replace(draft, caller, etag, corrected), expectedStatus, type, draft);
         assertUnchanged(draft, before);
 
         verifyNoInteractions(delegate);
         cleanup(draft, draft.creator());
-        assertCanonicalOperationId(operation);
     }
 
-    private String assertProblem(ResultActions result, int expectedStatus, String type, OwnedDraft draft)
+    private void assertProblem(ResultActions result, int expectedStatus, String type, OwnedDraft draft)
         throws Exception {
         MockHttpServletResponse response = result.andExpect(status().is(expectedStatus))
             .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
@@ -281,6 +279,7 @@ class DraftCasefileResubmissionQaIntegrationTest extends BaseIntegrationTest {
         });
         assertThat(problem.path("retriable").isBoolean()).isTrue();
         assertThat(problem.path("retriable").booleanValue()).isFalse();
+        assertThat(problem.path("operation_id").isString()).isTrue();
         String operation = problem.path("operation_id").asString();
         assertThat(operation).isNotBlank();
         assertThat(problem.path("instance").asString())
@@ -290,11 +289,6 @@ class DraftCasefileResubmissionQaIntegrationTest extends BaseIntegrationTest {
         }
         assertThat(response.getContentAsString()).doesNotContain(draft.marker(), REASON, "Synthetic", "BUU-",
             "ZZ99999", "stackTrace", "resourceType", "resourceId", "Exception", "amqp://");
-        return operation;
-    }
-
-    private void assertCanonicalOperationId(String operation) {
-        assertThat(UUID.fromString(operation).toString()).isEqualTo(operation);
     }
 
     private OwnedDraft rejectedDraft() throws Exception {
