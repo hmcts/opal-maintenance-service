@@ -33,6 +33,11 @@ def configurePrUserService(String namespace) {
 }
 
 withPipeline(type, product, component) {
+  afterSuccess('build') {
+    // Keep active Gradle downloads outside the workspace while ACR packages it.
+    env.GRADLE_USER_HOME = "${env.WORKSPACE}@tmp/gradle-user-home"
+  }
+
   if (!env.OPAL_USER_SERVICE_API_URL && !env.CHANGE_ID) {
     env.OPAL_USER_SERVICE_API_URL = 'https://opal-user-service.staging.platform.hmcts.net'
   }
