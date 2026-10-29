@@ -176,8 +176,8 @@ tasks.register('dbUnitTestProfileTest') {
       }
     }
     def modules = [
-      [group:'org.flywaydb', name:'flyway-core', version:'13.10.0'],
-      [group:'org.flywaydb', name:'flyway-database-postgresql', version:'13.10.0']
+      [group:'org.flywaydb', name:'flyway-core', version:'13.11.1'],
+      [group:'org.flywaydb', name:'flyway-database-postgresql', version:'13.11.1']
     ]
     check('resolved-runtime-agreement') {
       def actual = project.ext.resolveDbUnitTestFlywayVersion(modules +
