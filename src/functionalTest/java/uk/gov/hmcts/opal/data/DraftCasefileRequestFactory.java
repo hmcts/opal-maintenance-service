@@ -1,6 +1,7 @@
 package uk.gov.hmcts.opal.data;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -42,6 +43,11 @@ public final class DraftCasefileRequestFactory {
         ObjectNode term = terms.get(0).deepCopy();
         term.put("creditor_type", "Minor Creditor").put("minor_creditor_sequence", sequence);
         ((ObjectNode) term.at("/result_responses/0")).put("response", amount);
+        for (JsonNode response : term.path("result_responses")) {
+            if ("Creditor".equals(response.path("parameter_name").asText())) {
+                ((ObjectNode) response).put("response", "Synthetic " + surname);
+            }
+        }
         terms.add(term);
     }
 
@@ -58,7 +64,13 @@ public final class DraftCasefileRequestFactory {
                       "date_arrears_last_updated":"2026-09-01","interest_flag":false,
                       "indexation":"None","payment_arrangement":"Court","payment_period":"Monthly",
                       "order_terms":[{"result_id":"MAT","creditor_type":"Applicant",
-                        "result_responses":[{"parameter_name":"Amount","response":"100.00"}]}]}},
+                        "result_responses":[
+                          {"parameter_name":"Amount","response":"100.00"},
+                          {"parameter_name":"Frequency","response":"Monthly"},
+                          {"parameter_name":"Creditor","response":"Synthetic Applicant"},
+                          {"parameter_name":"Respondent","response":"Synthetic Respondent"},
+                          {"parameter_name":"Payment","response":"Payable through the Court"},
+                          {"parameter_name":"Commencement","response":"2026-09-01"}]}]}},
                   "applicant":{"party_details":{"organisation":false,
                     "individual_details":{"forenames":"Synthetic","surname":"Applicant"},
                     "address":{"address_line_1":"Synthetic address","cjs_code":1}},
