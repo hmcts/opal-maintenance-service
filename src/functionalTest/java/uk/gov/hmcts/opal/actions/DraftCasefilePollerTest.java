@@ -40,10 +40,12 @@ class DraftCasefilePollerTest {
 
     @Test
     void terminalMismatchFailsImmediately() {
-        assertThrows(AssertionError.class, () -> poller.await(() -> {
+        AssertionError failure = assertThrows(AssertionError.class, () -> poller.await(() -> {
             reads.incrementAndGet();
             return status("PUBLISHING_FAILED");
         }, "PUBLISHED"));
+        assertEquals("Draft Casefile reached an unexpected lifecycle state: expected PUBLISHED"
+            + " but was PUBLISHING_FAILED", failure.getMessage());
         assertEquals(1, reads.get());
     }
 
