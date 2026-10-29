@@ -189,10 +189,18 @@ class DraftCasefileDecisionAssertionsTest {
             assertSafeProblem(missing, status, kind);
             assertSafeProblem(original.deepCopy().put(field, MARKER), status, kind);
         }
+        for (String operation : new String[] {"", " ", "\t"}) {
+            ObjectNode blank = original.deepCopy().put("operation_id", operation)
+                .put("instance", "https://hmcts.gov.uk/problems/instance/" + operation);
+            assertSafeProblem(blank, status, kind);
+        }
+        assertSafeProblem(original.deepCopy().putNull("operation_id"), status, kind);
+        assertSafeProblem(original.deepCopy().put("operation_id", 123), status, kind);
+        assertSafeProblem(original.deepCopy().put("operation_id", true), status, kind);
         assertSafeProblem(original.deepCopy().put("retriable", true), status, kind);
         assertSafeProblem(original.deepCopy().put("status", status == 403 ? 409 : 403), status, kind);
         assertSafeProblem(original.deepCopy().put("status", (double) status), status, kind);
-        assertSafeProblem(original.deepCopy().put("operation_id", "650e8400-e29b-41d4-a716-446655440000"),
+        assertSafeProblem(original.deepCopy().put("operation_id", "33e626552a324ac3ab9bc02588fd4fec"),
             status, kind);
         Response wrongType = new ResponseBuilder().clone(problem(kind, null))
             .setContentType("application/json").build();
@@ -333,8 +341,8 @@ class DraftCasefileDecisionAssertionsTest {
         };
         ObjectNode root = JSON.createObjectNode().put("type", "https://hmcts.gov.uk/problems/" + kind)
             .put("title", status == 403 ? "Forbidden" : "Conflict").put("detail", detail).put("status", status)
-            .put("retriable", false).put("operation_id", "550e8400-e29b-41d4-a716-446655440000")
-            .put("instance", "https://hmcts.gov.uk/problems/instance/550e8400-e29b-41d4-a716-446655440000");
+            .put("retriable", false).put("operation_id", "23e626552a324ac3ab9bc02588fd4fec")
+            .put("instance", "https://hmcts.gov.uk/problems/instance/23e626552a324ac3ab9bc02588fd4fec");
         String raw = root.toString();
         if (extra != null) {
             raw = raw.substring(0, raw.length() - 1) + "," + extra + "}";
