@@ -141,8 +141,12 @@ destination; the existing `SERVICEBUS_CONNECTION_STRING`, `SERVICEBUS_PROTOCOL`,
 `SERVICEBUS_SEND_TIMEOUT_MS` and `SERVICEBUS_IDLE_TIMEOUT_MS` settings control the
 connection. PR deployments provision a release-prefixed queue automatically.
 
-The publisher sends only the draft ID. The publication consumer is delivered
-separately; an approval remains pending until that consumer processes it.
+The base publisher sends the four-field publication message: `draft_casefile_id`,
+`checker_user_id`, `originating_ip_address` and `approval_timestamp`. Approval remains
+`PUBLISHING_PENDING` until the existing consumer processes it. Testing support does
+not decorate the publisher, observe sends or change the consumer/transaction boundary.
+Browser request count, producer invocation, broker acceptance/redelivery and a
+published account are separate observations.
 
 ## Debug logging
 
@@ -165,9 +169,10 @@ For an IntelliJ or Gradle service run, enable all testing-support endpoints with
 TESTING_SUPPORT_ENDPOINTS_ENABLED=true
 ```
 
-The same flag controls diagnostics and draft cleanup; there is no separate cleanup
-switch. Normal `./gradlew build`, `test` and `integration` commands need no new
-settings because the tests supply their own configuration.
+The application and base Helm default is false; keep it false in production.
+The same flag controls diagnostics and the dedicated draft cleanup DELETE. Normal
+`./gradlew build`, `test` and `integration` commands need no new settings because
+the tests supply their own configuration.
 
 Standalone `docker compose up --build` enables testing support by default (override
 with `TESTING_SUPPORT_ENDPOINTS_ENABLED=false`). The shared-stack Compose file
@@ -176,10 +181,38 @@ inherits the flag from
 
 No extra RM environment file or endpoint-specific owner variables are needed.
 Cleanup uses the logged-in user's normal User Service identity, requires permission
-21 in the stored draft's business unit, and verifies that the caller submitted it.
-The scenario must still submit synthetic data, retain the POST ID and send the exact
-run reference used in its REMO Reference field. Published/validated drafts remain
-ineligible.
+21 in the stored draft's BU, checks the latest persisted submitter and compares the
+exact stored REMO marker to `Test-Run-Reference` (`^E2E-[0-9a-f]{16}$`). Capture ID,
+owning inputter and marker before UI assertions. Complete normal GET/re-entry,
+version, lifecycle, snapshot and timeline assertions before after-hook DELETE.
+Owned unlinked lifecycle states, approved pending drafts and eligible exclusive
+published graphs are supported; shared/inconsistent/active graphs are refused.
+
+Published cleanup has no additional table-wide locks. On 28 October 2026 the user
+accepted the risk of cleanup overlapping concurrent published-graph writes and
+requested removal of that protection. Existing row locks, foreign keys and the
+atomic cleanup transaction remain, but polymorphic notes/associations can still
+race with deletion. An after-hook does not guarantee asynchronous work has ended.
+Avoid overlapping writes where practical and record failed cleanup entries.
+Verify the actual deployed DB role can read/delete the owned graph; no additional
+explicit table-lock permission is required. See the [published operating contract](PUBLISHED_DRAFT_CASEFILE_CLEANUP.md).
+
+Retain failed cleanup entries until 204. Persistence unavailability can
+return 503 with rollback; use bounded client retry/backoff. A 409 requires scope or
+graph investigation. No publisher evidence routes, evidence schema, pool admission
+aspect, automatic retry or generic SQL endpoint is supplied.
+
+This new support lineage has no migration/procedure differences from its approved
+PO-10629 base. On 28 October 2026 the user explicitly confirmed that V1_67–V1_69
+were never applied to any shared or retained database; this is attestation, not a
+direct database audit. The existing support branch will be updated and PR #318
+retained. Shared history replacement requires separate explicit approval and a
+guarded force-with-lease update. Preserve the original history; if contrary
+applied-version evidence emerges, stop for an approved forward-recovery plan.
+See [deployment and recovery](DRAFT_CASEFILE_TEST_CLEANUP.md#deployment-and-recovery).
+Local shared-stack startup may apply Flyway migrations; it is not disposable
+verification and must not be used to test history repair or cleanup against shared
+data.
 
 There is no application-level environment allowlist or deployment-environment
 variable for testing support. Keep the shared flag disabled in production deployment

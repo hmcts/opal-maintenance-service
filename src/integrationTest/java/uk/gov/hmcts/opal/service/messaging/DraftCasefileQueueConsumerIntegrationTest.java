@@ -19,6 +19,7 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.context.jdbc.Sql;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import uk.gov.hmcts.opal.BaseIntegrationTest;
 import uk.gov.hmcts.opal.common.config.ServiceBusConnectionStringParser;
 import uk.gov.hmcts.opal.common.config.ServiceBusProperties;
@@ -37,6 +38,10 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.context.jdbc.Sql.ExecutionPhase.AFTER_TEST_METHOD;
@@ -44,7 +49,8 @@ import static org.springframework.test.context.jdbc.Sql.ExecutionPhase.AFTER_TES
 /** Requires an otherwise unused test- queue, with its provisioned delivery limit supplied explicitly. */
 @EnabledIfEnvironmentVariable(named = "RUN_SERVICE_BUS_TESTS", matches = "true")
 @TestPropertySource(properties = {"opal.redis.enabled=false", "management.health.redis.enabled=false",
-    "spring.jpa.open-in-view=false", "opal.draft-casefile.service-bus.consumer-enabled=false"})
+    "spring.jpa.open-in-view=false", "opal.draft-casefile.service-bus.consumer-enabled=false",
+    "opal.testing-support-endpoints.enabled=true"})
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @Sql("/draft-casefile/publication-fixtures.sql")
 @Sql(scripts = "/draft-casefile/publication-cleanup.sql", executionPhase = AFTER_TEST_METHOD)
@@ -69,6 +75,7 @@ class DraftCasefileQueueConsumerIntegrationTest extends BaseIntegrationTest {
     private String queue;
     private final String correlation = UUID.randomUUID().toString();
     private final AtomicInteger deliveries = new AtomicInteger();
+    private final AtomicInteger completedDeliveries = new AtomicInteger();
     private final AtomicInteger brokerDeliveryCount = new AtomicInteger();
     private volatile boolean failAcknowledgement;
     private static final String PAYLOAD = """
@@ -100,7 +107,10 @@ class DraftCasefileQueueConsumerIntegrationTest extends BaseIntegrationTest {
             int delivery = deliveries.incrementAndGet();
             try {
                 brokerDeliveryCount.accumulateAndGet(message.getIntProperty("JMSXDeliveryCount"), Math::max);
+                assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+                assertThat(TransactionSynchronizationManager.isSynchronizationActive()).isFalse();
                 listener.onMessage(message);
+                completedDeliveries.incrementAndGet();
             } catch (JMSException exception) {
                 throw new IllegalStateException("Synthetic listener transport failure");
             }
@@ -122,6 +132,19 @@ class DraftCasefileQueueConsumerIntegrationTest extends BaseIntegrationTest {
         if (connection != null) {
             connection.destroy();
         }
+    }
+
+    @Test
+    void missingDraftDeliveriesSettleThroughGuardWithoutAmbientSpringTransaction() {
+        String missing = "{\"draft_casefile_id\":9223372036854775807}";
+        send(missing);
+        await().atMost(Duration.ofSeconds(45)).untilAsserted(() -> assertThat(completedDeliveries).hasValue(1));
+        send(missing);
+        await().atMost(Duration.ofSeconds(45)).untilAsserted(() -> assertThat(completedDeliveries).hasValue(2));
+        assertSettled();
+        verify(processing, times(2)).processPendingDraft(argThat(message ->
+            message.draftCasefileId().equals(Long.MAX_VALUE)));
+        verifyNoInteractions(failures, logging);
     }
 
     @Test

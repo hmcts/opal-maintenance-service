@@ -4,6 +4,7 @@ import jakarta.jms.DeliveryMode;
 import jakarta.jms.TextMessage;
 import org.apache.qpid.jms.JmsConnectionFactory;
 import org.junit.jupiter.api.BeforeEach;
+import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -11,7 +12,6 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jms.JmsException;
 import org.springframework.jms.connection.CachingConnectionFactory;
 import org.springframework.jms.core.JmsTemplate;
@@ -23,36 +23,42 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.context.jdbc.Sql;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ObjectNode;
 import uk.gov.hmcts.opal.BaseIntegrationTest;
+import uk.gov.hmcts.opal.common.user.authorisation.model.Permission;
 import uk.gov.hmcts.opal.logging.integration.service.LoggingService;
+import uk.gov.hmcts.opal.repository.DraftCasefileRepository;
 import uk.gov.hmcts.opal.support.DraftCasefileHttpFixture;
 
 import java.net.ServerSocket;
-import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
-import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.context.jdbc.Sql.ExecutionPhase.AFTER_TEST_METHOD;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-import static uk.gov.hmcts.opal.authorisation.MaintenancePermission.CHECK_VALIDATE_DRAFT_CASEFILES;
 
 /** Opt-in tests require an otherwise unused queue provisioned for this test run. */
 @EnabledIfEnvironmentVariable(named = "RUN_SERVICE_BUS_TESTS", matches = "true")
 @AutoConfigureMockMvc
 @TestPropertySource(properties = {"spring.flyway.locations=classpath:db/migration/ddl", "opal.redis.enabled=false",
-    "management.health.redis.enabled=false", "spring.jpa.open-in-view=false"})
+    "management.health.redis.enabled=false", "spring.jpa.open-in-view=false",
+    "opal.testing-support-endpoints.enabled=true", "opal.draft-casefile.service-bus.consumer-enabled=false"})
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @Sql("/draft-casefile/reference-fixtures.sql")
 @Sql(scripts = "/draft-casefile/reference-cleanup.sql", executionPhase = AFTER_TEST_METHOD)
@@ -61,7 +67,9 @@ class DraftCasefileQueueIntegrationTest extends BaseIntegrationTest {
     @Autowired
     private MockMvc mockMvc;
     @Autowired
-    private JdbcTemplate jdbc;
+    private DraftCasefileRepository drafts;
+    @Autowired
+    private DraftCasefileQueuePublisher selectedPublisher;
     @MockitoSpyBean
     private DraftCasefileQueuePublisherImpl publisher;
     @MockitoBean
@@ -100,19 +108,26 @@ class DraftCasefileQueueIntegrationTest extends BaseIntegrationTest {
 
     @Test
     void publishesPersistentApprovalMessageToConfiguredQueue() throws Exception {
-        publisher.publish(new DraftCasefileQueueMessage(900001L, 123L, "192.0.2.1", "2024-01-02T00:00:00Z"));
-        assertMessage(900001L);
+        var message = new DraftCasefileQueueMessage(900001L, 123L, "192.0.2.1", "2024-01-02T00:00:00Z");
+        publisher.publish(message);
+        assertMessage(message);
+    }
+
+    @Test
+    void actualApprovalUsesBasePublisherAndSendsOnceToRealBroker() throws Exception {
+        long id = submittedDraft();
+        assertThat(selectedPublisher).isInstanceOf(DraftCasefileQueuePublisherImpl.class);
+        approve(id).andExpect(status().isOk());
+        assertMessage(sentMessage(id));
+        approve(id).andExpect(status().isConflict());
+        verify(publisher, times(1)).publish(argThat(message -> message.draftCasefileId().equals(id)));
+        assertNoReplay();
     }
 
     @Test
     void acceptedMessageSurvivesDatabaseCommitFailureWithoutAudit() throws Exception {
-        String created = mockMvc.perform(post("/draft-casefiles").contentType(MediaType.APPLICATION_JSON)
-            .content(DraftCasefileHttpFixture.requestBody())
-            .with(authentication(DraftCasefileHttpFixture.token((short) 1))))
-            .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
-        long id = JSON.readTree(created).get("draft_casefile_id").longValue();
-        jdbc.update("UPDATE draft_casefiles SET submitted_by = 'BUU-INPUTTER' WHERE draft_casefile_id = ?", id);
-        final Map<String, Object> before = row(id);
+        long id = submittedDraft();
+        final var before = drafts.findById(id).orElseThrow();
         clearInvocations(logging);
         doAnswer(invocation -> {
             invocation.callRealMethod();
@@ -124,14 +139,12 @@ class DraftCasefileQueueIntegrationTest extends BaseIntegrationTest {
             });
             return null;
         }).when(publisher).publish(argThat(message -> message.draftCasefileId().equals(id)));
-        mockMvc.perform(patch("/draft-casefiles/{id}", id).header("If-Match", "\"0\"")
-            .contentType(MediaType.APPLICATION_JSON)
-            .content("{\"business_unit_id\":1,\"casefile_status\":\"PUBLISHING_PENDING\"}")
-            .with(authentication(DraftCasefileHttpFixture.token((short) 1, CHECK_VALIDATE_DRAFT_CASEFILES))))
-            .andExpect(status().isInternalServerError());
-        assertThat(row(id)).isEqualTo(before);
+        approve(id).andExpect(status().isInternalServerError());
+        assertThat(drafts.findById(id).orElseThrow()).usingRecursiveComparison().isEqualTo(before);
         verifyNoInteractions(logging);
-        assertMessage(id);
+        assertMessage(sentMessage(id));
+        verify(publisher, times(1)).publish(argThat(message -> message.draftCasefileId().equals(id)));
+        assertNoReplay();
     }
 
     @Test
@@ -147,17 +160,50 @@ class DraftCasefileQueueIntegrationTest extends BaseIntegrationTest {
         }
     }
 
-    private void assertMessage(long id) throws Exception {
+    private DraftCasefileQueueMessage sentMessage(long id) {
+        var captured = ArgumentCaptor.forClass(DraftCasefileQueueMessage.class);
+        verify(publisher, times(1)).publish(captured.capture());
+        assertThat(captured.getValue().draftCasefileId()).isEqualTo(id);
+        assertThat(captured.getValue().checkerUserId()).isEqualTo(124L);
+        return captured.getValue();
+    }
+
+    private void assertMessage(DraftCasefileQueueMessage expected) throws Exception {
         var message = template.receive(queue);
         assertThat(message).isInstanceOf(TextMessage.class);
         var body = JSON.readTree(((TextMessage) message).getText());
-        assertThat(body.get("draft_casefile_id").longValue()).isEqualTo(id);
-        assertThat(body.get("checker_user_id").longValue()).isPositive();
-        assertThat(body.get("originating_ip_address").asString()).isNotBlank();
+        assertThat(body.propertyNames()).containsExactlyInAnyOrder("draft_casefile_id", "checker_user_id",
+            "originating_ip_address", "approval_timestamp");
+        assertThat(body.get("draft_casefile_id").longValue()).isEqualTo(expected.draftCasefileId());
+        assertThat(body.get("checker_user_id").longValue()).isEqualTo(expected.checkerUserId());
+        assertThat(body.get("originating_ip_address").asString()).isEqualTo(expected.originatingIpAddress());
+        assertThat(body.get("approval_timestamp").asString()).isEqualTo(expected.approvalTimestamp());
         assertThat(message.getJMSDeliveryMode()).isEqualTo(DeliveryMode.PERSISTENT);
     }
 
-    private Map<String, Object> row(long id) {
-        return jdbc.queryForMap("SELECT * FROM draft_casefiles WHERE draft_casefile_id = ?", id);
+    private long submittedDraft() throws Exception {
+        var body = JSON.readTree(DraftCasefileHttpFixture.requestBody());
+        ((ObjectNode) body.at("/casefile/respondent_account"))
+            .put("remo_reference", "E2E-0123456789abcdef");
+        String created = mockMvc.perform(post("/draft-casefiles").contentType(MediaType.APPLICATION_JSON)
+            .content(body.toString()).with(authentication(DraftCasefileHttpFixture.token((short) 1))))
+            .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        long id = JSON.readTree(created).get("draft_casefile_id").longValue();
+        return id;
+    }
+
+    private ResultActions approve(long id) throws Exception {
+        var checker = DraftCasefileHttpFixture.token((short) 1, 124L, "BUU-CHECKER",
+            Set.of(new Permission(22L, "Check and validate draft Casefiles")));
+        return mockMvc.perform(patch("/draft-casefiles/{id}", id).header("If-Match", "\"0\"")
+            .header("X-User-IP", "192.0.2.1")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"business_unit_id\":1,\"casefile_status\":\"PUBLISHING_PENDING\"}")
+            .with(authentication(checker)));
+    }
+
+    private void assertNoReplay() {
+        template.setReceiveTimeout(250);
+        assertThat(template.receive(queue)).isNull();
     }
 }

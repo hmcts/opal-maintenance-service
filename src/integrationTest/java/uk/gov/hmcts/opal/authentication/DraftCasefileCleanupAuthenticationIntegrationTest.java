@@ -6,6 +6,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -20,12 +21,14 @@ import org.springframework.test.context.jdbc.Sql;
 import org.springframework.test.web.servlet.MockMvc;
 import uk.gov.hmcts.opal.BaseIntegrationTest;
 import uk.gov.hmcts.opal.entity.DraftCasefileEntity;
+import uk.gov.hmcts.opal.entity.DraftCasefileStatus;
 import uk.gov.hmcts.opal.logging.integration.service.LoggingService;
 import uk.gov.hmcts.opal.repository.DraftCasefileRepository;
 import uk.gov.hmcts.opal.support.DraftCasefileAuthenticationFixture;
 import uk.gov.hmcts.opal.support.DraftCasefileHttpFixture;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
@@ -80,10 +83,19 @@ class DraftCasefileCleanupAuthenticationIntegrationTest extends BaseIntegrationT
         AUTH.close();
     }
 
-    @Test
-    void realSignedBearerSubmitsAndCleansDraft() throws Exception {
+    @ParameterizedTest
+    @EnumSource(value = DraftCasefileStatus.class,
+        names = {"SUBMITTED", "REJECTED", "RESUBMITTED", "DELETED", "PUBLISHING_FAILED"})
+    void realSignedBearerSubmitsAndCleansDraft(DraftCasefileStatus lifecycle) throws Exception {
         String bearer = bearer();
         long id = submit(bearer);
+        DraftCasefileEntity draft = repository.findById(id).orElseThrow();
+        var builder = draft.toBuilder().casefileStatus(lifecycle);
+        if (lifecycle != DraftCasefileStatus.SUBMITTED) {
+            builder.validatedBy("BUU-CHECKER").validatedByName("Synthetic Checker")
+                .validatedDate(LocalDateTime.of(2026, 10, 22, 10, 0));
+        }
+        repository.saveAndFlush(builder.build());
         mockMvc.perform(delete(PATH, id).header(HttpHeaders.AUTHORIZATION, bearer).header("Test-Run-Reference", RUN))
             .andExpect(status().isNoContent());
         assertThat(repository.findById(id)).isEmpty();

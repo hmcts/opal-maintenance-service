@@ -1,24 +1,17 @@
 package uk.gov.hmcts.opal.service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import uk.gov.hmcts.opal.authorisation.MaintenanceUser;
-import uk.gov.hmcts.opal.authorisation.MaintenanceUserService;
 import uk.gov.hmcts.opal.common.exception.OpalApiException;
 import uk.gov.hmcts.opal.entity.DraftCasefileEntity;
 import uk.gov.hmcts.opal.entity.DraftCasefileStatus;
 import uk.gov.hmcts.opal.exception.DraftCasefileError;
 import uk.gov.hmcts.opal.repository.DraftCasefileRepository;
+import uk.gov.hmcts.opal.repository.DraftCasefileCleanupRepository;
 
 import java.util.Optional;
-
-import static uk.gov.hmcts.opal.authorisation.MaintenancePermission.CREATE_MANAGE_DRAFT_CASEFILES;
 
 @Service
 @RequiredArgsConstructor
@@ -26,9 +19,10 @@ import static uk.gov.hmcts.opal.authorisation.MaintenancePermission.CREATE_MANAG
     name = "enabled", havingValue = "true")
 public class DraftCasefileCleanupService {
 
-    private final MaintenanceUserService users;
+    private final DraftCasefileTestScope scope;
     private final DraftCasefileRepository repository;
-    private final ObjectMapper objectMapper;
+    private final DraftCasefileTestEligibility eligibility;
+    private final DraftCasefileCleanupRepository graphs;
 
     @Transactional
     public void cleanup(Long draftCasefileId, String testRunReference) {
@@ -37,64 +31,50 @@ public class DraftCasefileCleanupService {
             return;
         }
         DraftCasefileEntity draft = found.orElseThrow();
-        MaintenanceUser caller = users.requireAuthorisedUser(
-            draft.getBusinessUnitId(), CREATE_MANAGE_DRAFT_CASEFILES);
-        if (!caller.businessUnitUserId().equals(draft.getSubmittedBy())) {
-            throw denied();
+        scope.requireOwnedRun(draft, testRunReference);
+        DraftCasefileCleanupRepository.Graph graph = null;
+        if (draft.getCasefileStatus() == DraftCasefileStatus.PUBLISHED) {
+            requireApproval(draft);
+            graph = graphs.lockGraph(draft, testRunReference);
+        } else {
+            requireUnpublished(draft);
         }
-        requireMatchingRun(draft.getCasefile(), testRunReference);
-        requireUnpublished(draft);
-        repository.delete(draft);
+        if (draft.getVersionNumber() == null) {
+            graphs.deleteUnversionedDraft(draftCasefileId);
+        } else {
+            repository.delete(draft);
+        }
         repository.flush();
-    }
-
-    private void requireMatchingRun(String storedCasefile, String reference) {
-        try {
-            JsonNode root = objectMapper.readTree(storedCasefile);
-            JsonNode marker = root == null ? null : root.at("/respondent_account/remo_reference");
-            if (marker == null || !marker.isTextual() || !reference.equals(marker.textValue())) {
-                throw denied();
-            }
-        } catch (JsonProcessingException exception) {
-            throw denied();
+        if (graph != null) {
+            graphs.deleteGraph(graph);
         }
     }
 
     private void requireUnpublished(DraftCasefileEntity draft) {
-        if (draft.getCasefileStatus() != DraftCasefileStatus.SUBMITTED
-            || draft.getAccountId() != null || draft.getAccountNumber() != null
-            || draft.getValidatedDate() != null || draft.getValidatedBy() != null
-            || draft.getValidatedByName() != null) {
+        if (draft.getCasefileStatus() == null) {
             throw conflict();
         }
-        try {
-            JsonNode snapshot = objectMapper.readTree(draft.getCasefileSnapshot());
-            if (snapshot == null || !snapshot.isObject()) {
-                throw conflict();
-            }
-            requireEmptyAccount(snapshot.path("respondent_account"));
-            requireEmptyAccount(snapshot.path("applicant_account"));
-            JsonNode minors = snapshot.path("minor_creditor_accounts");
-            if (!minors.isArray()) {
-                throw conflict();
-            }
-            for (JsonNode minor : minors) {
-                requireEmptyAccount(minor);
-            }
-        } catch (JsonProcessingException exception) {
+        boolean unlinkedLifecycle = switch (draft.getCasefileStatus()) {
+            case SUBMITTED, REJECTED, RESUBMITTED, DELETED, PUBLISHING_FAILED, PUBLISHING_PENDING -> true;
+            case PUBLISHED -> false;
+        };
+        boolean submittedWithValidation = draft.getCasefileStatus() == DraftCasefileStatus.SUBMITTED
+            && (draft.getValidatedDate() != null || draft.getValidatedBy() != null
+                || draft.getValidatedByName() != null);
+        if (!unlinkedLifecycle || submittedWithValidation || !eligibility.isUnlinked(draft)) {
             throw conflict();
+        }
+        if (draft.getCasefileStatus() == DraftCasefileStatus.PUBLISHING_PENDING) {
+            requireApproval(draft);
         }
     }
 
-    private static void requireEmptyAccount(JsonNode account) {
-        if (!account.isObject() || !account.has("account_id") || !account.get("account_id").isNull()
-            || !account.has("account_number") || !account.get("account_number").isNull()) {
+    private void requireApproval(DraftCasefileEntity draft) {
+        if (draft.getValidatedDate() == null || draft.getValidatedBy() == null
+            || draft.getValidatedBy().isBlank() || draft.getValidatedByName() == null
+            || draft.getValidatedByName().isBlank() || draft.getValidatedBy().equals(draft.getSubmittedBy())) {
             throw conflict();
         }
-    }
-
-    private static AccessDeniedException denied() {
-        return new AccessDeniedException("Draft Casefile test cleanup is not permitted");
     }
 
     private static OpalApiException conflict() {

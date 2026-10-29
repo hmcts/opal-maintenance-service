@@ -5,16 +5,20 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.ApplicationContext;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import uk.gov.hmcts.opal.BaseIntegrationTest;
+import uk.gov.hmcts.opal.service.DraftCasefileTestScope;
 import uk.gov.hmcts.opal.support.DraftCasefileHttpFixture;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @AutoConfigureMockMvc
@@ -27,16 +31,30 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class DisabledDraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
 
     @Autowired
+    private ApplicationContext context;
+    @Autowired
     private MockMvc mockMvc;
     @Autowired
     private ObjectMapper objectMapper;
 
     @Test
     void authenticatedCleanupIsUnavailable() throws Exception {
+        assertThat(context.getBeansOfType(DraftCasefileTestScope.class)).isEmpty();
         mockMvc.perform(delete("/testing-support/draft-casefiles/1")
                 .with(authentication(DraftCasefileHttpFixture.token((short) 1)))
                 .header("Test-Run-Reference", "E2E-0123456789abcdef"))
             .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void publicationEvidenceIsUnavailable() throws Exception {
+        for (var request : new MockHttpServletRequestBuilder[]{
+            post("/testing-support/draft-casefiles/1/publication-evidence"),
+            get("/testing-support/draft-casefiles/1/publication-evidence")}) {
+            mockMvc.perform(request.with(authentication(DraftCasefileHttpFixture.token((short) 1)))
+                .header("Test-Run-Reference", "E2E-0123456789abcdef"))
+                .andExpect(status().isNotFound());
+        }
     }
 
     @Test
@@ -52,5 +70,6 @@ class DisabledDraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
         JsonNode paths = objectMapper.readTree(body).get("paths");
         assertThat(paths.isObject()).isTrue();
         assertThat(paths.has("/testing-support/draft-casefiles/{draft_casefile_id}")).isFalse();
+        assertThat(paths.has("/testing-support/draft-casefiles/{draft_casefile_id}/publication-evidence")).isFalse();
     }
 }

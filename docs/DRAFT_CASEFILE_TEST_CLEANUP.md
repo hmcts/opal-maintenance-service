@@ -1,139 +1,168 @@
 # Synthetic Draft Casefile test cleanup
 
-For PO-10273, an explicitly enabled test-support endpoint removes the authenticated submitter's
-synthetic draft created through the real `POST /draft-casefiles` journey. Capture the
-returned `draft_casefile_id`; retrieval through a GET/search API is separate backend
-work. This guide does not implement Cypress or change the submission contract.
+The dedicated `DELETE /testing-support/draft-casefiles/{draft_casefile_id}` removes
+an authenticated inputter's eligible synthetic RM draft and, when its eligibility
+checks pass, the observed exclusive published graph. Create data through normal APIs/UI and capture the returned ID.
+Normal Draft Casefile GET/list/re-entry APIs supply authoritative state; this support
+contract adds no state-read, publication-evidence or generic SQL endpoint. Complete
+all response, recovery, snapshot and timeline assertions **before DELETE**.
 
 ## Request and responses
 
-This is an HTTP example with placeholders, not a command containing a real token:
+This HTTP example uses placeholders, never a real token:
 
 ```http
 DELETE /testing-support/draft-casefiles/<draft_casefile_id>
-Authorization: Bearer <automation-user-token>
+Authorization: Bearer <inputter-token>
 Test-Run-Reference: <E2E-followed-by-16-lowercase-hex-characters>
 ```
 
-The identifier must be a positive signed 64-bit integer. The required header is
-exactly 20 characters matching `^E2E-[0-9a-f]{16}$`. There is no body or `If-Match`
-requirement. The [OpenAPI contract](../src/main/resources/openapi/TestingSupport.yaml)
-defines these outcomes:
+The ID is a positive signed 64-bit integer. The required header is exactly 20
+characters matching `^E2E-[0-9a-f]{16}$`. There is no request body or `If-Match`
+requirement. A preceding GET is needed for test assertions/recovery, not for DELETE
+itself. See the [OpenAPI contract](../src/main/resources/openapi/TestingSupport.yaml).
 
-| Status | Meaning and action |
+| Status | Meaning and cleanup-ledger action |
 | --- | --- |
-| 204 | Deleted, or already absent after authentication; empty response. Remove this ID from the outstanding ledger. |
-| 400 | Invalid ID or missing/invalid marker; retain ID and correct the request. |
-| 401 | Missing/invalid bearer authentication; retain ID and resolve authentication. |
-| 403 | Caller permission/identity, persisted ownership or exact marker mismatch; retain ID and report scope failure. |
-| 404 | Route is not registered when disabled; retain ID and resolve enablement through the operator process. |
-| 409 | Lifecycle, validation, publication links or inconsistent snapshot metadata prevent deletion; retain ID and report. |
-| 500 | Unexpected failure; transaction rolls back. Retain ID and use bounded retries. |
-| 503 | Persistence temporarily unavailable; transaction rolls back. Retain ID and use bounded retries. |
+| 204 | Deleted, or already absent after authentication. Remove only this entry from the outstanding ledger. |
+| 400 | Invalid ID or missing/invalid marker. Retain the entry and correct the request. |
+| 401 | Missing/invalid bearer authentication. Retain the entry and resolve authentication. |
+| 403 | Permission, latest submitter or exact persisted marker mismatch. Retain the entry and report the scope failure. |
+| 404 | Route is not registered when disabled. Retain the entry and resolve enablement with the operator. |
+| 409 | Ineligible lifecycle or shared, inconsistent or financially active published graph. Retain the entry and investigate; retries cannot make an unsafe graph eligible. |
+| 500 | Unexpected failure; the cleanup transaction rolls back. Retain the entry and investigate; any retry must be bounded. |
+| 503 | Persistence temporarily unavailable; the cleanup transaction rolls back. Retain the entry and use bounded retry for transient storage failures. |
 
-Errors use existing safe OPAL Problem Details where specified by the contract.
-When disabled, an authenticated request gets 404 and runtime OpenAPI omits the route.
-An unauthenticated request still gets 401 under normal security. An already-absent
-row returns 204 after authentication. With no stored row, there is no business unit
-or submitter against which to check permission or ownership; no data is deleted.
+Errors use the existing safe OPAL Problem Details where specified. When disabled,
+an authenticated request gets 404 and runtime OpenAPI omits the route; an anonymous
+request still gets 401 under normal security. A repeated DELETE of an absent ID
+returns 204 after authentication. With no stored row, there is no BU or submitter
+against which to check permission/ownership and no data is deleted. A network timeout
+can hide a committed DELETE: retain the ledger entry and retry the same scoped
+request within the retry budget until 204 confirms absence.
 
-## Enablement and authentication
+## Enablement, identity and scope
 
-All testing-support routes use the single `TESTING_SUPPORT_ENDPOINTS_ENABLED` switch.
-The application and base Helm default it to false; local standalone Compose and
-existing dev/staging overlays enable it. The shared Docker stack inherits the flag
-from its existing `.env.shared` file.
+`TESTING_SUPPORT_ENDPOINTS_ENABLED` is the existing single switch for diagnostics
+and cleanup. The application and base Helm default is **false**; keep it false in
+production. Standalone Compose and existing dev/staging overlays enable it, while
+the shared stack inherits its `.env.shared` value. Verify the resolved deployment
+values, including frontend-owned Maintenance subcharts: there is no application
+allowlist based on an environment name.
 
-| Variable | Default / requirement |
+Enable only for agreed non-live synthetic tests after accepting the
+[published cleanup operating contract](PUBLISHED_DRAFT_CASEFILE_CLEANUP.md#locking-and-accepted-concurrency-risk).
+There is no endpoint-specific owner variable, credential, token-minting API or
+frontend source switch. Use existing bearer validation and User Service identity;
+keep tokens out of source, command arguments, logs and ledgers.
+
+For each existing locked draft, cleanup requires all of:
+
+- Permission **21** (`CREATE_MANAGE_DRAFT_CASEFILES`) in the **stored** business unit.
+- The caller's Business Unit User ID in that BU equals persisted `submitted_by`,
+  which represents the latest inputter after replacement/resubmission.
+- The supplied marker equals saved `casefile.respondent_account.remo_reference`
+  exactly. Missing, malformed or different stored markers fail scope checks.
+
+A checker who approved a draft does not thereby own its cleanup. Retain the owning
+inputter as well as ID and marker, and authenticate as that inputter for cleanup.
+The marker is visible run context, neither a secret nor independent proof of
+synthetic data. Do not make existing unmarked or real records eligible by editing
+stored data.
+
+## Lifecycle and transaction rules
+
+| Stored lifecycle | Eligibility in addition to scope checks |
 | --- | --- |
-| `TESTING_SUPPORT_ENDPOINTS_ENABLED` | `false` application/base Helm default; the single switch for all testing-support routes. |
+| `SUBMITTED` | Unlinked; validation date, validator ID and validator name are null. |
+| `REJECTED`, `RESUBMITTED`, `DELETED`, `PUBLISHING_FAILED` | Unlinked with a structurally valid unlinked snapshot. |
+| `PUBLISHING_PENDING` | Unlinked with valid approval metadata: date, nonblank validator ID/name and validator different from the latest submitter. |
+| `PUBLISHED` | Valid approval metadata plus the complete exclusive graph checks in the [published guide](PUBLISHED_DRAFT_CASEFILE_CLEANUP.md). |
+| Missing/unknown lifecycle or inconsistent metadata | Refused with 409. |
 
-Availability is controlled by the shared flag, following Fines. There is no
-application-level environment allowlist. Production deployment configuration must
-keep `TESTING_SUPPORT_ENDPOINTS_ENABLED=false`; the application and base Helm default
-are false, while dev/staging explicitly enable it. Verify the resolved values for
-each deployment, including frontend-owned Maintenance subcharts. Setting the flag
-true registers test-support routes regardless of the environment's name.
+Unlinked means the draft's `account_id` and `account_number` are null, and snapshot
+respondent/applicant objects and every member of the minor-creditor array contain
+explicitly null `account_id`/`account_number`. Malformed snapshots or linked account
+identities fail eligibility. Rejected or resubmitted drafts need not have null
+validation history; the extra null-validation rule applies to `SUBMITTED`.
 
-No endpoint-specific identity or enablement variables are required. The previous
-cleanup-specific flag, three owner variables and `OPAL_DEPLOYMENT_ENVIRONMENT` have
-no effect; remove obsolete overrides during rollout.
+The service locks the addressed draft and checks/deletes/flushes in one transaction.
+The legacy null-version draft path is retained. Deleting the draft removes its
+embedded casefile, snapshot, draft notes and timeline. An eligible published draft
+also removes its checked exclusive graph in the same transaction. Any failure rolls
+back both draft and graph changes; no partial cleanup is committed. Published locks
+release at commit/rollback. External PDPL/personal-data processing records, shared
+reference records, siblings and sequences are retained.
 
-Use the existing AAD/internal bearer validation and User Service integration. For
-an existing draft, the caller needs Maintenance permission **21**
-(`CREATE_MANAGE_DRAFT_CASEFILES`) in the draft's stored BU. The caller's Business
-Unit User ID in that BU must match persisted `submitted_by`. The stored draft
-selects the BU; a caller-supplied query parameter cannot change the check.
+Pending cleanup serializes with the existing consumer through the draft row lock.
+If delivery wins, cleanup re-evaluates the resulting lifecycle/graph; if cleanup
+wins, the existing consumer's absent-draft handling applies. DELETE does not purge a
+queue message, prove broker settlement or undo an external side effect.
 
-Tests should use synthetic data and retain their own submitted IDs and run markers.
-Any appropriately authorised submitter can clean their own eligible marked draft;
-there is no separately configured or reserved automation identity. The visible
-run marker corroborates scenario scope, but is neither a secret nor independent
-proof that data is synthetic. Use only synthetic data in test environments.
+## FE/QA handoff and cleanup ledger
 
-This feature adds no token-minting API, credential or frontend source switch.
-Obtain credentials through the existing authentication process and keep bearer
-values out of source, command arguments, logs and cleanup ledgers.
+The concurrency journey must use this sequence:
 
-## Ownership, deletion and recovery
+1. Create fresh synthetic data through normal UI/APIs with a new exact marker.
+   Capture a successful real POST's ID **before** confirmation/UI assertions can
+   fail. Persist ID, owning inputter, marker, environment and scenario/run key in a
+   durable cleanup ledger containing no tokens or participant payloads.
+2. Record the normal GET baseline: ID, ETag/version, lifecycle, saved casefile,
+   snapshot and timeline. Trigger one normal PATCH decision (approve/reject/delete)
+   or rejected-case PUT resubmission through the UI. Forward the real request and
+   let the real backend commit; drop **only its response** for the ambiguous case.
+   Never replace the mutation with a stubbed successful response.
+3. Count browser PATCH/PUT attempts through completed recovery and accessibility
+   assertions. Recover through normal GET/re-entry, retaining local context while
+   reconciling the authoritative ID, version, lifecycle and snapshot. Assert exactly
+   one corresponding decision/resubmission timeline event and the retained prior
+   timeline. Account for the separate asynchronous publication lifecycle when
+   observing approval; do not equate its events with another decision.
+4. Keep approve, reject, delete, resubmit, definite pre-commit failure, stale-version
+   conflict and accessibility scenarios distinct. Definite failure retains edits
+   for explicit retry; stale conflict changes no stale data and allows reload.
+   A deliberate retry has a different expected request count from automatic replay.
+5. After all assertions, including on assertion failure, use the existing scoped
+   DELETE in the after hook as the owning inputter with the exact marker. Remove an
+   entry only on 204. Retain every failed/unknown result, report it and use a finite
+   retry budget/backoff for transient/network failures; the service does not retry
+   automatically. Never hide cleanup failure behind a successful scenario result.
+6. Retain failed entries across browser/process crashes for a separately authorised
+   retry. Hooks cannot guarantee execution. A lost creation response can leave an
+   unknown committed ID: this endpoint cannot discover it, so report that gap rather
+   than inventing an ID or broad deletion.
 
-An existing draft's `submitted_by` must match the caller's identity in its stored BU,
-and its `respondent_account.remo_reference` must equal the supplied marker exactly.
-The marker never permits deleting a different owner's row. Older unmarked drafts
-are not retroactively eligible.
+Consumer work must remove all publication-evidence registration/read calls,
+interfaces, schema dependencies and their assertions before adopting this backend.
+The [testing handoff](TESTING.md#synthetic-draft-casefile-cleanup) identifies the
+current RM consumer files and evidence allocation. This backend support does not
+complete the deployed UI E2E ticket or demonstrate exactly-once broker delivery.
 
-Only unvalidated `SUBMITTED` drafts qualify. `account_id`, `account_number`,
-`validated_date`, `validated_by` and `validated_by_name` must be null. Respondent,
-applicant and minor-creditor snapshot account IDs/numbers must also be null;
-malformed or inconsistent snapshot metadata is rejected. Published accounts and
-reference data are retained. External personal-data processing logs are retained.
+## Deployment and recovery
 
-The service locks the explicitly addressed row and checks/deletes/flushes inside
-one transaction. Failure rolls back; a retry of an already deleted ID returns 204
-after authentication. In the current schema, payload, participants, draft notes,
-snapshot and timeline are JSON within `draft_casefiles`; deleting that row removes
-them together. No table references the draft. Generic notes apply to live account
-types, and the draft's `account_id` points outward to a published account. Cleanup
-does not traverse that relationship. Reassess these boundaries if the schema gains
-inbound draft dependants or a new publication path.
+This candidate introduces no schema/procedure migration relative to the approved
+PO-10629 base. Delivery will update the existing
+`codex/PO-10626-publication-support` branch and retain PR #318, as requested by the
+user. On 28 October 2026 the user explicitly confirmed that V1_67–V1_69 were never
+applied to any shared or retained database. This is user attestation, not a direct
+database audit. It resolves the earlier deployment-status uncertainty; the
+migration-clean candidate does not require recovery from those versions on the
+attested databases.
 
-No migration, schema/routine change or deployment ordering dependency is introduced.
-To disable testing support, turn `TESTING_SUPPORT_ENDPOINTS_ENABLED` off.
-Redeploy through the normal operator process; preserve outstanding cleanup IDs for
-a separately authorised retry. Disabling does not restore data already deleted. Monitor service health and
-Prometheus through the existing `/health` and `/prometheus` endpoints, and retain
-non-sensitive cleanup outcomes in CI. Do not log tokens or participant payloads.
+The candidate was built from the approved base without introducing the original
+support migrations. Replacing the existing shared branch history still requires
+separate explicit approval and a guarded force-with-lease update; this guide does
+not perform or authorise that update. Preserve the original history for recovery.
+If contrary applied-version evidence emerges, stop and obtain a separately
+approved forward-recovery plan covering compatibility/retention, consumer cutover,
+deployment order and rollback/roll-forward. Do not edit/delete applied migrations,
+repair shared history, or treat retained inert tables as zero schema difference.
+No shared database action is authorised by this guide.
 
-## Cypress handoff (guidance only)
-
-When frontend work is undertaken, move the current post-assertion alias assignment
-earlier: capture the real POST response ID before response or confirmation/UI
-assertions can fail. Observe the real request without replacing its response.
-
-```text
-Before scenario:
-  create a fresh E2E- plus 16 lowercase hexadecimal marker
-  enter the marker through the existing REMO Reference UI field
-  observe the real POST /draft-casefiles without substituting its response
-On a successful POST response:
-  capture the returned identifier immediately, before response or UI assertions
-  append identifier + marker + environment + scenario/run key to a durable CI cleanup ledger
-  then perform response and confirmation assertions
-After scenario, including assertion failure:
-  attempt DELETE for every captured identifier using the automation user's bearer and exact marker
-  on 204, remove only that entry from the outstanding-cleanup ledger
-  on network failure or server error, retain entry and use bounded retries
-  on 400/401/403/409, retain entry and report configuration, ownership or lifecycle failure
-  on 404, retain entry and report disabled/unavailable route
-  never discard a failed-cleanup ID or turn cleanup failure into a false successful test run
-On process crash or browser exit:
-  retain the durable ledger for a separately authorised retry; browser hooks cannot guarantee execution
-```
-
-The durable ledger contains IDs and run context only, never tokens or participant
-payloads. A future Node-side Cypress task/CI artifact can persist it; neither is
-implemented here. A lost POST response can leave an unknown committed ID. This
-endpoint cannot discover it; recovery needs a separately agreed mechanism. GET,
-search and their E2E assertions remain outside this scope.
-
-See [Testing](TESTING.md#synthetic-draft-casefile-cleanup) for focused service checks.
+Before enablement, verify the actual deployed DB role can read/delete the owned
+graph. On 28 October 2026 the user accepted concurrent-writer cleanup risk and
+requested removal of explicit table-wide locks. Existing row locks/transactions
+remain; they do not prevent every published-graph race. To disable support, set the flag false and
+redeploy normally; retain outstanding ledger entries for authorised retry.
+Disabling cannot restore deleted data. Use existing `/health` and `/prometheus`
+monitoring and non-sensitive CI cleanup outcomes; no publication monitor is added.
