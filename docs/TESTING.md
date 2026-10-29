@@ -471,6 +471,102 @@ Compilation, dry-run discovery, skipped checks and mocked action-boundary glue
 regressions do not establish live functional coverage. A local runtime of
 unknown source revision does not verify this branch.
 
+### Rejected casefile resubmission journeys (PO-10622)
+
+`draftCasefiles/replace/ResubmitRejectedCasefile.feature` contains exactly five
+journeys tagged `@Opal`, `@PO10622` and `@JIRA-STORY:PO-10622`. Dedicated
+`ResubmitRejectedCasefileStepDef` glue preserves the legacy replace feature and
+bindings. All five create their own complete synthetic casefile, including
+minor creditor sequences 7 and 23 and a fresh `E2E-` plus 16 hex character
+marker. They compare the full original POST request with an authoritative
+version-zero GET, verify the actual creator and derived snapshot/history, then
+perform a real independent checker rejection and complete persisted readback.
+
+| Acceptance criterion | Live journey | Supporting controlled integration |
+| --- | --- | --- |
+| AC1: correct a rejected casefile and resubmit | Original inputter changes respondent, applicant and minor 7 names while preserving minor 23; HTTP 200, full corrected content/snapshot/history, advanced ETag, persisted RESUBMITTED | `DraftCasefileResubmissionQaIntegrationTest` verifies the complete transaction and original submitter |
+| AC2: another authorised inputter can resubmit and becomes latest submitter | Different owning-unit inputter takes ownership; the same latest submitter with check permission then receives 403 for self-check, preserving full state/version | Integration verifies handover and latest-submitter self-check denial |
+| AC3: invalid or unauthorised corrections preserve the rejected draft | Unknown application `ZZ99999` gives 400; caller without owning-unit create authority gives 403; supplied Business Unit 45 with nested owner 44 gives resource-conflict 409. Each verifies whole unchanged GET and ETag | Integration also controls obsolete ETag against eligible REJECTED state, non-REJECTED lifecycle and a caller authorised only in another Business Unit |
+
+Use normal `TEST_URL` and `OPAL_USER_SERVICE_API_URL` pointing to compatible
+non-live Maintenance and User Service deployments. Existing reference data must
+include Business Unit 44, active application `AP00001`, active country CJS code
+`1` and result `MAT`. The application must provide enabled scoped cleanup and
+the PR #318 cleanup contract. No publication-evidence routes are required. Tests
+never change reference data, identities or permissions.
+
+The default creator is `opal-test@dev.platform.hmcts.net`, independent checker
+and resubmitter is `opal-test-10@dev.platform.hmcts.net`, and denied caller is
+`opal-test-2@dev.platform.hmcts.net`. Overrides are
+`RM_DRAFT_CASEFILE_INPUTTER_USER`, `RM_DRAFT_CASEFILE_CHECKER_USER` and
+`RM_DRAFT_CASEFILE_DENIED_USER`. Each scenario resolves actual User Service
+`name` and Business Unit identity. Creator requires owning-unit permission 21;
+checker/resubmitter requires 21 and 22 with a different owning-unit user ID.
+Equal display names do not establish equal identities. Denied callers must
+lack owning-unit 21; valid `domains: {}` is supported. Missing/malformed domains,
+present malformed maintenance/units/permissions, duplicate owning-unit entries
+and duplicate permission IDs fail setup. Actor details and tokens stay in
+memory and never enter retained evidence.
+
+After setup rejection, a normal GET verifies the complete baseline and ETag
+immediately before the tested PUT. PUT contains only `business_unit_id` and the
+full corrected `casefile`, preserving marker and nested owning unit. Each mutation
+is dispatched once. HTTP 200 immediately transfers cleanup authority to the known
+acting resubmitter before detailed response assertions. The latest owner must
+retrieve the exact persisted content, snapshot, timeline and advanced ETag.
+Failed PUTs retain original ownership. Whole-state checks execute before strict
+problem-format assertions. Self-check uses a rejection with a valid reason and
+current ETag. Integration tests verify absence of publisher calls; API reads and
+harness request counts do not establish broker non-delivery.
+
+Cleanup is bounded to the captured owned ID and marker; only HTTP 204 succeeds.
+Confirmed handover uses the latest owner even if a later success assertion
+fails. Ambiguous PUTs are never replayed. An ordinary authorised GET can
+recognize the owned ID/marker, expected state/version and known owner. An old
+REJECTED read cannot rule out a later commit: both original and intended
+resubmitter remain cleanup candidates for an ambiguous handover, each tried at
+most once until 204. A 403 or request error can permit the second known actor.
+No denied/foreign identity, guessed identity/ID, marker search, old record,
+lifecycle rewrite, graph deletion or direct database cleanup is used. Unknown
+POST IDs retain marker-only follow-up evidence. Unresolved cleanup fails an
+otherwise passing scenario; a primary failure retains only safe ID/marker and
+status/error-category evidence. Credentials and state are cleared in `finally`,
+including attachment failures.
+
+The physical `common.yaml` problem contract accepts a string correlation
+`operation_id`, including the shared library's 32-character identifier. Both
+validation and permission problems require a nonblank textual ID and an exactly
+matching instance suffix. Helper regressions reject blank/non-string IDs and
+uncorrelated instances, and verify unchanged state before reporting a malformed
+problem response. Current cleanup supports eligible
+pending and published drafts with retained ownership/graph guards and the updated,
+explicitly accepted concurrent-writer limitation. Live verification still requires a pinned compatible deployment; prior
+observations against an unknown local image do not verify these branches.
+
+Run actual Java regressions without a Cucumber tag property and preserve the
+Java XML counts from `build/test-results/functional/opal` before discovery
+replaces reports:
+
+```bash
+./gradlew --offline functionalOpal --tests 'uk.gov.hmcts.opal.*.DraftCasefile*Test' --tests 'uk.gov.hmcts.opal.steps.GetDraftCasefileStepDefTest' --tests 'uk.gov.hmcts.opal.steps.ListDraftCasefilesStepDefTest' --tests 'uk.gov.hmcts.opal.steps.RecordCheckerDecisionsStepDefTest' --tests 'uk.gov.hmcts.opal.steps.ResubmitRejectedCasefileStepDefTest' -Dcucumber.execution.dry-run=true
+./gradlew --offline checkstyleFunctionalTest
+./gradlew --offline integration --tests 'uk.gov.hmcts.opal.controllers.DraftCasefileResubmissionQaIntegrationTest'
+```
+
+Validate exactly five discovered scenarios with no undefined/ambiguous steps,
+then run live only with the above prerequisites:
+
+```bash
+./gradlew --offline functionalOpal -Dcucumber.filter.tags=@PO10622 -Dcucumber.execution.dry-run=true
+./gradlew --offline functionalOpal -Dcucumber.filter.tags=@PO10622
+```
+
+Record Java boundary regressions, five-scenario discovery, controlled
+integration and actual live execution separately, with exact commands, elapsed
+time and test/failure/error/skipped counts. Discovery, mocks, unavailable checks
+and failure before PUT are not live acceptance evidence. Preserve only safe
+IDs, markers, numeric statuses, timings and error categories.
+
 ## Draft Casefile publication tests
 
 The normal integration suite tests HTTP decisions and PostgreSQL transaction
