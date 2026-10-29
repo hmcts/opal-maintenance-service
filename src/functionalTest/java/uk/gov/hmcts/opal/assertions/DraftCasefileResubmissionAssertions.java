@@ -12,7 +12,6 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -75,12 +74,7 @@ public final class DraftCasefileResubmissionAssertions {
         require(body.path("retriable").isBoolean() && !body.path("retriable").booleanValue(),
             "Invalid content problem must not be retriable");
         String operation = body.path("operation_id").textValue();
-        require(operation != null, "Problem operation ID must be a UUID");
-        try {
-            require(UUID.fromString(operation).toString().equals(operation), "Problem operation ID must be a UUID");
-        } catch (IllegalArgumentException exception) {
-            throw new AssertionError("Problem operation ID must be a UUID");
-        }
+        require(operation != null && !operation.isBlank(), "Problem operation ID must be a nonblank string");
         require(("https://hmcts.gov.uk/problems/instance/" + operation).equals(body.path("instance").textValue()),
             "Problem instance must correlate with operation ID");
         for (JsonNode value : body) {

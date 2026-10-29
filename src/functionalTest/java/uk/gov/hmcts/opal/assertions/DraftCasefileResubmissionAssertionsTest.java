@@ -276,6 +276,22 @@ class DraftCasefileResubmissionAssertionsTest {
     }
 
     @ParameterizedTest
+    @ValueSource(strings = {"23e626552a324ac3ab9bc02588fd4fec", "synthetic-correlation-42"})
+    void acceptsCorrelatedStringOperationIds(String operation) {
+        ObjectNode body = problemBody().put("operation_id", operation)
+            .put("instance", "https://hmcts.gov.uk/problems/instance/" + operation);
+        assertDoesNotThrow(() -> DraftCasefileResubmissionAssertions.invalidContent(problem(body), MARKER));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"null", "23", "\"\"", "\"  \"", "[]", "{}"})
+    void rejectsBlankAndNonStringOperationIds(String raw) throws Exception {
+        ObjectNode body = problemBody();
+        body.set("operation_id", JSON.readTree(raw));
+        assertSafe(() -> DraftCasefileResubmissionAssertions.invalidContent(problem(body), MARKER));
+    }
+
+    @ParameterizedTest
     @ValueSource(strings = {"status", "type", "title", "detail", "retriable", "operation_id", "instance"})
     void rejectsMissingWrongTypedAndUnsafeProblemFields(String field) {
         ObjectNode missing = problemBody();

@@ -662,9 +662,12 @@ otherwise passing scenario; a primary failure retains only safe ID/marker and
 status/error-category evidence. Credentials and state are cleared in `finally`,
 including attachment failures.
 
-The physical `common.yaml` problem contract requires canonical UUID
-`operation_id`. Strict UUID assertions remain in place; any mismatch is a separate
-contract failure, not a missing-provider failure. Current cleanup supports eligible
+The physical `common.yaml` problem contract accepts a string correlation
+`operation_id`, including the shared library's 32-character identifier. Both
+validation and permission problems require a nonblank textual ID and an exactly
+matching instance suffix. Helper regressions reject blank/non-string IDs and
+uncorrelated instances, and verify unchanged state before reporting a malformed
+problem response. Current cleanup supports eligible
 pending and published drafts with retained ownership/graph guards and the updated,
 explicitly accepted concurrent-writer limitation. Live verification still requires a pinned compatible deployment; prior
 observations against an unknown local image do not verify these branches.
