@@ -59,7 +59,8 @@ public final class DraftCasefilePoller {
                 return response;
             }
             if (!"PUBLISHING_PENDING".equals(status)) {
-                throw new AssertionError("Draft Casefile reached an unexpected lifecycle state");
+                throw new AssertionError("Draft Casefile reached an unexpected lifecycle state: expected "
+                    + expectedStatus + " but was " + status);
             }
             long remaining = timeoutNanos - (clock.getAsLong() - started);
             if (remaining <= 0) {
