@@ -35,8 +35,8 @@ components:
           example: 'https://example.com/problem/12345'
         operation_id:
           type: string
-          description: A unique operation id that links logs of the same operation together
-          format: uuid
+          description: String correlation identifier supplied unchanged by the shared library for log correlation
+          example: 23e626552a324ac3ab9bc02588fd4fec
         retriable:
           type: boolean
         properties:

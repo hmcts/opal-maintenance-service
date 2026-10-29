@@ -394,8 +394,11 @@ and Business Unit 44 decision body. Reject and Delete require the exact syntheti
 reason. Approval requires an advanced numeric ETag and authoritative persisted
 readback. A fast consumer may reach PUBLISHED or PUBLISHING_FAILED; the readback
 must still retain the exact approval metadata and history. Refused decisions
-must preserve the complete draft and ETag. No observation registration or
-publication-evidence request is made, and API readback does not prove send counts.
+must preserve the complete draft and ETag. Problem `operation_id` is a nonblank
+string correlation identifier supplied unchanged by the shared library, including
+undashed AppInsights IDs (TD.33). Its `instance` must equal
+`https://hmcts.gov.uk/problems/instance/` followed by that exact identifier. No observation
+registration or publication-evidence request is made, and API readback does not prove send counts.
 
 | Acceptance criterion | Live journeys | Supporting evidence |
 | --- | --- | --- |

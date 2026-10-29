@@ -10,7 +10,6 @@ import java.io.IOException;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeParseException;
 import java.util.Set;
-import java.util.UUID;
 
 public final class DraftCasefileDecisionAssertions {
     private static final ObjectMapper JSON = new ObjectMapper()
@@ -131,12 +130,7 @@ public final class DraftCasefileDecisionAssertions {
             require(detail.equals(body.path("detail").textValue()), "Problem detail differs");
         }
         String operation = body.path("operation_id").textValue();
-        require(operation != null, "Problem operation ID must be a UUID");
-        try {
-            require(UUID.fromString(operation).toString().equals(operation), "Problem operation ID must be a UUID");
-        } catch (IllegalArgumentException exception) {
-            throw new AssertionError("Problem operation ID must be a UUID");
-        }
+        require(operation != null && !operation.isBlank(), "Problem operation ID must be a nonblank string");
         require(("https://hmcts.gov.uk/problems/instance/" + operation).equals(body.path("instance").textValue()),
             "Problem instance must correlate with operation ID");
         for (JsonNode value : body) {
