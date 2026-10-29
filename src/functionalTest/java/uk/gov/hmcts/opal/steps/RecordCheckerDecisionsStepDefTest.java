@@ -679,7 +679,7 @@ class RecordCheckerDecisionsStepDefTest {
 
     private Response problem(String kind) {
         int status = "forbidden".equals(kind) ? 403 : 409;
-        String operation = "550e8400-e29b-41d4-a716-446655440000";
+        String operation = "23e626552a324ac3ab9bc02588fd4fec";
         ObjectNode body = JSON.createObjectNode().put("type", "https://hmcts.gov.uk/problems/" + kind)
             .put("title", status == 403 ? "Forbidden" : "Conflict")
             .put("detail", status == 403 ? "You do not have permission to access this resource"
