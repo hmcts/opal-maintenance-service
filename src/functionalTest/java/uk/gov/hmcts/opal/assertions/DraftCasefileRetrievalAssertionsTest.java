@@ -252,8 +252,8 @@ class DraftCasefileRetrievalAssertionsTest {
             : "The requested entity could not be found";
         ObjectNode body = JSON.createObjectNode().put("type", "https://hmcts.gov.uk/problems/" + type)
             .put("title", title).put("detail", detail).put("status", status).put("retriable", false)
-            .put("operation_id", "550e8400-e29b-41d4-a716-446655440000")
-            .put("instance", "https://hmcts.gov.uk/problems/instance/550e8400-e29b-41d4-a716-446655440000");
+            .put("operation_id", "23e626552a324ac3ab9bc02588fd4fec")
+            .put("instance", "https://hmcts.gov.uk/problems/instance/23e626552a324ac3ab9bc02588fd4fec");
         if (status == 404) {
             body.put("reason", "Draft Casefile not found");
         }

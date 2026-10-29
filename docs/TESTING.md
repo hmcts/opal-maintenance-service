@@ -333,6 +333,144 @@ Normal lists can contain other legitimate matching drafts in the shared unit:
 assert owned inclusion/exclusion and every row's filters, with count equal to
 summary length, rather than asserting that the total equals owned fixture count.
 
+### Independent checker decision journeys (PO-10617)
+
+`draftCasefiles/update/UpdateDraftCasefile.feature` contains exactly ten journeys,
+tagged `@Opal`, `@PO10617` and `@JIRA-STORY:PO-10617`. Dedicated
+`RecordCheckerDecisionsStepDef` glue preserves the older PO-10631 fixture-based
+feature and its bindings.
+
+| Journey | Source and decision | Expected evidence |
+| --- | --- | --- |
+| 1 | SUBMITTED / Approve | HTTP 200 approval, server-owned validation and history, persisted GET |
+| 2 | SUBMITTED / Reject | HTTP 200 rejection with exact reason and history, identical persisted GET |
+| 3 | SUBMITTED / Delete | HTTP 200 logical deletion with exact reason and history, identical persisted GET |
+| 4 | RESUBMITTED / Approve | Corrected full baseline, approval and persisted metadata/history |
+| 5 | RESUBMITTED / Reject | Corrected full baseline, rejection and persisted history |
+| 6 | RESUBMITTED / Delete | Corrected full baseline, logical deletion and persisted history |
+| 7 | Checker approves their own submission | Safe correlated 403, entire draft and ETag unchanged |
+| 8 | Caller lacks owning Business Unit permission 22 | Safe correlated 403, entire draft and ETag unchanged |
+| 9 | Independent checker uses obsolete original version 0 against eligible RESUBMITTED version 2 | Safe optimistic-locking 409, entire corrected draft and ETag unchanged |
+| 10 | Independent checker approves current REJECTED version 1 | Safe resource-conflict 409, entire rejected draft and ETag unchanged |
+
+Each scenario creates a complete synthetic draft with its own fresh `E2E-`
+marker followed by 16 lowercase hexadecimal characters, including minor
+creditors 7 and 23. The original POST request and response are checked against
+an authoritative version-zero GET before any setup decision. This catches
+consistent POST/GET content loss. RESUBMITTED setup performs a real checker
+rejection with exact actor/history and persisted readback, followed by the
+original owner's PUT using the current ETag. That PUT contains exactly
+`business_unit_id` and the full corrected `casefile`, retaining the marker and
+both minor creditors and changing respondent `forenames` to
+`SyntheticCorrected`. Its response and authoritative version-two GET must
+retain the corrected content, snapshot, metadata and complete history. These
+journeys never reuse previous-ticket IDs or assume that a RESUBMITTED draft
+still matches its original submitted content.
+
+Configure `TEST_URL` and `OPAL_USER_SERVICE_API_URL` for the intended non-live
+Maintenance and User Service deployments. Use the active `AP00001` application,
+active country CJS code `1`, result `MAT`, Business Unit 44, enabled scoped
+cleanup from PR #318, and a configured real publisher and consumer. Full response,
+version, lifecycle, snapshot and timeline assertions remain mandatory.
+
+The existing default users are `opal-test@dev.platform.hmcts.net` (inputter),
+`opal-test-10@dev.platform.hmcts.net` (checker), and
+`opal-test-2@dev.platform.hmcts.net` (denied caller). Optional overrides are
+`RM_DRAFT_CASEFILE_INPUTTER_USER`, `RM_DRAFT_CASEFILE_CHECKER_USER` and
+`RM_DRAFT_CASEFILE_DENIED_USER`. Inputters need owning-unit permission 21;
+checkers need 22, and the self-check creator needs both 21 and 22. Every scenario
+resolves the actual checker through User Service `/v2/users/0/state`: a nonblank
+`name`, exactly one numeric Business Unit 44 entry in
+`domains.maintenance.business_unit_users`, a nonblank `business_unit_user_id`,
+and numeric `permissions[].permission_id` establish the expected actor.
+Independence is checked against actual POST `submitted_by`; different display
+names are not required. The denied caller's state must lack owning-unit
+permission 22. A valid `domains` object with no `maintenance` property establishes
+that absence for the denied caller, including the standard denied user's
+`domains: {}` state. Missing or malformed `domains`, present null or malformed
+`maintenance`, malformed permissions and ambiguous owning-unit entries fail
+setup; a checker still requires its owning-unit array and permissions. Tests do
+not create users or alter permissions, and actor data, tokens and user-state
+bodies must not enter retained evidence.
+
+All `DraftCasefileActions` requests use configured plain RestAssured transport,
+preventing Serenity from retaining response or error payloads containing actual
+actor identities or User Service state. Existing connection/read timeouts,
+authentication/header safeguards and request contracts are preserved. Assertions
+and the safe cleanup ledger still establish outcomes; unrelated tests retain
+their existing reporting behavior.
+
+After all setup and actor preconditions, a normal GET verifies the full baseline
+and ETag. The tested PATCH executes once with the explicit actor, current ETag
+and Business Unit 44 decision body. Reject and Delete require the exact synthetic
+reason. Approval requires an advanced numeric ETag and authoritative persisted
+readback. A fast consumer may reach PUBLISHED or PUBLISHING_FAILED; the readback
+must still retain the exact approval metadata and history. Refused decisions
+must preserve the complete draft and ETag. Problem `operation_id` is a nonblank
+string correlation identifier supplied unchanged by the shared library, including
+undashed AppInsights IDs (TD.33). Its `instance` must equal
+`https://hmcts.gov.uk/problems/instance/` followed by that exact identifier. No observation
+registration or publication-evidence request is made, and API readback does not prove send counts.
+
+| Acceptance criterion | Live journeys | Supporting evidence |
+| --- | --- | --- |
+| AC1: independent approval and publication | Journeys 1 and 4 verify response and persisted metadata/history | Checker integration verifies the publisher invocation; opt-in queue integration proves real broker acceptance |
+| AC2: reject and delete without publication | Journeys 2, 3, 5 and 6 verify exact decision/history/readback | Checker integration verifies no publisher call and persisted state |
+| AC3: protect invalid decisions and preserve the draft | Journeys 7–10 verify safe 403/409 and unchanged bodies/ETags | Checker integration verifies no publisher call; local AMQP failure proves whole-transaction rollback |
+
+`DraftCasefileCheckerQaIntegrationTest` retains its eleven decision, refusal and
+real local AMQP failure cases. `DraftCasefileDecisionIntegrationTest` supplies
+additional decision validation. The publication message remains exactly
+`draft_casefile_id`, `checker_user_id`, `originating_ip_address`, and
+`approval_timestamp`. Retired observation routes and journal tables have no
+consumer here. Request/helper call counts prove harness behavior; dedicated
+broker tests own broker acceptance and delivery evidence.
+
+Durable broker proof remains the existing opt-in dedicated-queue suite described
+below. It requires an otherwise unused `test-` queue, `RUN_SERVICE_BUS_TESTS=true`,
+`TEST_SERVICEBUS_QUEUE`, and normal Service Bus connection environment settings.
+Consumer tests additionally require `TEST_SERVICEBUS_MAX_DELIVERIES` matching
+the provisioned queue. No safely configured queue is currently available, so
+these checks must not be reported as passed or inferred from API readback.
+
+Cleanup always uses the original creator token, owned positive ID and marker,
+including after setup, evidence or assertion failures. Only HTTP 204 confirms
+cleanup. Unknown or malformed create outcomes retain a safe marker ledger;
+ambiguous POST/PUT/PATCH operations are never replayed. Cleanup failure fails an
+otherwise green scenario or attaches separate safe evidence when a primary
+failure already exists. Attachment failure is surfaced safely, and all scenario
+credentials/state are cleared in `finally`. Eligible pending and published cleanup uses PR #318 and its documented
+ownership and graph guards with the explicitly accepted concurrent-writer risk.
+A refusal remains failed cleanup, with safe retained-resource evidence. Retain only safe IDs, markers,
+statuses and timings before the next functional invocation replaces reports.
+
+Run actual Java helper/glue regressions without a Cucumber tag property:
+
+```bash
+./gradlew functionalOpal --tests 'uk.gov.hmcts.opal.*.DraftCasefile*Test' --tests 'uk.gov.hmcts.opal.steps.GetDraftCasefileStepDefTest' --tests 'uk.gov.hmcts.opal.steps.ListDraftCasefilesStepDefTest' --tests 'uk.gov.hmcts.opal.steps.RecordCheckerDecisionsStepDefTest' -Dcucumber.execution.dry-run=true
+./gradlew checkstyleFunctionalTest
+```
+
+Count only Java `uk.gov.hmcts.opal` JUnit XML in
+`build/test-results/functional/opal`, and preserve those counts before discovery
+replaces reports. Selected discovery must find exactly ten scenarios with no
+undefined or ambiguous steps:
+
+```bash
+./gradlew functionalOpal -Dcucumber.filter.tags=@PO10617 -Dcucumber.execution.dry-run=true
+```
+
+With all prerequisites satisfied, run the ten actual live journeys:
+
+```bash
+./gradlew functionalOpal -Dcucumber.filter.tags=@PO10617
+```
+
+Record actual Java JUnit, ten-scenario discovery and live results separately.
+Compilation, dry-run discovery, skipped checks and mocked action-boundary glue
+regressions do not establish live functional coverage. A local runtime of
+unknown source revision does not verify this branch.
+
 ## Draft Casefile publication tests
 
 The normal integration suite tests HTTP decisions and PostgreSQL transaction
