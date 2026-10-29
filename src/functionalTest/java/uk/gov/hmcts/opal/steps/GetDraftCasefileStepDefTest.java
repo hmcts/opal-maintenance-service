@@ -283,7 +283,8 @@ class GetDraftCasefileStepDefTest {
         steps.approve();
 
         assertThatThrownBy(steps::retrievePublished).isInstanceOf(AssertionError.class)
-            .hasMessage("Draft Casefile reached an unexpected lifecycle state");
+            .hasMessage("Draft Casefile reached an unexpected lifecycle state: expected PUBLISHED"
+                + " but was PUBLISHING_FAILED");
         when(scenario.isFailed()).thenReturn(true);
         steps.deleteCreatedDraft(scenario);
 

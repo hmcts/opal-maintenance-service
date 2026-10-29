@@ -179,7 +179,12 @@ Enable testing support only in the agreed non-live environment. Publication
 requires the real broker, running consumer and database provider
 `public.p_process_draft_casefiles`. The failed-publication fixture supplies a
 nonnumeric `Amount` (`not-an-amount`) accepted by draft creation, then requires
-the real failed publication state. The successful-publication scenario requires
+the real failed publication state. Every successful `MAT` term supplies its
+mandatory `Amount`, `Frequency`, `Creditor`, `Respondent`, `Payment` and
+`Commencement` responses using the seeded Result metadata. `Frequency` matches
+the account's monthly payment period; each Minor Creditor term names its own
+creditor. Draft creation alone does not validate these publication requirements.
+The successful-publication scenario requires
 `PUBLISHED`: `PUBLISHING_FAILED` and deadline expiry remain failures. The PO-10629 foundation supplies the real database provider. PR #318 supplies
 owner/marker-scoped pending and published cleanup with retained eligibility checks
 and the explicitly accepted concurrent-writer limitation. Actual deployed graph
@@ -188,7 +193,8 @@ with safe retained-resource evidence. There are no skipped,
 inverted or placeholder terminal assertions.
 
 Polling allows 60 seconds with 500 ms intervals, blocks new reads and late
-acceptance after the deadline, and fails on an unexpected lifecycle state. An
+acceptance after the deadline, and fails on an unexpected lifecycle state,
+reporting only the expected and actual known statuses. An
 in-flight HTTP GET still uses the existing 10-second connection and 30-second
 socket timeouts; this is not a cancellable hard 60-second wall-clock limit.
 
@@ -200,6 +206,12 @@ actions are disabled:
 ./gradlew functionalOpal --tests 'uk.gov.hmcts.opal.*.DraftCasefile*Test' --tests 'uk.gov.hmcts.opal.steps.GetDraftCasefileStepDefTest' -Dcucumber.execution.dry-run=true
 ./gradlew checkstyleFunctionalTest
 ```
+
+The request-factory helper regressions require every successful `MAT` term to
+contain all six mandatory responses, with its own creditor name. They also
+verify that the failure fixture changes only the first amount. These are
+fixture checks; the live publication scenarios verify the resulting lifecycle
+states and generated identities.
 
 Discovery must find exactly five PO-10618 scenarios without undefined or
 ambiguous steps. It does not prove live API behavior:

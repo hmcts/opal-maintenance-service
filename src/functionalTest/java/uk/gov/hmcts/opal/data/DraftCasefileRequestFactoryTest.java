@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.restassured.builder.ResponseBuilder;
+import java.util.HashMap;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class DraftCasefileRequestFactoryTest {
@@ -14,6 +16,27 @@ class DraftCasefileRequestFactoryTest {
     private static final String MARKER = "E2E-550e8400e29b41d4";
 
     private final DraftCasefileRequestFactory factory = new DraftCasefileRequestFactory();
+
+    @Test
+    void publicationTermsSupplyEveryMandatorySeededMatResponse() throws Exception {
+        JsonNode request = OBJECT_MAPPER.readTree(factory.withMinorCreditors(MARKER));
+        JsonNode terms = request.at("/casefile/respondent_account/order_details/order_terms");
+        String[] creditors = {"Synthetic Applicant", "Synthetic MinorSeven", "Synthetic MinorTwentyThree"};
+        String[] amounts = {"100.00", "25.00", "35.00"};
+        assertThat(terms.size()).isEqualTo(3);
+        for (int index = 0; index < terms.size(); index++) {
+            Map<String, String> responses = new HashMap<>();
+            for (JsonNode response : terms.get(index).path("result_responses")) {
+                String name = response.path("parameter_name").asText();
+                assertThat(responses).doesNotContainKey(name);
+                responses.put(name, response.path("response").asText());
+            }
+            assertThat(responses).containsExactlyInAnyOrderEntriesOf(Map.of(
+                "Amount", amounts[index], "Frequency", "Monthly", "Creditor", creditors[index],
+                "Respondent", "Synthetic Respondent", "Payment", "Payable through the Court",
+                "Commencement", "2026-09-01"));
+        }
+    }
 
     @Test
     void completeFixtureRetainsApplicantAndAssociatesTwoIndependentMinors() throws Exception {
@@ -37,6 +60,8 @@ class DraftCasefileRequestFactoryTest {
             assertThat(terms.get(index + 1).path("minor_creditor_sequence").intValue()).isEqualTo(sequence);
             assertThat(terms.get(index + 1).at("/result_responses/0/response").asText())
                 .isEqualTo(index == 0 ? "25.00" : "35.00");
+            assertThat(terms.get(index + 1).at("/result_responses/2/response").asText())
+                .isEqualTo(index == 0 ? "Synthetic MinorSeven" : "Synthetic MinorTwentyThree");
         }
         ((com.fasterxml.jackson.databind.node.ObjectNode) complete.at("/casefile")).remove("minor_creditors");
         ((com.fasterxml.jackson.databind.node.ArrayNode) terms).remove(2);
