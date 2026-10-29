@@ -28,6 +28,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
@@ -269,14 +270,13 @@ class ResubmitRejectedCasefileStepDefTest {
     }
 
     @Test
-    void negativeStateIsCheckedBeforeCanonicalUuidFailure() {
+    void negativeStateIsCheckedBeforeMissingCorrelationFailure() {
         steps.rejectedCasefile();
         problem = "forbidden";
         steps.deniedCorrection();
-        Response invalidUuid = problem("forbidden");
-        ObjectNode body = parse(invalidUuid);
-        body.put("operation_id", "550e8400e29b41d4a716446655440000")
-            .put("instance", "https://hmcts.gov.uk/problems/instance/550e8400e29b41d4a716446655440000");
+        ObjectNode body = parse(problem("forbidden"));
+        body.put("operation_id", "")
+            .put("instance", "https://hmcts.gov.uk/problems/instance/");
         when(actions.replace(anyString(), anyLong(), anyString(), anyString())).thenReturn(
             new ResponseBuilder().setStatusCode(403).setContentType("application/problem+json")
                 .setBody(body.toString()).build());
@@ -287,7 +287,9 @@ class ResubmitRejectedCasefileStepDefTest {
         version = 0;
         steps.rejectedCasefile();
         steps.deniedCorrection();
-        assertThatThrownBy(steps::assertDenied).isInstanceOf(AssertionError.class).hasMessageContaining("UUID");
+        clearInvocations(actions);
+        assertThatThrownBy(steps::assertDenied).isInstanceOf(AssertionError.class).hasMessageContaining("nonblank");
+        verify(actions).get("owner-token", 123L);
     }
 
     @ParameterizedTest
