@@ -47,4 +47,18 @@ withPipeline(type, product, component) {
       configurePrUserService(product)
     }
   }
+
+  afterAlways('test') {
+    steps.junit allowEmptyResults: true, testResults: '**/test-results/integration/*.xml'
+    steps.archiveArtifacts allowEmptyArchive: true, artifacts: 'integration-output/**/*'
+
+    publishHTML target: [
+        allowMissing         : true,
+        alwaysLinkToLastBuild: true,
+        keepAll              : true,
+        reportDir            : 'integration-output/report',
+        reportFiles          : 'index.html',
+        reportName           : 'Integration Tests Report'
+    ]
+  }
 }
