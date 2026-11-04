@@ -36,9 +36,10 @@ Smoke coverage currently uses JUnit health checks. `./gradlew smoke` and
 `./gradlew smokeOpal` package their Gradle HTML report under `smoke-output/report`
 and write JUnit XML under `build/test-results/smoke`.
 
-The Jenkins CNP pipeline collects JUnit results, archives `functional-output`
-and `smoke-output`, and publishes **Serenity Functional Test Report** and
-**Smoke Test Report** after the corresponding DEV or staging stage. Report
+The shared Jenkins pipeline continues to collect JUnit results. The CNP hooks
+archive `functional-output` and `smoke-output` and publish
+**Serenity Functional Test Report** and **Smoke Test Report** after the
+corresponding DEV or staging stage. Report
 names include the environment. Publication runs after failed stages too, and
 missing reports are tolerated if tests could not generate them. Functional
 aggregation and copying also run after test failures. These hooks do not add
