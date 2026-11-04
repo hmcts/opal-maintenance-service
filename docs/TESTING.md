@@ -7,6 +7,19 @@
 - **Functional:** `src/functionalTest/java`; run `./gradlew functional`. External HTTP checks use `TEST_URL`, defaulting to `http://localhost:4551`; they require a suitable running service.
 - **Smoke:** `src/smokeTest/java`; run `./gradlew smoke`. External HTTP checks use the same `TEST_URL` default and require a running service.
 
+## Integration test reports
+
+`./gradlew integration` generates JUnit XML under `build/test-results/integration`
+and an HTML report under `build/reports/tests/integration`. Its finalizer copies
+the HTML report to `integration-output/report`.
+
+The Jenkins CNP pipeline collects the integration JUnit results, archives
+`integration-output/**/*`, and publishes **Integration Tests Report** from
+`integration-output/report/index.html` after the test stage, including when the
+stage fails. Missing results are tolerated when the stage fails before tests can
+generate reports. The HTML link retains reports for individual builds and links
+to the latest build. This publication hook applies to `Jenkinsfile_CNP`.
+
 ## Cucumber functional tests
 
 Cucumber and Serenity scenarios run through `functionalOpal`. Use a Cucumber
