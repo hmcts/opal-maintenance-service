@@ -32,6 +32,34 @@ def configurePrUserService(String namespace) {
   }
 }
 
+def publishFunctionalResults(String environmentName) {
+  steps.junit allowEmptyResults: true, testResults: '**/test-results/functional/*.xml'
+  steps.archiveArtifacts allowEmptyArchive: true, artifacts: 'functional-output/**/*'
+
+  publishHTML target: [
+      allowMissing         : true,
+      alwaysLinkToLastBuild: true,
+      keepAll              : true,
+      reportDir            : 'functional-output/report',
+      reportFiles          : 'index.html',
+      reportName           : "Serenity Functional Test Report (${environmentName})"
+  ]
+}
+
+def publishSmokeResults(String environmentName) {
+  steps.junit allowEmptyResults: true, testResults: '**/test-results/smoke/*.xml'
+  steps.archiveArtifacts allowEmptyArchive: true, artifacts: 'smoke-output/**/*'
+
+  publishHTML target: [
+      allowMissing         : true,
+      alwaysLinkToLastBuild: true,
+      keepAll              : true,
+      reportDir            : 'smoke-output/report',
+      reportFiles          : 'index.html',
+      reportName           : "Smoke Test Report (${environmentName})"
+  ]
+}
+
 withPipeline(type, product, component) {
   afterSuccess('build') {
     // Keep active Gradle downloads outside the workspace while ACR packages it.
@@ -60,5 +88,21 @@ withPipeline(type, product, component) {
         reportFiles          : 'index.html',
         reportName           : 'Integration Tests Report'
     ]
+  }
+
+  afterAlways('functionalTest:dev') {
+    publishFunctionalResults('DEV')
+  }
+
+  afterAlways('smoketest:dev') {
+    publishSmokeResults('DEV')
+  }
+
+  afterAlways('functionalTest:stg') {
+    publishFunctionalResults('Staging')
+  }
+
+  afterAlways('smoketest:stg') {
+    publishSmokeResults('Staging')
   }
 }
