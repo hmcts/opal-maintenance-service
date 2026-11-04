@@ -33,7 +33,6 @@ def configurePrUserService(String namespace) {
 }
 
 def publishFunctionalResults(String environmentName) {
-  steps.junit allowEmptyResults: true, testResults: '**/test-results/functional/*.xml'
   steps.archiveArtifacts allowEmptyArchive: true, artifacts: 'functional-output/**/*'
 
   publishHTML target: [
@@ -47,7 +46,6 @@ def publishFunctionalResults(String environmentName) {
 }
 
 def publishSmokeResults(String environmentName) {
-  steps.junit allowEmptyResults: true, testResults: '**/test-results/smoke/*.xml'
   steps.archiveArtifacts allowEmptyArchive: true, artifacts: 'smoke-output/**/*'
 
   publishHTML target: [
