@@ -259,7 +259,8 @@ tasks.register('functionalOpal', Test) {
 }
 
 tasks.register('copyFunctionalReport', Copy) {
-  from(layout.buildDirectory.dir("reports/tests/functionalOpal"))
+  dependsOn 'aggregate'
+  from("${rootDir}/target/site/serenity")
   into("${rootDir}/functional-output/report")
   doLast {
     logger.quiet("Functional Test Report available at - file://${rootDir}/functional-output/report/index.html")
@@ -290,6 +291,7 @@ tasks.register('clearFunctionalReports', Delete) {
   delete(
     layout.buildDirectory.dir("test-results/functional"),
     layout.buildDirectory.dir("reports/tests/functionalOpal"),
+    file("${rootDir}/target/site/serenity"),
     file("${rootDir}/functional-output")
   )
 }
@@ -350,7 +352,9 @@ tasks.register('smoke') {
 
 tasks.named('aggregate') {
   testRoot = layout.buildDirectory.dir("test-results").get().asFile.absolutePath
+  requirementsDir = file('src/functionalTest/resources/features').absolutePath
   mustRunAfter(
+    tasks.named('functionalOpal'),
     tasks.named('smokeOpal'),
   )
 }

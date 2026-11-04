@@ -20,6 +20,35 @@ stage fails. Missing results are tolerated when the stage fails before tests can
 generate reports. The HTML link retains reports for individual builds and links
 to the latest build. This publication hook applies to `Jenkinsfile_CNP`.
 
+## Functional and smoke test reports
+
+`./gradlew functional` and `./gradlew functionalOpal` aggregate the Cucumber
+scenario outcomes into a Serenity report under `target/site/serenity` and copy
+it to `functional-output/report`. Aggregation reads the functional feature
+directory so the report includes feature navigation. The functional run clears
+previous Serenity outcomes before starting, so earlier scenarios do not appear
+in a later run.
+JUnit results remain under `build/test-results/functional`, including the
+non-Cucumber helper tests; their basic Gradle HTML report remains under
+`build/reports/tests/functionalOpal`.
+
+Smoke coverage currently uses JUnit health checks. `./gradlew smoke` and
+`./gradlew smokeOpal` package their Gradle HTML report under `smoke-output/report`
+and write JUnit XML under `build/test-results/smoke`.
+
+The Jenkins CNP pipeline collects JUnit results, archives `functional-output`
+and `smoke-output`, and publishes **Serenity Functional Test Report** and
+**Smoke Test Report** after the corresponding DEV or staging stage. Report
+names include the environment. Publication runs after failed stages too, and
+missing reports are tolerated if tests could not generate them. Functional
+aggregation and copying also run after test failures. These hooks do not add
+nightly execution or Zephyr publication.
+
+For local report-generation checks, use a focused Cucumber dry run. This
+verifies discovery and report packaging; the generated report is not evidence
+that the API scenarios executed. Deployed verification still requires the
+compatible services and data described below.
+
 ## Cucumber functional tests
 
 Cucumber and Serenity scenarios run through `functionalOpal`. Use a Cucumber
