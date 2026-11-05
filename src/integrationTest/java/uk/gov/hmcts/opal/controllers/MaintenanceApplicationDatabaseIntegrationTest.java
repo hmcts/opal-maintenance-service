@@ -32,6 +32,8 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.jdbc.Sql;
 import org.springframework.test.web.servlet.MockMvc;
 import uk.gov.hmcts.opal.BaseIntegrationTest;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraStory;
 
 @AutoConfigureMockMvc
 @TestPropertySource(properties = {
@@ -83,6 +85,8 @@ class MaintenanceApplicationDatabaseIntegrationTest extends BaseIntegrationTest 
 
     @ParameterizedTest
     @MethodSource("filterCases")
+    @JiraStory("PO-10253")
+    @JiraEpic("PO-6506")
     void filtersAndOrdersRows(String group, Boolean active, List<Integer> expectedIds) throws Exception {
         var request = get("/maintenance-applications").param("application_group", group).with(user("test-user"));
         if (active != null) {
@@ -112,6 +116,8 @@ class MaintenanceApplicationDatabaseIntegrationTest extends BaseIntegrationTest 
     }
 
     @Test
+    @JiraStory("PO-10253")
+    @JiraEpic("PO-6506")
     void mapsAllFiveFieldsWithoutExposingMetadata() throws Exception {
         mockMvc.perform(get("/maintenance-applications").param("application_group", "Create Casefile")
                 .with(user("test-user")))
@@ -124,6 +130,8 @@ class MaintenanceApplicationDatabaseIntegrationTest extends BaseIntegrationTest 
     }
 
     @Test
+    @JiraStory("PO-10253")
+    @JiraEpic("PO-6506")
     void preservesDatabaseStringBoundaries() throws Exception {
         jdbcTemplate.update("""
             UPDATE public.maintenance_applications

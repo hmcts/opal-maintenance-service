@@ -29,6 +29,8 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import uk.gov.hmcts.opal.BaseIntegrationTest;
 import uk.gov.hmcts.opal.repository.MaintenanceApplicationRepository;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraStory;
 
 @AutoConfigureMockMvc
 @TestPropertySource(properties = {
@@ -60,6 +62,8 @@ class MaintenanceApplicationControllerIntegrationTest extends BaseIntegrationTes
 
     @ParameterizedTest
     @ValueSource(strings = {"", "123456789012345678901"})
+    @JiraStory("PO-10253")
+    @JiraEpic("PO-6506")
     void rejectsInvalidGroupLengthBeforeLookup(String group) throws Exception {
         mockMvc.perform(get("/maintenance-applications").param("application_group", group)
                 .with(user("test-user")))
@@ -69,6 +73,8 @@ class MaintenanceApplicationControllerIntegrationTest extends BaseIntegrationTes
     }
 
     @Test
+    @JiraStory("PO-10253")
+    @JiraEpic("PO-6506")
     void rejectsMissingGroupBeforeLookup() throws Exception {
         mockMvc.perform(get("/maintenance-applications").with(user("test-user")))
             .andExpect(status().isBadRequest());
@@ -79,6 +85,8 @@ class MaintenanceApplicationControllerIntegrationTest extends BaseIntegrationTes
     @ValueSource(strings = {
         "A", "12345678901234567890", "Create Casefile", "create casefile", " Create Casefile ", " "
     })
+    @JiraStory("PO-10253")
+    @JiraEpic("PO-6506")
     void preservesValidGroupExactly(String group) throws Exception {
         when(repository.findMaintenanceApplications(group, null)).thenReturn(List.of());
         mockMvc.perform(get("/maintenance-applications").param("application_group", group)
@@ -90,6 +98,8 @@ class MaintenanceApplicationControllerIntegrationTest extends BaseIntegrationTes
     }
 
     @Test
+    @JiraStory("PO-10253")
+    @JiraEpic("PO-6506")
     void requiresAuthentication() throws Exception {
         mockMvc.perform(get("/maintenance-applications").param("application_group", "Create Casefile"))
             .andExpect(status().isUnauthorized());
@@ -97,6 +107,8 @@ class MaintenanceApplicationControllerIntegrationTest extends BaseIntegrationTes
     }
 
     @Test
+    @JiraStory("PO-10253")
+    @JiraEpic("PO-6506")
     void rejectsMalformedBooleanWithoutEchoingInput() throws Exception {
         String body = mockMvc.perform(get("/maintenance-applications")
                 .param("application_group", "Create Casefile").param("active", "invalid-boolean")
@@ -111,6 +123,8 @@ class MaintenanceApplicationControllerIntegrationTest extends BaseIntegrationTes
     }
 
     @Test
+    @JiraStory("PO-10253")
+    @JiraEpic("PO-6506")
     void rejectsUnsupportedResponseMediaType() throws Exception {
         mockMvc.perform(get("/maintenance-applications").param("application_group", "Create Casefile")
                 .accept(MediaType.APPLICATION_XML).with(user("test-user")))
@@ -119,6 +133,8 @@ class MaintenanceApplicationControllerIntegrationTest extends BaseIntegrationTes
     }
 
     @Test
+    @JiraStory("PO-10253")
+    @JiraEpic("PO-6506")
     void usesSharedSafeDatabaseErrorHandling() throws Exception {
         when(repository.findMaintenanceApplications("Create Casefile", null))
             .thenThrow(new InvalidDataAccessResourceUsageException("Synthetic internal failure"));

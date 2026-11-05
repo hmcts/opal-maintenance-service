@@ -22,6 +22,8 @@ import uk.gov.hmcts.opal.generated.model.DraftCasefileAddRequest;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileAddResponse;
 import uk.gov.hmcts.opal.mapper.DraftCasefileAddResponseMapper;
 import uk.gov.hmcts.opal.mapper.DraftCasefileMapper;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraStory;
 
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -57,6 +59,8 @@ class DraftCasefileRepositoryIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"REMO In", "REMO Out", "REMO Out (CMS)"})
+    @JiraStory("PO-10252")
+    @JiraEpic("PO-6506")
     void savesAndReloadsAllCaseTypesAndUnchangedJsonWithOneSubmissionInstant(String type) {
         new TransactionTemplate(transactionManager).executeWithoutResult(transaction -> {
             insertBusinessUnit();
@@ -88,6 +92,8 @@ class DraftCasefileRepositoryIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10252")
+    @JiraEpic("PO-6506")
     void jpaAndJdbcShareOneTransactionAndBothRollback() {
         AtomicReference<Long> id = new AtomicReference<>();
         new TransactionTemplate(transactionManager).executeWithoutResult(transaction -> {
@@ -105,6 +111,8 @@ class DraftCasefileRepositoryIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @EnumSource(DraftCasefileStatus.class)
+    @JiraStory("PO-10252")
+    @JiraEpic("PO-6506")
     void persistsEveryDatabaseLifecycleStatus(DraftCasefileStatus status) {
         new TransactionTemplate(transactionManager).executeWithoutResult(transaction -> {
             insertBusinessUnit();
@@ -118,6 +126,8 @@ class DraftCasefileRepositoryIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10252")
+    @JiraEpic("PO-6506")
     void observesPostgresMicrosecondRoundingWithoutNormalizingTheSubmissionInTheMapper() {
         Instant nanoseconds = Instant.parse("2026-10-01T12:00:00.123456789Z");
         new TransactionTemplate(transactionManager).executeWithoutResult(transaction -> {

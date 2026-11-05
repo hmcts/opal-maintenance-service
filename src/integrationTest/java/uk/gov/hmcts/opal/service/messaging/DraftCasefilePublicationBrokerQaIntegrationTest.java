@@ -48,6 +48,8 @@ import uk.gov.hmcts.opal.support.publication.PublicationQaGraphConfiguration;
 import uk.gov.hmcts.opal.support.publication.PublicationQaSettlementContainer;
 import uk.gov.hmcts.opal.support.publication.PublicationQaTransactions;
 import uk.gov.hmcts.opal.validator.OpenApiSchemaValidator;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraStory;
 
 import javax.sql.DataSource;
 
@@ -201,6 +203,8 @@ class DraftCasefilePublicationBrokerQaIntegrationTest extends BaseIntegrationTes
     }
 
     @Test
+    @JiraStory("PO-10621")
+    @JiraEpic("PO-10817")
     void fullGraphIsCommittedBeforeActualJmsCommit() {
         begin(Mode.SUCCESS);
         awaitSettlement();
@@ -211,6 +215,8 @@ class DraftCasefilePublicationBrokerQaIntegrationTest extends BaseIntegrationTes
     }
 
     @Test
+    @JiraStory("PO-10621")
+    @JiraEpic("PO-10817")
     void terminalRollbackAndDistinctFailureCommitPrecedeJmsCommit() {
         begin(Mode.TERMINAL);
         awaitSettlement();
@@ -222,6 +228,8 @@ class DraftCasefilePublicationBrokerQaIntegrationTest extends BaseIntegrationTes
     }
 
     @Test
+    @JiraStory("PO-10621")
+    @JiraEpic("PO-10817")
     void onePostProviderTransientRollsBackThenHigherDeliveryCountPublishes() {
         assertTrue(deliveryLimit >= 2, "Retry scenario requires a configured delivery limit of at least two");
         begin(Mode.TRANSIENT_ONCE);
@@ -233,6 +241,8 @@ class DraftCasefilePublicationBrokerQaIntegrationTest extends BaseIntegrationTes
     }
 
     @Test
+    @JiraStory("PO-10621")
+    @JiraEpic("PO-10817")
     void databaseCommitBeforeCallbackFaultRollsBackJmsAndDuplicateCreatesOneGraph() {
         assertTrue(deliveryLimit >= 2, "Duplicate scenario requires a configured delivery limit of at least two");
         begin(Mode.CALLBACK_FAULT);
@@ -247,6 +257,8 @@ class DraftCasefilePublicationBrokerQaIntegrationTest extends BaseIntegrationTes
     }
 
     @Test
+    @JiraStory("PO-10621")
+    @JiraEpic("PO-10817")
     void repeatedPostProviderTransientReachesExactDeadLetterLimitWithNoGraph() {
         begin(Mode.EXHAUSTED);
         await().atMost(Duration.ofSeconds(60)).pollInterval(Duration.ofMillis(250)).until(() -> {

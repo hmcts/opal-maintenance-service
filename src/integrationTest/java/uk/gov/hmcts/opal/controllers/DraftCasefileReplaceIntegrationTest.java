@@ -35,6 +35,8 @@ import uk.gov.hmcts.opal.logging.integration.dto.PersonalDataProcessingLogDetail
 import uk.gov.hmcts.opal.logging.integration.service.LoggingService;
 import uk.gov.hmcts.opal.repository.DraftCasefileRepository;
 import uk.gov.hmcts.opal.support.DraftCasefileHttpFixture;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraStory;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -96,6 +98,8 @@ class DraftCasefileReplaceIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
+    @JiraStory("PO-10630")
+    @JiraEpic("PO-10817")
     void replacesRejectedDraftForOriginalOrDifferentInputter(boolean different, CapturedOutput output)
         throws Exception {
         long id = rejectedDraft();
@@ -148,6 +152,8 @@ class DraftCasefileReplaceIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
+    @JiraStory("PO-10626")
+    @JiraEpic("PO-10817")
     void realReplacementHandsCleanupToLatestOwnerAndMarker(boolean changedMarker) throws Exception {
         String originalMarker = "E2E-0123456789abcdef";
         String replacementMarker = changedMarker ? "E2E-fedcba9876543210" : originalMarker;
@@ -193,6 +199,8 @@ class DraftCasefileReplaceIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @EnumSource(value = DraftCasefileStatus.class, mode = EnumSource.Mode.EXCLUDE, names = "REJECTED")
+    @JiraStory("PO-10630")
+    @JiraEpic("PO-10817")
     void rejectsEveryOtherLifecycleState(DraftCasefileStatus state) throws Exception {
         long id = rejectedDraft();
         jdbc.update("UPDATE draft_casefiles SET casefile_status = ?::public.t_draft_casefile_status_enum "
@@ -207,6 +215,8 @@ class DraftCasefileReplaceIntegrationTest extends BaseIntegrationTest {
         "stale", "header-missing", "header-private", "header-weak", "header-overflow", "id-zero", "id-overflow",
         "schema", "type", "nested-owner", "reference", "size", "media", "accept", "null-version", "timeline",
         "unavailable", "optimistic"})
+    @JiraStory("PO-10630")
+    @JiraEpic("PO-10817")
     void rejectsInvalidRequestsWithoutChangingAnyColumnOrLogging(String failure, CapturedOutput output)
         throws Exception {
         long id = rejectedDraft();

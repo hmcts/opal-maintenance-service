@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.test.context.TestPropertySource;
 import uk.gov.hmcts.opal.BaseIntegrationTest;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraIgnore;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -26,6 +27,7 @@ class DisabledDiagnosticsLiveServerIntegrationTest extends BaseIntegrationTest {
     private int serverPort;
 
     @Test
+    @JiraIgnore
     void returnsNotFoundForDisabledTestingSupportEndpoints() throws Exception {
         HttpResponse<String> pingResponse = get("/testing-support/ping");
         HttpResponse<String> authCheckResponse = get("/testing-support/auth/check");
@@ -37,6 +39,7 @@ class DisabledDiagnosticsLiveServerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraIgnore
     void keepsErrorAndUnknownTestingSupportRequestsProtected() {
         assertAll(
             () -> assertThat(get("/error").statusCode()).isEqualTo(401),

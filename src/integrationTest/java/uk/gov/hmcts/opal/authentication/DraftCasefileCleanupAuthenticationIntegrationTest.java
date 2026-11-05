@@ -26,6 +26,8 @@ import uk.gov.hmcts.opal.logging.integration.service.LoggingService;
 import uk.gov.hmcts.opal.repository.DraftCasefileRepository;
 import uk.gov.hmcts.opal.support.DraftCasefileAuthenticationFixture;
 import uk.gov.hmcts.opal.support.DraftCasefileHttpFixture;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraStory;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -86,6 +88,8 @@ class DraftCasefileCleanupAuthenticationIntegrationTest extends BaseIntegrationT
     @ParameterizedTest
     @EnumSource(value = DraftCasefileStatus.class,
         names = {"SUBMITTED", "REJECTED", "RESUBMITTED", "DELETED", "PUBLISHING_FAILED"})
+    @JiraStory("PO-10626")
+    @JiraEpic("PO-10817")
     void realSignedBearerSubmitsAndCleansDraft(DraftCasefileStatus lifecycle) throws Exception {
         String bearer = bearer();
         long id = submit(bearer);
@@ -103,6 +107,8 @@ class DraftCasefileCleanupAuthenticationIntegrationTest extends BaseIntegrationT
     }
 
     @Test
+    @JiraStory("PO-10287")
+    @JiraEpic("PO-6506")
     void anotherAuthenticatedSubmitterCanCleanTheirOwnDraft() throws Exception {
         stubUserState("wrong-user");
         String bearer = bearer();
@@ -115,6 +121,8 @@ class DraftCasefileCleanupAuthenticationIntegrationTest extends BaseIntegrationT
 
     @ParameterizedTest
     @ValueSource(strings = {"no-permission", "checker", "wrong-user", "wrong-buu", "wrong-bu"})
+    @JiraStory("PO-10287")
+    @JiraEpic("PO-6506")
     void userServiceIdentityAndPermissionRestrictCleanup(String variant) throws Exception {
         String bearer = bearer();
         DraftCasefileEntity before = repository.findById(submit(bearer)).orElseThrow();
@@ -126,6 +134,8 @@ class DraftCasefileCleanupAuthenticationIntegrationTest extends BaseIntegrationT
 
     @ParameterizedTest
     @ValueSource(strings = {"expired", "malformed", "missing"})
+    @JiraStory("PO-10287")
+    @JiraEpic("PO-6506")
     void invalidBearerCannotDeleteOrReachUserService(String variant) throws Exception {
         DraftCasefileEntity before = repository.findById(submit(bearer())).orElseThrow();
         AUTH.server().resetRequests();

@@ -51,6 +51,8 @@ import uk.gov.hmcts.opal.service.CountryService;
 import uk.gov.hmcts.opal.service.MajorCreditorService;
 import uk.gov.hmcts.opal.service.MaintenanceApplicationService;
 import uk.gov.hmcts.opal.service.ResultService;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraStory;
 
 @Testcontainers
 @AutoConfigureMockMvc
@@ -122,6 +124,8 @@ class RedisReferenceDataCacheIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10254")
+    @JiraEpic("PO-6506")
     void countryResponseRoundTripsThroughRedisWithFinesKeyAndTtl() {
         CountryEntity country = CountryEntity.builder()
             .countryId(101L)
@@ -146,6 +150,8 @@ class RedisReferenceDataCacheIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10254")
+    @JiraEpic("PO-6506")
     void majorCreditorResponseRoundTripsThroughRedisWithFinesKeyAndTtl() {
         CountryEntity country = CountryEntity.builder()
             .countryId(101L)
@@ -183,6 +189,8 @@ class RedisReferenceDataCacheIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10256")
+    @JiraEpic("PO-6506")
     void resultResponseRoundTripsThroughRedisWithEightHourTtl() {
         when(resultRepository.findResults(null, true)).thenReturn(List.of(ResultEntity.builder()
             .resultId("ABC123").resultTitle("Example Result").orderTerm(true).active(true).build()));
@@ -197,6 +205,8 @@ class RedisReferenceDataCacheIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10254")
+    @JiraEpic("PO-6506")
     void reportsRedisAsHealthyThroughSpringBootAutoConfiguration() throws Exception {
         mockMvc.perform(get("/health"))
             .andExpect(status().isOk())
@@ -206,6 +216,8 @@ class RedisReferenceDataCacheIntegrationTest extends BaseIntegrationTest {
     @ParameterizedTest
     @NullSource
     @ValueSource(strings = {"[]", "[{\"name\":\"reason\"}]"})
+    @JiraStory("PO-10255")
+    @JiraEpic("PO-6506")
     void detailResponseRoundTripsThroughRedis(String metadata) throws Exception {
         when(resultRepository.findById("ABC123")).thenReturn(Optional.of(ResultEntity.builder()
             .resultId("ABC123").resultTitle("Example").active(false).orderTerm(false)
@@ -236,6 +248,8 @@ class RedisReferenceDataCacheIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10253")
+    @JiraEpic("PO-6506")
     void maintenanceApplicationsRoundTripThroughRedis() throws Exception {
         when(maintenanceApplicationRepository.findMaintenanceApplications("Create Casefile", true))
             .thenReturn(List.of(MaintenanceApplicationEntity.builder()

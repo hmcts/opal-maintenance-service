@@ -58,6 +58,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static uk.gov.hmcts.opal.authorisation.MaintenancePermission.CHECK_VALIDATE_DRAFT_CASEFILES;
 import uk.gov.hmcts.opal.service.messaging.DraftCasefileQueuePublisher;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraStory;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @AutoConfigureMockMvc
@@ -102,6 +104,8 @@ class DraftCasefileDecisionTransactionIntegrationTest extends BaseIntegrationTes
     }
 
     @Test
+    @JiraStory("PO-10631")
+    @JiraEpic("PO-10817")
     void onlyOneOfTwoCheckersCanCommitAndPublishTheSameVersion() throws Exception {
         final long id = submittedDraft();
         var request = new DraftCasefileUpdateRequest().businessUnitId((short) 1)
@@ -157,6 +161,8 @@ class DraftCasefileDecisionTransactionIntegrationTest extends BaseIntegrationTes
     }
 
     @Test
+    @JiraStory("PO-10631")
+    @JiraEpic("PO-10817")
     void mappingFailureRollsBackEveryColumnWithoutPublishingOrAudit() throws Exception {
         long id = submittedDraft();
         final Map<String, Object> before = row(id);
@@ -177,6 +183,8 @@ class DraftCasefileDecisionTransactionIntegrationTest extends BaseIntegrationTes
     }
 
     @Test
+    @JiraStory("PO-10631")
+    @JiraEpic("PO-10817")
     void enclosingRollbackDiscardsDecisionAndAuditAfterSimulatedSend() throws Exception {
         final long id = submittedDraft();
         final Map<String, Object> before = row(id);
@@ -199,6 +207,8 @@ class DraftCasefileDecisionTransactionIntegrationTest extends BaseIntegrationTes
     }
 
     @Test
+    @JiraStory("PO-10631")
+    @JiraEpic("PO-10817")
     void failureBeforeCommitRollsBackDatabaseAndSuppressesAuditAfterSimulatedSend() throws Exception {
         long id = submittedDraft();
         Map<String, Object> before = row(id);

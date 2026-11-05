@@ -30,6 +30,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import uk.gov.hmcts.opal.BaseIntegrationTest;
 import uk.gov.hmcts.opal.entity.ResultEntity;
 import uk.gov.hmcts.opal.repository.ResultRepository;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraStory;
 
 @AutoConfigureMockMvc
 @TestPropertySource(properties = {
@@ -60,6 +62,8 @@ class ResultControllerIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"A", "ABC123", "aBc123"})
+    @JiraStory("PO-10255")
+    @JiraEpic("PO-6506")
     void acceptsBoundaryLengthsAndPreservesCase(String id) throws Exception {
         when(repository.findById(id)).thenReturn(Optional.of(ResultEntity.builder()
             .resultId(id).resultTitle("Example").active(false).orderTerm(false).build()));
@@ -78,6 +82,8 @@ class ResultControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10255")
+    @JiraEpic("PO-6506")
     void rejectsOverlongIdBeforeLookup() throws Exception {
         mockMvc.perform(get("/results/ABCDEFG").with(user("test-user")))
             .andExpect(status().isBadRequest())
@@ -88,6 +94,8 @@ class ResultControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10255")
+    @JiraEpic("PO-6506")
     void returnsSharedNotFoundProblem() throws Exception {
         when(repository.findById("ABSENT")).thenReturn(Optional.empty());
         mockMvc.perform(get("/results/ABSENT").with(user("test-user")))
@@ -102,12 +110,16 @@ class ResultControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10255")
+    @JiraEpic("PO-6506")
     void requiresAuthentication() throws Exception {
         mockMvc.perform(get("/results/ABC123")).andExpect(status().isUnauthorized());
         verifyNoInteractions(repository);
     }
 
     @Test
+    @JiraStory("PO-10255")
+    @JiraEpic("PO-6506")
     void rejectsUnsupportedResponseMediaType() throws Exception {
         mockMvc.perform(get("/results/ABC123").with(user("test-user")).accept(MediaType.APPLICATION_XML))
             .andExpect(status().isNotAcceptable());
@@ -115,6 +127,8 @@ class ResultControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10255")
+    @JiraEpic("PO-6506")
     void returnsSafeInternalError() throws Exception {
         when(repository.findById("ABC123"))
             .thenThrow(new InvalidDataAccessResourceUsageException("Synthetic internal failure"));

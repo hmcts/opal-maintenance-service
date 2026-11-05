@@ -8,6 +8,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import uk.gov.hmcts.opal.common.user.authorisation.client.service.UserStateClientService;
 import uk.gov.hmcts.opal.BaseIntegrationTest;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraIgnore;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -27,6 +28,7 @@ class TestingSupportControllerIntegrationTest extends BaseIntegrationTest {
     private UserStateClientService userStateClientService;
 
     @Test
+    @JiraIgnore
     void exposesPingWhenTestingSupportEndpointsAreEnabled() throws Exception {
         mockMvc.perform(get("/testing-support/ping"))
             .andExpect(status().isOk())
@@ -34,12 +36,14 @@ class TestingSupportControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraIgnore
     void rejectsUnauthenticatedAuthCheckWhenTestingSupportEndpointsAreEnabled() throws Exception {
         mockMvc.perform(get("/testing-support/auth/check"))
             .andExpect(status().isUnauthorized());
     }
 
     @Test
+    @JiraIgnore
     void rejectsUnauthenticatedTestingSupportSibling() throws Exception {
         mockMvc.perform(get("/testing-support/future-resource"))
             .andExpect(status().isUnauthorized());

@@ -42,6 +42,8 @@ import uk.gov.hmcts.opal.logging.integration.service.PdpoAsyncPublisherImpl;
 import uk.gov.hmcts.opal.logging.integration.service.PdpoSyncPublisher;
 import uk.gov.hmcts.opal.mapper.DraftCasefileMapper;
 import uk.gov.hmcts.opal.repository.DraftCasefileRepository;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraStory;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -100,6 +102,8 @@ class DraftCasefilePersonalDataLoggingTransactionIntegrationTest extends BaseInt
     }
 
     @Test
+    @JiraStory("PO-10252")
+    @JiraEpic("PO-6506")
     void publishesOnlyAfterCommitAndCommittedDraftIsVisibleInANewTransaction() {
         AtomicInteger verifiedReads = new AtomicInteger();
         when(logging.personalDataAccessLogAsync(any())).thenAnswer(invocation -> {
@@ -124,6 +128,8 @@ class DraftCasefilePersonalDataLoggingTransactionIntegrationTest extends BaseInt
     }
 
     @Test
+    @JiraStory("PO-10252")
+    @JiraEpic("PO-6506")
     void rollbackDoesNotPublishOrPersistDraft() {
         new TransactionTemplate(transactionManager).executeWithoutResult(transaction -> {
             saveDraftAndPublish();
@@ -136,6 +142,8 @@ class DraftCasefilePersonalDataLoggingTransactionIntegrationTest extends BaseInt
     }
 
     @Test
+    @JiraStory("PO-10630")
+    @JiraEpic("PO-10817")
     void resubmissionPublishesOnlyAfterCommit() {
         when(logging.personalDataAccessLogAsync(any())).thenReturn(true);
         new TransactionTemplate(transactionManager).executeWithoutResult(transaction -> {
@@ -151,6 +159,8 @@ class DraftCasefilePersonalDataLoggingTransactionIntegrationTest extends BaseInt
     }
 
     @Test
+    @JiraStory("PO-10630")
+    @JiraEpic("PO-10817")
     void resubmissionRollbackAndOutsideTransactionDoNotPublish() {
         new TransactionTemplate(transactionManager).executeWithoutResult(transaction -> {
             events.publishEvent(resubmissionEvent());
@@ -167,6 +177,8 @@ class DraftCasefilePersonalDataLoggingTransactionIntegrationTest extends BaseInt
     }
 
     @Test
+    @JiraStory("PO-10616")
+    @JiraEpic("PO-10817")
     void viewPublishesOnlyAfterReadOnlyTransactionCommits() {
         when(logging.personalDataAccessLogAsync(any())).thenReturn(true);
         TransactionTemplate readOnly = new TransactionTemplate(transactionManager);
@@ -185,6 +197,8 @@ class DraftCasefilePersonalDataLoggingTransactionIntegrationTest extends BaseInt
     }
 
     @Test
+    @JiraStory("PO-10616")
+    @JiraEpic("PO-10817")
     void viewWithMultipleIndividualsPerCategoryLogsDraftIdentifierOnceAfterCommit() {
         var casefile = JsonMapper.builder().build().readTree("""
             {"minor_creditors":[
@@ -219,6 +233,8 @@ class DraftCasefilePersonalDataLoggingTransactionIntegrationTest extends BaseInt
     }
 
     @Test
+    @JiraStory("PO-10616")
+    @JiraEpic("PO-10817")
     void viewRollbackDoesNotPublish() {
         TransactionTemplate readOnly = new TransactionTemplate(transactionManager);
         readOnly.setReadOnly(true);
@@ -231,12 +247,16 @@ class DraftCasefilePersonalDataLoggingTransactionIntegrationTest extends BaseInt
     }
 
     @Test
+    @JiraStory("PO-10616")
+    @JiraEpic("PO-10817")
     void viewOutsideTransactionDoesNotPublish() {
         events.publishEvent(viewEvent());
         verifyNoInteractions(logging);
     }
 
     @Test
+    @JiraStory("PO-10252")
+    @JiraEpic("PO-6506")
     void eventOutsideTransactionDoesNotPublish() {
         events.publishEvent(event(123L));
         verifyNoInteractions(logging);
@@ -244,6 +264,8 @@ class DraftCasefilePersonalDataLoggingTransactionIntegrationTest extends BaseInt
 
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
+    @JiraStory("PO-10252")
+    @JiraEpic("PO-6506")
     void publisherFailurePreservesCommittedDraftAndProcessesLaterCategories(boolean throwsException) {
         if (throwsException) {
             when(logging.personalDataAccessLogAsync(any())).thenThrow(new IllegalStateException("Synthetic failure"));
@@ -259,6 +281,8 @@ class DraftCasefilePersonalDataLoggingTransactionIntegrationTest extends BaseInt
     }
 
     @Test
+    @JiraStory("PO-10252")
+    @JiraEpic("PO-6506")
     void realPublisherFailureUsesApplicationLoggingConfigurationWithoutExposingPayloadOrException() {
         JmsTemplate jms = mock(JmsTemplate.class);
         doThrow(new UncategorizedJmsException("SYNTHETIC_CASEFILE SYNTHETIC_NAME SYNTHETIC_BANK",
@@ -324,6 +348,8 @@ class DraftCasefilePersonalDataLoggingTransactionIntegrationTest extends BaseInt
     }
 
     @Test
+    @JiraStory("PO-10620")
+    @JiraEpic("PO-10817")
     void listEventPublishesOnlyAfterReadOnlyCommit() {
         when(logging.personalDataAccessLogAsync(any())).thenReturn(true);
         var event = new DraftCasefileListPersonalDataEvent(99L, "192.0.2.1", SUBMITTED,
@@ -338,6 +364,8 @@ class DraftCasefilePersonalDataLoggingTransactionIntegrationTest extends BaseInt
     }
 
     @Test
+    @JiraStory("PO-10620")
+    @JiraEpic("PO-10817")
     void listEventRollbackAndOutsideTransactionDoNotPublish() {
         var event = new DraftCasefileListPersonalDataEvent(99L, "192.0.2.1", SUBMITTED,
             Map.of(ParticipantCategory.RESPONDENT, List.of(123L)));

@@ -54,6 +54,12 @@ java {
 }
 
 sourceSets {
+  jiraAnnotationCheck {
+    java {
+      srcDir file('src/jiraAnnotationCheck/java')
+    }
+  }
+
   openapi {
     java {
       srcDirs = [file('src/openApi/java')]
@@ -223,6 +229,16 @@ tasks.register('integration', Test) {
   testClassesDirs = sourceSets.integrationTest.output.classesDirs
   classpath = sourceSets.integrationTest.runtimeClasspath
   finalizedBy 'packageIntegrationOutput'
+}
+
+tasks.register('checkTestJiraAnnotations', JavaExec) {
+  description = "Checks runnable integration and functional tests have Jira story and epic annotations"
+  group = "Verification"
+  dependsOn 'jiraAnnotationCheckClasses'
+  classpath = sourceSets.jiraAnnotationCheck.runtimeClasspath
+  mainClass = 'uk.gov.hmcts.opal.scripts.TestJiraAnnotationChecker'
+  args = ['src/integrationTest/java', 'src/functionalTest/resources/features',
+          'config/test-jira-metadata-exemptions.txt']
 }
 
 tasks.register('functionalOpal', Test) {
@@ -400,6 +416,7 @@ tasks.named("sonarqube") {
   dependsOn(tasks.named("jacocoTestReport"))
 }
 tasks.named("check") {
+  dependsOn(tasks.named("checkTestJiraAnnotations"))
   dependsOn(tasks.named("integration"))
 }
 
@@ -467,6 +484,7 @@ ext['postgresql.version'] = '42.7.13'
 
 
 dependencies {
+  testImplementation sourceSets.jiraAnnotationCheck.output
 
   implementation 'uk.gov.hmcts:opal-common-lib:0.3.39'
   implementation 'org.mapstruct:mapstruct:1.6.3'
