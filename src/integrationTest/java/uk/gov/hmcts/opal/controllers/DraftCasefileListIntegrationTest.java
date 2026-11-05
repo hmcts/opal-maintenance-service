@@ -44,6 +44,8 @@ import uk.gov.hmcts.opal.repository.DraftCasefileRepository;
 import uk.gov.hmcts.opal.support.DraftCasefileHttpFixture;
 import uk.gov.hmcts.opal.support.DraftCasefileSqlCaptureConfiguration.StatementCapture;
 import uk.gov.hmcts.opal.support.DraftCasefileSqlCaptureConfiguration;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraStory;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -130,6 +132,8 @@ class DraftCasefileListIntegrationTest extends BaseIntegrationTest {
     @ParameterizedTest
     @EnumSource(value = MaintenancePermission.class,
         names = {"CREATE_MANAGE_DRAFT_CASEFILES", "CHECK_VALIDATE_DRAFT_CASEFILES"})
+    @JiraStory("PO-10620")
+    @JiraEpic("PO-10817")
     void eitherPermissionCanReadSummariesAndCountsInTheRequestedUnit(MaintenancePermission permission)
         throws Exception {
         var normal = perform(listRequest(false, permission));
@@ -162,6 +166,8 @@ class DraftCasefileListIntegrationTest extends BaseIntegrationTest {
         "casefile_status_to_date|2026-10-01|4",
         "submitted_by|UNKNOWN|0"
     })
+    @JiraStory("PO-10620")
+    @JiraEpic("PO-10817")
     void eachFilterAppliesInBothModes(String name, String value, long expected) throws Exception {
         for (boolean counts : List.of(false, true)) {
             clearInvocations(logging, repository);
@@ -181,6 +187,8 @@ class DraftCasefileListIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10620")
+    @JiraEpic("PO-10817")
     void combinedFiltersIncludeBothUtcDayEdgesAndExcludeTheNextMidnight() throws Exception {
         for (boolean counts : List.of(false, true)) {
             clearInvocations(logging);
@@ -199,6 +207,8 @@ class DraftCasefileListIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10620")
+    @JiraEpic("PO-10817")
     void publishedSummaryPreservesLinksAndApprovalDateAndDoesNotChangeAnyColumn() throws Exception {
         String snapshot = """
             {"respondent_account":{"account_id":101,"account_number":"R101","respondent_name":"Synthetic R"},
@@ -234,6 +244,8 @@ class DraftCasefileListIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10620")
+    @JiraEpic("PO-10817")
     void listLoggingGroupsTheFilteredResultAndContainsOnlyContractMetadata(CapturedOutput output) throws Exception {
         final int start = output.getAll().length();
         perform(listRequest(false, CREATE_MANAGE_DRAFT_CASEFILES)
@@ -270,6 +282,8 @@ class DraftCasefileListIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10620")
+    @JiraEpic("PO-10817")
     void unreadableSnapshotReturnsCorrelatedProblemWithoutLoggingPrivateValues(CapturedOutput output)
         throws Exception {
         String privateMarker = "SYNTHETIC_PRIVATE_LIST_VALUE";
@@ -286,6 +300,8 @@ class DraftCasefileListIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10620")
+    @JiraEpic("PO-10817")
     void combinedIncludeExcludeFiltersSelectOneRowAndIdenticalSubmittersSelectNone() throws Exception {
         for (boolean counts : List.of(false, true)) {
             clearInvocations(logging);
@@ -312,6 +328,8 @@ class DraftCasefileListIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10620")
+    @JiraEpic("PO-10817")
     void summerFiltersStillUseUtcRatherThanBst() throws Exception {
         jdbc.update("UPDATE draft_casefiles SET casefile_status_date = TIMESTAMP '2026-07-01 23:30:00' "
             + "WHERE draft_casefile_id = 910201");
@@ -331,6 +349,8 @@ class DraftCasefileListIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10620")
+    @JiraEpic("PO-10817")
     void bothModesLeaveStoredDraftsUnchangedAndNormalUsesOnlyOneProjectionQuery() throws Exception {
         final var before = storedRow(910201);
         capture.clear();
@@ -348,6 +368,8 @@ class DraftCasefileListIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10620")
+    @JiraEpic("PO-10817")
     void countsDoNotParseMalformedSnapshots() throws Exception {
         jdbc.update("UPDATE draft_casefiles SET casefile_snapshot = ?::json WHERE draft_casefile_id = ?",
             JSON.writeValueAsString("SYNTHETIC_PRIVATE_LIST_VALUE"), 910201L);
@@ -362,6 +384,8 @@ class DraftCasefileListIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10620")
+    @JiraEpic("PO-10817")
     void acceptedEscapedZeroSnapshotNameIsReturnedUnchanged() throws Exception {
         String stored = jdbc.queryForObject(
             "SELECT casefile_snapshot::text FROM draft_casefiles WHERE draft_casefile_id = 910201", String.class);
@@ -377,6 +401,8 @@ class DraftCasefileListIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
+    @JiraStory("PO-10620")
+    @JiraEpic("PO-10817")
     void failedPublisherStillReturnsSummariesAndAttemptsEveryCategory(boolean throwsException, CapturedOutput output)
         throws Exception {
         if (throwsException) {
@@ -398,6 +424,8 @@ class DraftCasefileListIntegrationTest extends BaseIntegrationTest {
         "casefile_status|UNKNOWN", "casefile_status_from_date|nondatetime", "casefile_status_to_date|nondatetime",
         "restrict|unsupported", "submitted_by|SYNTHETIC_PRIVATE_QUERY", "not_submitted_by|SYNTHETIC_PRIVATE_QUERY"
     })
+    @JiraStory("PO-10620")
+    @JiraEpic("PO-10817")
     void invalidFiltersReturnCorrelatedProblemsWithoutLogging(String name, String value) throws Exception {
         for (boolean counts : List.of(false, true)) {
             var request = listRequest(counts, CREATE_MANAGE_DRAFT_CASEFILES);
@@ -414,6 +442,8 @@ class DraftCasefileListIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10620")
+    @JiraEpic("PO-10817")
     void missingBlankEmptyAndReversedFiltersReturnBadRequest() throws Exception {
         assertProblem(get("/draft-casefiles").with(authentication(DraftCasefileHttpFixture.token((short) 31021))), 400);
         assertProblem(listRequest(false, CREATE_MANAGE_DRAFT_CASEFILES).param("restrict", ""), 400);
@@ -424,6 +454,8 @@ class DraftCasefileListIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10620")
+    @JiraEpic("PO-10817")
     void missingAuthenticationAndScopedPermissionsProduceNoQueryOrLogging() throws Exception {
         for (boolean counts : List.of(false, true)) {
             var unauthenticated = get("/draft-casefiles").param("business_unit_id", "31021");
@@ -443,6 +475,8 @@ class DraftCasefileListIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10620")
+    @JiraEpic("PO-10817")
     void unsupportedAcceptReturnsCommonProblemBeforeQuery() throws Exception {
         assertProblem(listRequest(false, CREATE_MANAGE_DRAFT_CASEFILES).accept(MediaType.TEXT_PLAIN), 406);
         verifyNoInteractions(repository, logging);
@@ -450,6 +484,8 @@ class DraftCasefileListIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
+    @JiraStory("PO-10620")
+    @JiraEpic("PO-10817")
     void unavailableRepositoryReturnsSafeServiceUnavailable(boolean counts) throws Exception {
         var failure = new DataAccessResourceFailureException("SYNTHETIC_PRIVATE_LIST_VALUE");
         if (counts) {

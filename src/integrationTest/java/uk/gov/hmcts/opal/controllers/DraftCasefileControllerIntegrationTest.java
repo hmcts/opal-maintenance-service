@@ -29,6 +29,8 @@ import uk.gov.hmcts.opal.generated.model.DraftCasefileAddResponse;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileGetResponse;
 import uk.gov.hmcts.opal.service.DraftCasefileService;
 import uk.gov.hmcts.opal.support.DraftCasefileHttpFixture;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraStory;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -68,6 +70,8 @@ class DraftCasefileControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10252")
+    @JiraEpic("PO-6506")
     void acceptsRawCasefileAndArbitraryNamedStringsWithoutApplyingGeneratedDefaults() throws Exception {
         String body = validBody.replace("100.00", "arbitrary named string");
         when(service.addDraftCasefile(any())).thenReturn(
@@ -90,6 +94,8 @@ class DraftCasefileControllerIntegrationTest extends BaseIntegrationTest {
     @ValueSource(strings = {
         "wrong-type", "missing-required", "missing-conditional", "invalid-date", "audit", "malformed"
     })
+    @JiraStory("PO-10252")
+    @JiraEpic("PO-6506")
     void rejectsStructureBeforeBindingWithoutDisclosingSubmittedValues(String scenario, CapturedOutput output)
         throws Exception {
         String marked = validBody.replace("Example", "SYNTHETIC_PRIVATE_NAME");
@@ -115,6 +121,8 @@ class DraftCasefileControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10252")
+    @JiraEpic("PO-6506")
     void oversizedRequestReturnsPayloadTooLargeBeforeServiceInvocation() throws Exception {
         mockMvc.perform(post("/draft-casefiles").with(authentication(DraftCasefileHttpFixture.token((short) 1)))
                 .contentType(MediaType.APPLICATION_JSON).content(" ".repeat(4097)))
@@ -126,6 +134,8 @@ class DraftCasefileControllerIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(ints = {401, 403, 409, 500, 503})
+    @JiraStory("PO-10252")
+    @JiraEpic("PO-6506")
     void usesSharedProblemDetailsForServiceFailures(int expectedStatus) throws Exception {
         RuntimeException failure = switch (expectedStatus) {
             case 401 -> new UnauthorizedException("Unauthorised",
@@ -148,6 +158,8 @@ class DraftCasefileControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10252")
+    @JiraEpic("PO-6506")
     void requiresAuthentication() throws Exception {
         mockMvc.perform(post("/draft-casefiles").contentType(MediaType.APPLICATION_JSON).content(validBody))
             .andExpect(status().isUnauthorized());
@@ -155,6 +167,8 @@ class DraftCasefileControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10616")
+    @JiraEpic("PO-10817")
     void returnsCurrentStrongEtagWithoutVersionInTheBody() throws Exception {
         when(service.getDraftCasefile(123L))
             .thenReturn(new VersionedResponse<>(new DraftCasefileGetResponse(), 4L));
@@ -171,6 +185,8 @@ class DraftCasefileControllerIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(ints = {403, 404, 500, 503})
+    @JiraStory("PO-10616")
+    @JiraEpic("PO-10817")
     void retrievalUsesSharedSafeProblemDetails(int expectedStatus) throws Exception {
         RuntimeException failure = switch (expectedStatus) {
             case 403 -> new AccessDeniedException("No matching identity");
@@ -197,6 +213,8 @@ class DraftCasefileControllerIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"text", "0", "-1", "9223372036854775808"})
+    @JiraStory("PO-10616")
+    @JiraEpic("PO-10817")
     void rejectsInvalidRetrievalIdentifiersBeforeServiceInvocation(String identifier) throws Exception {
         mockMvc.perform(get("/draft-casefiles/" + identifier)
                 .with(authentication(DraftCasefileHttpFixture.token((short) 1))))
@@ -209,6 +227,8 @@ class DraftCasefileControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10616")
+    @JiraEpic("PO-10817")
     void retrievalRequiresAuthentication() throws Exception {
         mockMvc.perform(get("/draft-casefiles/123"))
             .andExpect(status().isUnauthorized());
@@ -216,6 +236,8 @@ class DraftCasefileControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10616")
+    @JiraEpic("PO-10817")
     void rejectsUnsupportedRetrievalAcceptBeforeServiceInvocation(CapturedOutput output) throws Exception {
         mockMvc.perform(get("/draft-casefiles/123")
                 .with(authentication(DraftCasefileHttpFixture.token((short) 1)))

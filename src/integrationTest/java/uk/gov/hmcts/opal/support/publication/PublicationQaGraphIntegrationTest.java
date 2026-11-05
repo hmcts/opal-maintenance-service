@@ -22,6 +22,8 @@ import uk.gov.hmcts.opaltest.publication.PublicationQaOrderTerm;
 import uk.gov.hmcts.opaltest.publication.PublicationQaParty;
 import uk.gov.hmcts.opaltest.publication.PublicationQaReservation;
 import uk.gov.hmcts.opaltest.publication.PublicationQaRespondent;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraStory;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -57,6 +59,8 @@ class PublicationQaGraphIntegrationTest extends BaseIntegrationTest {
     private PlatformTransactionManager transactions;
 
     @Test
+    @JiraStory("PO-10621")
+    @JiraEpic("PO-10817")
     void rereadsMigratedTablesWithoutChanges() {
         var before = graph.snapshot();
         assertTrue(before.respondents().containsKey(101L), "Migrated reference account must hydrate");
@@ -69,6 +73,8 @@ class PublicationQaGraphIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10621")
+    @JiraEpic("PO-10817")
     void snapshotsAreImmutableAndDetectChangedRows() {
         var before = graph.snapshot();
         assertThrows(UnsupportedOperationException.class, () -> before.respondents().clear());
@@ -84,6 +90,8 @@ class PublicationQaGraphIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10621")
+    @JiraEpic("PO-10817")
     void detectsCommittedInsertionsAndIgnoresRolledBackRows() {
         var before = graph.snapshot();
         try {
@@ -101,6 +109,8 @@ class PublicationQaGraphIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10621")
+    @JiraEpic("PO-10817")
     void snapshotConstructorCopiesManagedRows() {
         var before = graph.snapshot();
         new TransactionTemplate(transactions).executeWithoutResult(status -> {
@@ -118,6 +128,8 @@ class PublicationQaGraphIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10621")
+    @JiraEpic("PO-10817")
     void snapshotsUseIndependentCommittedTransactions() {
         var before = graph.snapshot();
         new TransactionTemplate(transactions).executeWithoutResult(status -> {
@@ -130,6 +142,8 @@ class PublicationQaGraphIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10621")
+    @JiraEpic("PO-10817")
     void refusesSharedChildrenBeforeDeletingAnything() {
         var before = graph.snapshot();
         long draftId = fixture(before);
@@ -147,6 +161,8 @@ class PublicationQaGraphIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10621")
+    @JiraEpic("PO-10817")
     void cleansOnlyItsGraphAndRetainsBaselineAndLaterSibling() {
         var before = graph.snapshot();
         long draftId = fixture(before);
@@ -175,6 +191,8 @@ class PublicationQaGraphIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10621")
+    @JiraEpic("PO-10817")
     void cleansSubmittedMinorWithoutAnOrderAndRetainsSibling() {
         var before = graph.snapshot();
         long draftId = fixture(before);
@@ -206,6 +224,8 @@ class PublicationQaGraphIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10621")
+    @JiraEpic("PO-10817")
     void refusesIncorrectMarkerBeforeDeletingAnything() {
         var before = graph.snapshot();
         long draftId = fixture(before);
@@ -219,6 +239,8 @@ class PublicationQaGraphIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10621")
+    @JiraEpic("PO-10817")
     void refusesBaselineChangesBeforeDeletingAnything() {
         var before = graph.snapshot();
         long draftId = fixture(before);

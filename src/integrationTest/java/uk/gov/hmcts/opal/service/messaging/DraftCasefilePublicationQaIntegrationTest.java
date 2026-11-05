@@ -37,6 +37,8 @@ import uk.gov.hmcts.opal.support.publication.PublicationQaGraphConfiguration;
 import uk.gov.hmcts.opal.support.publication.PublicationQaTransactions;
 import uk.gov.hmcts.opal.validator.OpenApiSchemaValidator;
 import uk.gov.hmcts.opal.validator.DraftCasefilePublicationValidator;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraStory;
 
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -143,6 +145,8 @@ class DraftCasefilePublicationQaIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest(name = "publication with minors={0}")
     @ValueSource(booleans = {false, true})
+    @JiraStory("PO-10621")
+    @JiraEpic("PO-10817")
     void publishesCompleteGraph(boolean withMinors) {
         approve(withMinors);
         RuntimeException observed = deliver();
@@ -152,6 +156,8 @@ class DraftCasefilePublicationQaIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10621")
+    @JiraEpic("PO-10817")
     void terminalFailureCommitsAfterProcessingRollback() {
         approve(true);
         injectFault(false);
@@ -163,6 +169,8 @@ class DraftCasefilePublicationQaIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10621")
+    @JiraEpic("PO-10817")
     void transientFailureRetriesThenDuplicateIsNoOp() {
         approve(true);
         injectFault(true);
@@ -179,6 +187,8 @@ class DraftCasefilePublicationQaIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10621")
+    @JiraEpic("PO-10817")
     void separatePublishedDeliveryIsIdempotent() {
         approve(false);
         RuntimeException observed = deliver();
@@ -189,6 +199,8 @@ class DraftCasefilePublicationQaIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10621")
+    @JiraEpic("PO-10817")
     void failureRecordingOutageRetriesUntilTerminalCommit() {
         approve(true);
         injectFault(false);

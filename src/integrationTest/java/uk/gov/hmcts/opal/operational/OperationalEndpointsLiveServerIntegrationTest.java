@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.test.context.TestPropertySource;
 import uk.gov.hmcts.opal.BaseIntegrationTest;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraIgnore;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -26,6 +27,7 @@ class OperationalEndpointsLiveServerIntegrationTest extends BaseIntegrationTest 
     private int serverPort;
 
     @Test
+    @JiraIgnore
     void exposesPrometheusMetricsWithoutAuthentication() throws Exception {
         HttpRequest request = HttpRequest.newBuilder()
             .uri(URI.create("http://localhost:" + serverPort + "/prometheus"))

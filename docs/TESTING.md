@@ -7,6 +7,34 @@
 - **Functional:** `src/functionalTest/java`; run `./gradlew functional`. External HTTP checks use `TEST_URL`, defaulting to `http://localhost:4551`; they require a suitable running service.
 - **Smoke:** `src/smokeTest/java`; run `./gradlew smoke`. External HTTP checks use the same `TEST_URL` default and require a running service.
 
+## Jira story and epic metadata
+
+Run `./gradlew checkTestJiraAnnotations` to validate test ownership without
+calling Jira or Zephyr. The check also runs under `check` and `build`, matching
+the Fines service gate.
+
+Each runnable integration test method must declare at least one `@JiraStory`
+and exactly one `@JiraEpic` from
+`uk.hmcts.zephyr.automation.junit5.annotations`. Put these annotations on the
+test method. Each functional scenario or scenario-outline examples block must
+inherit at least one `@JIRA-STORY:<key>` tag and exactly one
+`@JIRA-EPIC:<key>` tag from its feature, scenario and examples scopes.
+Functional cases tagged `@Ignore` are excluded from this metadata check.
+Unit tests and JUnit smoke tests are outside this gate, matching Fines.
+
+Use the existing owning story and epic supported by the feature or ticket
+evidence. There is no implicit no-ticket exemption. The 18 existing unticketed
+infrastructure methods listed in `config/test-jira-metadata-exemptions.txt`
+are explicitly exempt from metadata requirements through `@JiraIgnore`.
+These tests remain enabled in JUnit. An unlisted `@JiraIgnore` or an exemption
+entry without a matching marked method fails the check. New tests need their
+owning story and epic; changes to the exemption list require explicit review.
+
+Existing Zephyr test-case keys are not required by this check. Validation does
+not create or upload Jira issues or Zephyr executions. The explicit
+infrastructure exemptions are the agreed Maintenance-specific addition to the
+Fines validation rules.
+
 ## Integration test reports
 
 `./gradlew integration` generates JUnit XML under `build/test-results/integration`

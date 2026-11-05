@@ -28,6 +28,8 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.jdbc.Sql;
 import org.springframework.test.web.servlet.MockMvc;
 import uk.gov.hmcts.opal.BaseIntegrationTest;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraStory;
 
 @AutoConfigureMockMvc
 @TestPropertySource(properties = {
@@ -68,6 +70,8 @@ class ResultDatabaseIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"OTAT01", "OTAF01", "NOAT01", "NOAF01"})
+    @JiraStory("PO-10255")
+    @JiraEpic("PO-6506")
     void returnsResultRegardlessOfActiveOrOrderTerm(String id) throws Exception {
         JsonNode json = getResult(id);
         assertThat(json.size()).isEqualTo(3);
@@ -77,6 +81,8 @@ class ResultDatabaseIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10255")
+    @JiraEpic("PO-6506")
     void includesExplicitSqlNullMetadata() throws Exception {
         JsonNode json = getResult("OTAT02");
         assertThat(json.has("result_parameters")).isTrue();
@@ -87,6 +93,8 @@ class ResultDatabaseIntegrationTest extends BaseIntegrationTest {
     @ParameterizedTest
     @ValueSource(strings = {"[]", "[{\"name\":\"reason\"}]", "{\"x\":1}", "true", "null",
         "{ \"spaced\": [1, 2], \"escaped\": \"a\\n\" }"})
+    @JiraStory("PO-10255")
+    @JiraEpic("PO-6506")
     void returnsJsonAsAnUnchangedString(String metadata) throws Exception {
         jdbcTemplate.update("UPDATE public.results SET result_parameters = ?::json WHERE result_id = ?",
             metadata, "OTAF01");
@@ -96,6 +104,8 @@ class ResultDatabaseIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10301")
+    @JiraEpic("PO-6506")
     void returnsUnfamiliarOrderTermMetadataUnchanged() throws Exception {
         String metadata = "[{\"name\":\"Custom\",\"type\":\"synthetic-unfamiliar\",\"mandatory\":false}]";
         jdbcTemplate.update("UPDATE public.results SET result_parameters = ?::json WHERE result_id = ?",
@@ -108,6 +118,8 @@ class ResultDatabaseIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10255")
+    @JiraEpic("PO-6506")
     void returnsNotFoundForMissingId() throws Exception {
         mockMvc.perform(get("/results/ABSENT").with(user("test-user")))
             .andExpect(status().isNotFound())
