@@ -175,14 +175,15 @@ tasks.register('dbUnitTestProfileTest') {
         require(result.failure.message.contains(diagnostic), "Aggregate diagnostic lost ${diagnostic}")
       }
     }
+    def fixtureVersion = '1.2.3'
     def modules = [
-      [group:'org.flywaydb', name:'flyway-core', version:'13.10.0'],
-      [group:'org.flywaydb', name:'flyway-database-postgresql', version:'13.10.0']
+      [group:'org.flywaydb', name:'flyway-core', version:fixtureVersion],
+      [group:'org.flywaydb', name:'flyway-database-postgresql', version:fixtureVersion]
     ]
     check('resolved-runtime-agreement') {
       def actual = project.ext.resolveDbUnitTestFlywayVersion(modules +
         [[group:'other.group', name:'flyway-core', version:'1.0.0']])
-      require(actual == '13.10.0', 'Resolved runtime agreement did not retain the exact Flyway release')
+      require(actual == fixtureVersion, 'Resolved runtime agreement did not retain the exact Flyway release')
     }
     ['flyway-core', 'flyway-database-postgresql'].each { module ->
       check("missing-runtime-${module}") {
