@@ -105,6 +105,105 @@ verifies discovery and report packaging; the generated report is not evidence
 that the API scenarios executed. Deployed verification still requires the
 compatible services and data described below.
 
+## Zephyr case registration and execution uploads
+
+Story and epic keys describe ownership. A Zephyr test-case key identifies the
+registered case whose execution result will be updated. Story/epic metadata
+alone is insufficient for an execution upload. Reuse verified Maintenance
+case mappings: integration methods use `@JiraTestKey`, and functional scenarios
+use `@JIRA-TEST-KEY:PO-<number>` tags. Do not copy Fines case keys or substitute a
+story key. The 18 approved `@JiraIgnore` methods remain enabled in JUnit and
+excluded from execution uploads; this upload tooling introduces no exemptions.
+
+Case registration is a separate, explicitly authorized, one-time QA operation.
+QA must first confirm the Maintenance Jira project, component, target account,
+existing cases and proposed case inventory, then reuse existing cases or
+register missing cases. The existing manual `createJiraTicketsFromIntegrationReport`
+and `updateJiraTicketsFromIntegrationReport` commands remain registration tools:
+they consume the integration JSON and do not require existing test-case keys.
+They copy the raw integration JSON into its packaged location before processing;
+run them only with reviewed inputs and authorization for the external changes.
+Record the returned real case keys, review the annotation/tag-only changes,
+then regenerate the reports. Do not create cases automatically in CI. Missing
+registration currently blocks useful execution uploads; no case mappings have
+been fabricated.
+
+Validate a packaged report locally before an upload:
+
+```bash
+./gradlew checkZephyrExecutionReport -PzephyrReportKind=integration --offline --no-daemon --console=plain
+./gradlew checkZephyrExecutionReport -PzephyrReportKind=functional --offline --no-daemon --console=plain
+./gradlew checkZephyrExecutionReport -PzephyrReportKind=smoke --offline --no-daemon --console=plain
+```
+
+The local task requires no credentials or network and consumes exactly these
+paths:
+
+| Kind | Packaged report |
+| --- | --- |
+| `integration` | `integration-output/zephyr/Junit5Report-IntegrationTest.json` |
+| `functional` | `functional-output/zephyr/cucumber-opal.json` |
+| `smoke` | `smoke-output/zephyr/cucumber-smoke.json` |
+
+A missing or unknown selector fails. Missing, zero-byte, malformed, empty and
+unmapped reports fail with sanitized diagnostics. Integration entries marked
+`jiraIgnore: true` are excluded; Cucumber background elements are excluded,
+and each expanded scenario-outline result must have a test-case tag. The check
+verifies mapping completeness and key format locally, not that keys exist or
+belong to actual Maintenance cases in Jira. It preserves failed test statuses
+and never modifies a report. It is separate from `build`, which does not run
+deployed suites or require registered case keys. Smoke currently generates
+JUnit reports only, so its readiness check fails explicitly until the separately
+authorized Cucumber migration delivers its JSON. Its newly approved single
+metadata exemption does not provide a registered Zephyr test-case key; execution
+uploads still require that real mapping.
+
+External processing uses the installed Zephyr processor and the established
+cloud argument names. Before any external operation, provision the authorized
+account configuration through the approved secret mechanism. There are no
+implicit Maintenance Jira URL/project defaults; confirm these non-secret inputs
+with the project administrator:
+
+- `JIRA_BASE_URL`: confirmed Jira REST API base URL.
+- `JIRA_PROJECT_ID`: confirmed Maintenance Jira project ID.
+
+Required account/secret environment names are `JIRA_ACCOUNT_ID`,
+`JIRA_ACCOUNT_EMAIL`, `JIRA_AUTH_TOKEN`, `ZEPHYR_ACCESS_KEY`,
+`ZEPHYR_SECRET_KEY` and `ZEPHYR_ACCOUNT_ID`. Registration requires the Jira
+inputs; execution uploads require all eight inputs. Optional execution context
+uses `EXECUTION_ENVIRONMENT`, `EXECUTION_BUILD`, `EXECUTION_CYCLE_DESCRIPTION`,
+`SUCCESS_STATUS_ID` and `FAILED_STATUS_ID`. Set `GIT_COMMIT` to the tested
+revision for the readiness log; it and `EXECUTION_ENVIRONMENT` are non-sensitive
+context, with absent or invalid values shown as `unspecified`. Confirm the
+Vault bindings and environment-specific status IDs before enabling publication.
+The target component is `opal-maintenance-service`, and source links point to
+Maintenance. These inputs affect tooling only, not the application runtime.
+
+With real validated reports and explicit authorization for the target account
+and environment, these commands create external Zephyr executions:
+
+```bash
+./gradlew createJiraExecutionFromIntegrationReport
+./gradlew -PzephyrFunctionalStage=functional createJiraExecutionFromFunctionalReport
+./gradlew -PzephyrFunctionalStage=smoke createJiraExecutionFromFunctionalReport
+```
+
+These tasks run the same readiness validation before checking required
+configuration and starting the processor. Integration uses
+`JUNIT5_JSON_REPORT`; functional and smoke use `CUCUMBER_JSON_REPORT`. All three
+use `CREATE_EXECUTION` and consume existing packaged reports without rerunning
+tests, cleanup, copying or aggregation. Keep the report with its tested commit,
+suite, environment and original failed statuses. An upload cannot make a failed
+test run pass. Do not log JavaExec arguments, use `--info`/`--debug` for these
+commands, or include credentials in command recipes or retained evidence.
+
+For task-graph inspection only, use `--dry-run --offline --no-daemon --console=plain`
+with either explicit functional stage. A dry run proves task selection only;
+it does not validate input, credentials, registration or upload acceptance.
+Live acceptance remains a separately authorized staging Jenkins check after
+real case registration, target confirmation and secret provisioning. No live
+registration or upload was performed by this tooling change.
+
 ## Cucumber functional tests
 
 Cucumber and Serenity scenarios run through `functionalOpal`. Use a Cucumber
