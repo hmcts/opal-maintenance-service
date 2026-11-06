@@ -44,9 +44,11 @@ the HTML report to `integration-output/report`.
 The Jenkins CNP pipeline collects the integration JUnit results, archives
 `integration-output/**/*`, and publishes **Integration Tests Report** from
 `integration-output/report/index.html` after the test stage, including when the
-stage fails. Missing results are tolerated when the stage fails before tests can
-generate reports. The HTML link retains reports for individual builds and links
-to the latest build. This publication hook applies to `Jenkinsfile_CNP`.
+stage fails. It requires the report index and fails the build if the report is
+missing; available output is archived before this check. An `UNSTABLE` result
+from JUnit collection is normalized to `FAILURE`. The HTML link retains reports
+for individual builds and links to the latest build. This publication hook
+applies to `Jenkinsfile_CNP`.
 
 ## Functional and smoke test reports
 
@@ -64,14 +66,15 @@ Smoke coverage currently uses JUnit health checks. `./gradlew smoke` and
 `./gradlew smokeOpal` package their Gradle HTML report under `smoke-output/report`
 and write JUnit XML under `build/test-results/smoke`.
 
-The shared Jenkins pipeline continues to collect JUnit results. The CNP hooks
-archive `functional-output` and `smoke-output` and publish
-**Serenity Functional Test Report** and **Smoke Test Report** after the
-corresponding DEV or staging stage. Report
-names include the environment. Publication runs after failed stages too, and
-missing reports are tolerated if tests could not generate them. Functional
-aggregation and copying also run after test failures. These hooks do not add
-nightly execution or Zephyr publication.
+The shared Jenkins pipeline continues to collect functional and smoke JUnit
+results before the CNP hooks run. The CNP hooks archive `functional-output` and
+`smoke-output` and publish **Serenity Functional Test Report** and **Smoke Test
+Report** after the corresponding DEV or staging stage. Report names include the
+environment. Publication runs after failed stages too, and each hook requires
+its expected `index.html`; if a report is missing, the build fails after
+available output has been archived. An `UNSTABLE` result is normalized to
+`FAILURE`. Functional aggregation and copying also run after test failures.
+These hooks do not add nightly execution or Zephyr publication.
 
 For local report-generation checks, use a focused Cucumber dry run. This
 verifies discovery and report packaging; the generated report is not evidence

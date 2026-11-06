@@ -32,11 +32,25 @@ def configurePrUserService(String namespace) {
   }
 }
 
+def failBuildOnUnstableResults() {
+  if (currentBuild.result == 'UNSTABLE') {
+    currentBuild.result = 'FAILURE'
+  }
+}
+
+def requireReport(String label, String directory) {
+  if (!steps.fileExists("${directory}/index.html")) {
+    throw new RuntimeException("${label} was not generated at ${directory}/index.html")
+  }
+}
+
 def publishFunctionalResults(String environmentName) {
+  failBuildOnUnstableResults()
   steps.archiveArtifacts allowEmptyArchive: true, artifacts: 'functional-output/**/*'
+  requireReport('Functional report', 'functional-output/report')
 
   publishHTML target: [
-      allowMissing         : true,
+      allowMissing         : false,
       alwaysLinkToLastBuild: true,
       keepAll              : true,
       reportDir            : 'functional-output/report',
@@ -46,10 +60,12 @@ def publishFunctionalResults(String environmentName) {
 }
 
 def publishSmokeResults(String environmentName) {
+  failBuildOnUnstableResults()
   steps.archiveArtifacts allowEmptyArchive: true, artifacts: 'smoke-output/**/*'
+  requireReport('Smoke report', 'smoke-output/report')
 
   publishHTML target: [
-      allowMissing         : true,
+      allowMissing         : false,
       alwaysLinkToLastBuild: true,
       keepAll              : true,
       reportDir            : 'smoke-output/report',
@@ -76,10 +92,12 @@ withPipeline(type, product, component) {
 
   afterAlways('test') {
     steps.junit allowEmptyResults: true, testResults: '**/test-results/integration/*.xml'
+    failBuildOnUnstableResults()
     steps.archiveArtifacts allowEmptyArchive: true, artifacts: 'integration-output/**/*'
+    requireReport('Integration report', 'integration-output/report')
 
     publishHTML target: [
-        allowMissing         : true,
+        allowMissing         : false,
         alwaysLinkToLastBuild: true,
         keepAll              : true,
         reportDir            : 'integration-output/report',
