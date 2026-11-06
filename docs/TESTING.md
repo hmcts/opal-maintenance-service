@@ -238,6 +238,91 @@ Live acceptance remains a separately authorized staging Jenkins check after
 real case registration, target confirmation and secret provisioning. No live
 registration or upload was performed by this tooling change.
 
+## Nightly staging QA and upload activation
+
+`Jenkinsfile_nightly` expands the former dependency-check nightly job with
+independent `Integration`, `Functional` and `Smoke` boolean parameters, all
+true by default. The `afterAlways('DependencyCheckNightly')` hook runs selected
+suites using `integration`, `functionalOpal` and `smokeOpal`; their existing
+finalizers package reports even when tests fail. The weekday Jenkins cron stays
+`H 07 * * 1-5`, with its existing Jenkins timezone semantics. Functional and
+smoke HTTP calls target staging only:
+
+- Maintenance: `https://opal-maintenance-service.staging.platform.hmcts.net`.
+- User Service: `https://opal-user-service.staging.platform.hmcts.net`.
+- Logging Service: `https://opal-logging-service.staging.platform.hmcts.net`.
+
+These URLs are configuration, not evidence of current service/data readiness.
+Before running the expanded job, the environment owner must confirm compatible
+services, existing reference data, authorized test actors and the journey-specific
+cleanup prerequisites described below. The job does not provision them or alter
+security/testing-support flags. Integration retains its disposable Testcontainers
+database requirements.
+
+Uploads remain disabled unless the job environment explicitly sets
+`ZEPHYR_UPLOADS_READY=true`. Leave it unset or false until Maintenance QA and the
+CI administrator have verified real case mappings for all upload-eligible cases,
+target/account permissions, status IDs and Vault access. Existing ownership tags
+and the single smoke metadata exemption do not provide case mappings. The local
+readiness commands above must pass on genuine reports before activation.
+
+With readiness confirmed, uploads run on Friday in **Europe/London** or when
+`ZephyrExecution=true` (default false). This explicit UK date differs from Fines's
+host-zone calculation; it does not change the Jenkins cron timezone. Without
+readiness, scheduled runs log the setup state and run/publish selected suites
+without uploads. A manual upload request without readiness also records a setup
+failure, runs/publishes selected suites, and fails the final build without issuing
+an upload. Disabling a suite disables its cleanup, execution, report publication
+and upload; selecting no suites loads no upload secrets.
+
+Set `JIRA_BASE_URL` and `JIRA_PROJECT_ID` explicitly as inherited job environment
+variables. No Jira target defaults are supplied. For each eligible upload, the
+verified Infrastructure 2.13.4 `withTeamSecrets` runtime wrapper binds only these
+six existing secret names from `opal-${env}`, resolving `${env}` through the
+library's non-production environment selection:
+
+| Vault secret name | Environment variable |
+| --- | --- |
+| `jira-auth-token` | `JIRA_AUTH_TOKEN` |
+| `jira-account-id` | `JIRA_ACCOUNT_ID` |
+| `jira-zephyr-account-email` | `JIRA_ACCOUNT_EMAIL` |
+| `zephyr-access-key` | `ZEPHYR_ACCESS_KEY` |
+| `zephyr-secret-key` | `ZEPHYR_SECRET_KEY` |
+| `zephyr-account-id` | `ZEPHYR_ACCOUNT_ID` |
+
+The normal `loadVaultSecrets` DSL method only configures the outer nightly
+wrapper. Using it would make a Vault failure prevent checkout/tests, so upload
+credentials are acquired inside each upload stage after that suite's report
+publication. Test and publication commands run outside this credential scope.
+Missing target configuration or unavailable Vault access fails requested upload
+acceptance while preserving the selected suites' test execution and reports.
+Execution metadata records `GIT_COMMIT`, `staging` and the actual `BUILD_URL`.
+The exact three execution commands above consume already packaged output; the
+job never creates or updates cases, or reruns tests through an upload task.
+
+Each selected suite first deletes only its own raw JSON, raw Serenity outcomes,
+XML, HTML and packaged output. Functional/smoke also clear disposable
+`target/site/serenity` aggregation scratch, preserving the sibling raw and packaged
+reports. A cleanup failure prevents that suite from executing or publishing stale
+workspace output. The direct Gradle invocation collects each suite's JUnit XML
+exactly once, with missing results treated as failure. HTML publication requires
+a nonempty packaged `report/index.html` with `allowMissing=false`; available
+packaged output is archived even after ordinary HTML publication failures.
+Requested ready uploads also require a nonempty suite-specific packaged JSON,
+then the execution task validates completeness and real-key format before its
+processor can run.
+
+Ordinary test, publication, upload, Vault acquisition or secret-scope cleanup
+failures mark the affected stage and final build failed, while other selected
+suites continue. Reports from failed tests remain upload-eligible when complete
+and mapped. `UNSTABLE` is normalized to `FAILURE`; earlier `FAILURE` and `ABORTED`
+results are preserved. Cancellation propagates as `FlowInterruptedException` and
+stops later suites/uploads. Diagnostics use fixed reasons instead of raw processor
+or credential exceptions. Real Jenkins/Vault/staging/upload acceptance remains
+unverified until the separately authorized live checks are completed. Rolling
+back this pipeline change removes the added nightly QA stages; no runtime or
+migration configuration changes are required.
+
 ## Cucumber functional tests
 
 Cucumber and Serenity scenarios run through `functionalOpal`. Use a Cucumber
