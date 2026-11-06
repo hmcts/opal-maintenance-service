@@ -16,6 +16,8 @@ import uk.gov.hmcts.opal.dto.DraftCasefileFilter;
 import uk.gov.hmcts.opal.entity.DraftCasefileStatus;
 import uk.gov.hmcts.opal.support.DraftCasefileSqlCaptureConfiguration.StatementCapture;
 import uk.gov.hmcts.opal.support.DraftCasefileSqlCaptureConfiguration;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraStory;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -44,6 +46,8 @@ class DraftCasefileListRepositoryIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @MethodSource("filters")
+    @JiraStory("PO-10620")
+    @JiraEpic("PO-10817")
     void summariesAndCountsApplyIdenticalFilters(DraftCasefileFilter filter) {
         var summaries = repository.findSummaries(filter);
         assertThat(repository.countMatching(filter)).isEqualTo(summaries.size());
@@ -69,6 +73,8 @@ class DraftCasefileListRepositoryIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10620")
+    @JiraEpic("PO-10817")
     void inclusiveUtcDayContainsBothEdgesAndExcludesNextMidnight() {
         var filter = filter(null, null, List.of(DraftCasefileStatus.SUBMITTED, DraftCasefileStatus.RESUBMITTED),
             LocalDateTime.parse("2026-10-01T00:00:00"), LocalDateTime.parse("2026-10-02T00:00:00"));
@@ -78,6 +84,8 @@ class DraftCasefileListRepositoryIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10620")
+    @JiraEpic("PO-10817")
     void oldRejectedAndContradictorySubmittersHaveNoImplicitRestriction() {
         var rejected = filter("BUU-1", null, List.of(DraftCasefileStatus.REJECTED), null, null);
         assertThat(repository.findSummaries(rejected)).extracting(DraftCasefileSummaryProjection::getDraftCasefileId)
@@ -89,6 +97,8 @@ class DraftCasefileListRepositoryIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10620")
+    @JiraEpic("PO-10817")
     void countExecutesOneScalarSelectWithoutJsonInspectionOrSummaryColumns() {
         capture.clear();
         assertThat(repository.countMatching(filter(null, null, List.of(), null, null))).isEqualTo(6);
@@ -101,6 +111,8 @@ class DraftCasefileListRepositoryIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10620")
+    @JiraEpic("PO-10817")
     void summarySelectLoadsOnlySummaryColumnsWithMappedTypes() {
         capture.clear();
         var rows = repository.findSummaries(filter(null, null, List.of(), null, null));
@@ -117,6 +129,8 @@ class DraftCasefileListRepositoryIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10620")
+    @JiraEpic("PO-10817")
     void acceptedEscapedZeroInEitherJsonAggregateDoesNotBreakProjection() {
         JsonMapper json = JsonMapper.builder().build();
         String stored = jdbc.queryForObject(

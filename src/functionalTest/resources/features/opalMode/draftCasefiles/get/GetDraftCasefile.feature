@@ -1,4 +1,4 @@
-@Opal @PO10618 @JIRA-STORY:PO-10618
+@Opal @PO10618 @JIRA-STORY:PO-10618 @JIRA-EPIC:PO-10817
 Feature: Retrieve a Draft Casefile
 
   Scenario: Retrieve a complete authorised Draft Casefile

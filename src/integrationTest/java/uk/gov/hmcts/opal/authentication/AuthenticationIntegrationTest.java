@@ -60,6 +60,9 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 import uk.gov.hmcts.opal.BaseIntegrationTest;
 import uk.gov.hmcts.opal.support.DraftCasefileHttpFixture;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraIgnore;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraStory;
 
 @AutoConfigureMockMvc
 @ExtendWith(OutputCaptureExtension.class)
@@ -137,6 +140,7 @@ class AuthenticationIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraIgnore
     void allowsContractedGetEndpointsWithoutAuthentication() throws Exception {
         mockMvc.perform(get("/"))
             .andExpect(status().isOk());
@@ -155,6 +159,7 @@ class AuthenticationIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraIgnore
     void rejectsUnauthenticatedSiblingRoutes() {
         assertAll(
             () -> mockMvc.perform(get("/v3/future-resource"))
@@ -165,6 +170,7 @@ class AuthenticationIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraIgnore
     void rejectsUnauthenticatedOperationalAndStaticSiblings() {
         assertAll(
             () -> mockMvc.perform(get("/info"))
@@ -175,12 +181,14 @@ class AuthenticationIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraIgnore
     void rejectsWrongMethodOnPublicPath() throws Exception {
         mockMvc.perform(post("/v3/api-docs"))
             .andExpect(status().isUnauthorized());
     }
 
     @Test
+    @JiraIgnore
     void leavesDisabledTestingSupportEndpointsAbsent() throws Exception {
         var syntheticUser = authentication(DraftCasefileHttpFixture.token((short) 1));
         mockMvc.perform(get("/testing-support/ping").with(syntheticUser))
@@ -193,6 +201,8 @@ class AuthenticationIntegrationTest extends BaseIntegrationTest {
 
 
     @Test
+    @JiraStory("PO-10251")
+    @JiraEpic("PO-6506")
     void acceptsTokenWithoutAudience() throws Exception {
         stubJwkSet();
         WIRE_MOCK_SERVER.stubFor(com.github.tomakehurst.wiremock.client.WireMock.get(USER_STATE_PATH)
@@ -210,6 +220,8 @@ class AuthenticationIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10251")
+    @JiraEpic("PO-6506")
     void acceptsTokenWithNonMatchingAudience() throws Exception {
         stubJwkSet();
         WIRE_MOCK_SERVER.stubFor(com.github.tomakehurst.wiremock.client.WireMock.get(USER_STATE_PATH)
@@ -228,6 +240,7 @@ class AuthenticationIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraIgnore
     void rejectsMalformedTokenWithoutLoggingRemoteAddressAsUserIdentifier(CapturedOutput output) throws Exception {
         mockMvc.perform(get(AUTHENTICATED_PATH)
                             .with(request -> {
@@ -241,6 +254,7 @@ class AuthenticationIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraIgnore
     void rejectsExpiredToken() throws Exception {
         stubJwkSet();
         String token = tokenWith("test-subject", issuer(), Instant.now().minus(1, ChronoUnit.MINUTES));
@@ -250,6 +264,7 @@ class AuthenticationIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraIgnore
     void rejectsTokenFromWrongIssuer() throws Exception {
         stubJwkSet();
         String token = tokenWith("test-subject", WIRE_MOCK_SERVER.baseUrl() + "/wrong-issuer",
@@ -260,6 +275,7 @@ class AuthenticationIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraIgnore
     void rejectsTokenWhenUserStateIsNotFoundWithoutLoggingTokenIdentifiers(CapturedOutput output) throws Exception {
         stubJwkSet();
         WIRE_MOCK_SERVER.stubFor(com.github.tomakehurst.wiremock.client.WireMock.get(USER_STATE_PATH)
@@ -282,6 +298,7 @@ class AuthenticationIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraIgnore
     void doesNotLeakDownstreamIdentityWhenUserStateFails(CapturedOutput output) throws Exception {
         stubJwkSet();
         WIRE_MOCK_SERVER.stubFor(com.github.tomakehurst.wiremock.client.WireMock.get(USER_STATE_PATH)

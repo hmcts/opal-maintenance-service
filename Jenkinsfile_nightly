@@ -1,14 +1,226 @@
 #!groovy
+import uk.gov.hmcts.contino.Environment
+import uk.gov.hmcts.contino.GradleBuilder
+import org.jenkinsci.plugins.workflow.steps.FlowInterruptedException
 
 properties([
-  // H allow predefined but random minute see https://en.wikipedia.org/wiki/Cron#Non-standard_characters
-  pipelineTriggers([cron('H 07 * * 1-5')])
+  // Retain the existing Jenkins cron timezone and weekday schedule.
+  pipelineTriggers([cron('H 07 * * 1-5')]),
+  parameters([
+    booleanParam(name: 'Integration', defaultValue: true, description: 'Run integration tests'),
+    booleanParam(name: 'Functional', defaultValue: true, description: 'Run functional tests'),
+    booleanParam(name: 'Smoke', defaultValue: true, description: 'Run smoke tests'),
+    booleanParam(name: 'ZephyrExecution', defaultValue: false, description: 'Create Zephyr executions')
+  ])
 ])
 
 @Library("Infrastructure@2.13.4")
 
-def type = "java"
-def product = "opal"
-def component = "maintenance-service"
+def type = 'java'
+def product = 'opal'
+def component = 'maintenance-service'
+GradleBuilder builder = new GradleBuilder(this, product)
+def staging = [
+  name: 'staging',
+  testUrl: 'https://opal-maintenance-service.staging.platform.hmcts.net',
+  userServiceApiUrl: 'https://opal-user-service.staging.platform.hmcts.net',
+  loggingServiceApiUrl: 'https://opal-logging-service.staging.platform.hmcts.net'
+]
 
-withNightlyPipeline(type, product, component) {}
+static LinkedHashMap<String, Object> secret(String secretName, String envVar) {
+  [$class: 'AzureKeyVaultSecret', secretType: 'Secret', name: secretName, version: '', envVariable: envVar]
+}
+
+def secrets = [
+  'opal-${env}': [
+    secret('jira-auth-token', 'JIRA_AUTH_TOKEN'),
+    secret('jira-account-id', 'JIRA_ACCOUNT_ID'),
+    secret('jira-zephyr-account-email', 'JIRA_ACCOUNT_EMAIL'),
+    secret('zephyr-access-key', 'ZEPHYR_ACCESS_KEY'),
+    secret('zephyr-secret-key', 'ZEPHYR_SECRET_KEY'),
+    secret('zephyr-account-id', 'ZEPHYR_ACCOUNT_ID')
+  ]
+]
+
+def stageFailures = []
+def recordStageFailure = { String name, String reason ->
+  String message = "${name}: ${reason}"
+  stageFailures << message
+  if (currentBuild.result != 'ABORTED') {
+    currentBuild.result = 'FAILURE'
+  }
+  steps.echo message
+  catchError(buildResult: 'FAILURE', stageResult: 'FAILURE', catchInterruptions: false) {
+    error(message)
+  }
+}
+
+def configureTestEnvironment = {
+  env.ENVIRONMENT_NAME = staging.name
+  env.TEST_URL = staging.testUrl
+  env.OPAL_USER_SERVICE_API_URL = staging.userServiceApiUrl
+  env.OPAL_LOGGING_SERVICE_API_URL = staging.loggingServiceApiUrl
+}
+
+def configureZephyrExecution = {
+  env.EXECUTION_BUILD = env.GIT_COMMIT
+  env.EXECUTION_ENVIRONMENT = staging.name
+  env.EXECUTION_CYCLE_DESCRIPTION =
+    "Nightly execution for commit ${env.GIT_COMMIT} on environment ${staging.name}.\n${env.BUILD_URL}"
+}
+
+def deleteStageOutputs = { List<String> paths ->
+  // Paths are fixed suite-owned paths below; never interpolate job input here.
+  steps.sh paths.collect { "rm -rf '${it}'" }.join('\n')
+}
+
+def suites = [
+  [flag: 'Integration', name: 'Integration Tests', command: 'integration', output: 'integration-output',
+   reportName: 'Integration Tests Report (staging)', xml: 'build/test-results/integration/*.xml',
+   json: 'integration-output/zephyr/Junit5Report-IntegrationTest.json',
+   upload: 'createJiraExecutionFromIntegrationReport',
+   cleanup: ['integration-output', 'build/reports/tests/integration', 'build/test-results/integration',
+             'target/zephyr-reports/Junit5Report-IntegrationTest.json']],
+  [flag: 'Functional', name: 'Functional Tests', command: 'functionalOpal', output: 'functional-output',
+   reportName: 'Serenity Functional Test Report (staging)', xml: 'build/test-results/functional/*.xml',
+   json: 'functional-output/zephyr/cucumber-opal.json',
+   upload: '-PzephyrFunctionalStage=functional createJiraExecutionFromFunctionalReport',
+   cleanup: ['functional-output', 'build/reports/tests/functionalOpal', 'build/test-results/functional',
+             'target/zephyr-reports/cucumber-opal.json', 'target/site/serenity-functional', 'target/site/serenity']],
+  [flag: 'Smoke', name: 'Smoke Tests', command: 'smokeOpal', output: 'smoke-output',
+   reportName: 'Serenity Smoke Test Report (staging)', xml: 'build/test-results/smoke/*.xml',
+   json: 'smoke-output/zephyr/cucumber-smoke.json',
+   upload: '-PzephyrFunctionalStage=smoke createJiraExecutionFromFunctionalReport',
+   cleanup: ['smoke-output', 'smoke-test-report', 'build/reports/tests/smokeOpal', 'build/test-results/smoke',
+             'target/zephyr-reports/cucumber-smoke.json', 'target/site/serenity-smoke', 'target/site/serenity']]
+]
+
+def runSuite = { Map suite, boolean requireJson ->
+  boolean publishable = true
+  stage(suite.name) {
+    boolean prepared = false
+    try {
+      deleteStageOutputs(suite.cleanup)
+      prepared = true
+      builder.gradle(suite.command)
+    } catch (FlowInterruptedException interrupted) {
+      throw interrupted
+    } catch (Exception ignored) {
+      recordStageFailure(suite.name, 'test execution failed; inspect the test report')
+    } finally {
+      // If cleanup failed, none of the remaining workspace output is fresh evidence.
+      if (prepared) {
+        try {
+          // Direct GradleBuilder.gradle does not collect JUnit results itself.
+          steps.junit allowEmptyResults: false, testResults: suite.xml
+        } catch (FlowInterruptedException interrupted) {
+          throw interrupted
+        } catch (Exception ignored) {
+          publishable = false
+          recordStageFailure(suite.name, 'JUnit publication failed')
+        }
+        if (currentBuild.result == 'UNSTABLE') {
+          currentBuild.result = 'FAILURE'
+        }
+        try {
+          String index = "${suite.output}/report/index.html"
+          if (!steps.fileExists(index)) {
+            throw new IllegalStateException('Missing HTML report')
+          }
+          steps.sh "test -s '${index}'"
+          publishHTML target: [allowMissing: false, alwaysLinkToLastBuild: true, keepAll: true,
+                               reportDir: "${suite.output}/report", reportFiles: 'index.html',
+                               reportName: suite.reportName]
+        } catch (FlowInterruptedException interrupted) {
+          throw interrupted
+        } catch (Exception ignored) {
+          publishable = false
+          recordStageFailure(suite.name, 'HTML publication failed')
+        } finally {
+          try {
+            steps.archiveArtifacts allowEmptyArchive: true, artifacts: "${suite.output}/**/*"
+          } catch (FlowInterruptedException interrupted) {
+            throw interrupted
+          } catch (Exception ignored) {
+            publishable = false
+            recordStageFailure(suite.name, 'artifact archival failed')
+          }
+        }
+        if (requireJson) {
+          try {
+            if (!steps.fileExists(suite.json)) {
+              throw new IllegalStateException('Missing Zephyr report')
+            }
+            steps.sh "test -s '${suite.json}'"
+          } catch (FlowInterruptedException interrupted) {
+            throw interrupted
+          } catch (Exception ignored) {
+            publishable = false
+            recordStageFailure(suite.name, 'Zephyr JSON report missing or empty')
+          }
+        }
+      } else {
+        publishable = false
+      }
+    }
+  }
+  return publishable
+}
+
+withNightlyPipeline(type, product, component) {
+  afterAlways('DependencyCheckNightly') {
+    configureTestEnvironment()
+    boolean ready = env.ZEPHYR_UPLOADS_READY?.trim()?.equalsIgnoreCase('true') ?: false
+    boolean requested = params.ZephyrExecution ||
+      java.time.ZonedDateTime.now(java.time.ZoneId.of('Europe/London')).dayOfWeek == java.time.DayOfWeek.FRIDAY
+    boolean shouldUpload = ready && requested
+    boolean uploadConfigured = shouldUpload
+    stage('Zephyr setup') {
+      if (!ready) {
+        echo 'Zephyr uploads disabled: Maintenance registration and account setup are not confirmed (ZEPHYR_UPLOADS_READY).'
+        if (params.ZephyrExecution) {
+          recordStageFailure('Zephyr setup', 'manual upload requested before setup readiness')
+        }
+      }
+      if (shouldUpload) {
+        configureZephyrExecution()
+        if (!env.JIRA_BASE_URL?.trim() || !env.JIRA_PROJECT_ID?.trim()) {
+          uploadConfigured = false
+          recordStageFailure('Zephyr setup', 'JIRA_BASE_URL and JIRA_PROJECT_ID must be explicitly configured')
+        }
+      }
+    }
+    for (Map suite : suites) {
+      if (!params[suite.flag]) {
+        continue
+      }
+      boolean publishable = runSuite(suite, shouldUpload)
+      if (uploadConfigured && publishable && currentBuild.result != 'ABORTED') {
+        stage("${suite.name} Zephyr execution") {
+          boolean secretsLoaded = false
+          try {
+            // loadVaultSecrets is configuration-only and would wrap the entire nightly job.
+            // Use its verified runtime loader only around this upload, after publication.
+            withTeamSecrets([vaultSecrets: secrets, vaultEnvironmentOverrides: [:]],
+                            new Environment(env).nonProdName, product) {
+              secretsLoaded = true
+              // The task validates mapping/configuration and consumes reports without rerunning tests.
+              builder.gradle(suite.upload)
+            }
+          } catch (FlowInterruptedException interrupted) {
+            throw interrupted
+          } catch (Exception ignored) {
+            recordStageFailure(suite.name, secretsLoaded ?
+              'Zephyr execution upload or secret cleanup failed' : 'Vault secrets unavailable for Zephyr upload')
+          }
+        }
+      }
+    }
+    if (currentBuild.result == 'UNSTABLE') {
+      currentBuild.result = 'FAILURE'
+    }
+    if (!stageFailures.isEmpty()) {
+      error("One or more nightly stages failed:\n - ${stageFailures.join('\n - ')}")
+    }
+  }
+}

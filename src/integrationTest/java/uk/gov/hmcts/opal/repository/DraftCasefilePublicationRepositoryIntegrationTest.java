@@ -13,6 +13,8 @@ import tools.jackson.databind.json.JsonMapper;
 import uk.gov.hmcts.opal.BaseIntegrationTest;
 import uk.gov.hmcts.opal.entity.DraftCasefileStatus;
 import uk.gov.hmcts.opal.repository.extensions.DraftCasefilePublicationRepository;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraStory;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -33,6 +35,8 @@ class DraftCasefilePublicationRepositoryIntegrationTest extends BaseIntegrationT
     private EntityManager entityManager;
 
     @Test
+    @JiraStory("PO-10629")
+    @JiraEpic("PO-10817")
     void returnsAllThreeOutputsFromRealProvider() {
         var result = publication.publish(1062901L);
         var accounts = JsonMapper.builder().build().readTree(result.publishedAccountsJson());
@@ -48,6 +52,8 @@ class DraftCasefilePublicationRepositoryIntegrationTest extends BaseIntegrationT
     }
 
     @Test
+    @JiraStory("PO-10629")
+    @JiraEpic("PO-10817")
     void rollsBackGraphAndReservationsWithJpaTransaction() {
         publication.publish(1062901L);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM account_number_index WHERE business_unit_id=32055",
@@ -61,6 +67,8 @@ class DraftCasefilePublicationRepositoryIntegrationTest extends BaseIntegrationT
     }
 
     @Test
+    @JiraStory("PO-10629")
+    @JiraEpic("PO-10817")
     void preservesBigintIdentities() {
         jdbc.execute("ALTER SEQUENCE respondent_account_id_seq RESTART WITH 9007199254740993");
         var result = publication.publish(1062901L);
@@ -70,6 +78,8 @@ class DraftCasefilePublicationRepositoryIntegrationTest extends BaseIntegrationT
     }
 
     @Test
+    @JiraStory("PO-10629")
+    @JiraEpic("PO-10817")
     void leavesExistingVersionUnchangedBeforeMutation() {
         var draft = drafts.findForPublicationById(1062901L).orElseThrow();
         publication.initialiseLegacyVersion(draft);
@@ -77,6 +87,8 @@ class DraftCasefilePublicationRepositoryIntegrationTest extends BaseIntegrationT
     }
 
     @Test
+    @JiraStory("PO-10629")
+    @JiraEpic("PO-10817")
     void updatesManagedLegacyDraftWithoutInsertingAnotherRow() {
         jdbc.update("UPDATE draft_casefiles SET version_number=NULL WHERE draft_casefile_id=1062902");
         var draft = drafts.findForPublicationById(1062902L).orElseThrow();

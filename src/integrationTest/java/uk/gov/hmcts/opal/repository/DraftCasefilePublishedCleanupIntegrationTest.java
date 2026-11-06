@@ -32,6 +32,8 @@ import uk.gov.hmcts.opal.service.messaging.DraftCasefileQueueConsumerService;
 import uk.gov.hmcts.opal.service.messaging.DraftCasefileQueueMessage;
 import uk.gov.hmcts.opal.service.messaging.DraftCasefileQueueProcessingService;
 import uk.gov.hmcts.opal.support.DraftCasefileHttpFixture;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraStory;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -105,6 +107,8 @@ class DraftCasefilePublishedCleanupIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10626")
+    @JiraEpic("PO-10817")
     void cleansPublishedGraphWhileOtherTransactionReadsTargetTables() {
         final var before = graphRows();
         publish(ID);
@@ -123,6 +127,8 @@ class DraftCasefilePublishedCleanupIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10626")
+    @JiraEpic("PO-10817")
     void removesCompleteGraphWhileRetainingAnotherCaseAndReferenceRows() throws Exception {
         publish(1062902L);
         var sibling = graphRows();
@@ -147,6 +153,8 @@ class DraftCasefilePublishedCleanupIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10626")
+    @JiraEpic("PO-10817")
     void pendingCleanupWinsAgainstDeliveryRedeliveryAndSeparateFailure() throws Exception {
         final var before = graphRows();
         var locked = new CountDownLatch(1);
@@ -182,6 +190,8 @@ class DraftCasefilePublishedCleanupIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
+    @JiraStory("PO-10626")
+    @JiraEpic("PO-10817")
     void cleanupWaitsForRealPublicationCommitOrRollback(boolean rollback) throws Exception {
         final var before = graphRows();
         var locked = new CountDownLatch(1);
@@ -228,6 +238,8 @@ class DraftCasefilePublishedCleanupIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10626")
+    @JiraEpic("PO-10817")
     void graphDeletionFailureRollsBackDraftAndEveryGraphRow() {
         publish(ID);
         final var before = graphRows();
@@ -243,6 +255,8 @@ class DraftCasefilePublishedCleanupIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
+    @JiraStory("PO-10626")
+    @JiraEpic("PO-10817")
     void removesLegacyPendingOrPublishedDraftWithNullVersion(boolean published) {
         final var before = graphRows();
         if (published) {
@@ -262,6 +276,8 @@ class DraftCasefilePublishedCleanupIntegrationTest extends BaseIntegrationTest {
     @ParameterizedTest
     @ValueSource(strings = {"party", "creditor", "contact", "debtor", "marker", "snapshot",
         "respondent-version", "creditor-version", "money", "reservation", "missing-term"})
+    @JiraStory("PO-10626")
+    @JiraEpic("PO-10817")
     void refusesSharedOrInconsistentGraphsWithoutDeletingAnything(String variant) {
         publish(ID);
         publish(1062902L);

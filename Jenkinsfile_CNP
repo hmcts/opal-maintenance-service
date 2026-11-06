@@ -32,6 +32,49 @@ def configurePrUserService(String namespace) {
   }
 }
 
+def failBuildOnUnstableResults() {
+  if (currentBuild.result == 'UNSTABLE') {
+    currentBuild.result = 'FAILURE'
+  }
+}
+
+def requireReport(String label, String directory) {
+  if (!steps.fileExists("${directory}/index.html")) {
+    throw new RuntimeException("${label} was not generated at ${directory}/index.html")
+  }
+  steps.sh "test -s '${directory}/index.html'"
+}
+
+def publishFunctionalResults(String environmentName) {
+  failBuildOnUnstableResults()
+  steps.archiveArtifacts allowEmptyArchive: true, artifacts: 'functional-output/**/*'
+  requireReport('Functional report', 'functional-output/report')
+
+  publishHTML target: [
+      allowMissing         : false,
+      alwaysLinkToLastBuild: true,
+      keepAll              : true,
+      reportDir            : 'functional-output/report',
+      reportFiles          : 'index.html',
+      reportName           : "Serenity Functional Test Report (${environmentName})"
+  ]
+}
+
+def publishSmokeResults(String environmentName) {
+  failBuildOnUnstableResults()
+  steps.archiveArtifacts allowEmptyArchive: true, artifacts: 'smoke-output/**/*'
+  requireReport('Smoke report', 'smoke-output/report')
+
+  publishHTML target: [
+      allowMissing         : false,
+      alwaysLinkToLastBuild: true,
+      keepAll              : true,
+      reportDir            : 'smoke-output/report',
+      reportFiles          : 'index.html',
+      reportName           : "Serenity Smoke Test Report (${environmentName})"
+  ]
+}
+
 withPipeline(type, product, component) {
   afterSuccess('build') {
     // Keep active Gradle downloads outside the workspace while ACR packages it.
@@ -46,5 +89,37 @@ withPipeline(type, product, component) {
     onPR {
       configurePrUserService(product)
     }
+  }
+
+  afterAlways('test') {
+    steps.junit allowEmptyResults: true, testResults: '**/test-results/integration/*.xml'
+    failBuildOnUnstableResults()
+    steps.archiveArtifacts allowEmptyArchive: true, artifacts: 'integration-output/**/*'
+    requireReport('Integration report', 'integration-output/report')
+
+    publishHTML target: [
+        allowMissing         : false,
+        alwaysLinkToLastBuild: true,
+        keepAll              : true,
+        reportDir            : 'integration-output/report',
+        reportFiles          : 'index.html',
+        reportName           : 'Integration Tests Report'
+    ]
+  }
+
+  afterAlways('functionalTest:dev') {
+    publishFunctionalResults('DEV')
+  }
+
+  afterAlways('smoketest:dev') {
+    publishSmokeResults('DEV')
+  }
+
+  afterAlways('functionalTest:stg') {
+    publishFunctionalResults('Staging')
+  }
+
+  afterAlways('smoketest:stg') {
+    publishSmokeResults('Staging')
   }
 }
