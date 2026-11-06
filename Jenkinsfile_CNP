@@ -42,6 +42,7 @@ def requireReport(String label, String directory) {
   if (!steps.fileExists("${directory}/index.html")) {
     throw new RuntimeException("${label} was not generated at ${directory}/index.html")
   }
+  steps.sh "test -s '${directory}/index.html'"
 }
 
 def publishFunctionalResults(String environmentName) {
