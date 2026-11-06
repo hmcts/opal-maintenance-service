@@ -41,6 +41,7 @@ public final class TestJiraAnnotationChecker {
     private static final Pattern JIRA_EPIC_ANNOTATION_PATTERN = Pattern.compile("@JiraEpic\\s*\\(");
     private static final Pattern JIRA_STORY_TAG_PATTERN = Pattern.compile("(?i)^@JIRA-STORY:.+");
     private static final Pattern JIRA_EPIC_TAG_PATTERN = Pattern.compile("(?i)^@JIRA-EPIC:.+");
+    private static final String FUNCTIONAL_EXEMPTION_TAG = "@JiraMetadataExempt";
     private static final Pattern EXEMPTION_IDENTIFIER_PATTERN = Pattern.compile(
         "[A-Za-z_]\\w*(?:\\.[A-Za-z_]\\w*)*#[A-Za-z_]\\w*"
     );
@@ -52,7 +53,7 @@ public final class TestJiraAnnotationChecker {
     /**
      * Runs the Jira metadata check and exits non-zero when any runnable test is missing required metadata.
      *
-     * @param args optional integration source root, functional feature root and metadata exemption file
+     * @param args optional integration root, feature root, integration exemptions and functional exemptions
      * @throws IOException if a source file cannot be read
      */
     public static void main(String[] args) throws IOException {
@@ -60,9 +61,12 @@ public final class TestJiraAnnotationChecker {
         Path functionalFeatureRoot = args.length > 1 ? Path.of(args[1]) : DEFAULT_FUNCTIONAL_FEATURE_ROOT;
         Set<String> exemptions = args.length > 2 ? readExemptions(Path.of(args[2])) : Set.of();
         Set<String> usedExemptions = new HashSet<>();
+        Set<String> functionalExemptions = args.length > 3 ? readFunctionalExemptions(Path.of(args[3])) : Set.of();
+        Set<String> usedFunctionalExemptions = new HashSet<>();
 
         CheckResult integrationResult = checkIntegrationTests(integrationSourceRoot, exemptions, usedExemptions);
-        CheckResult functionalResult = checkFunctionalTests(functionalFeatureRoot);
+        CheckResult functionalResult = checkFunctionalTests(
+            functionalFeatureRoot, functionalExemptions, usedFunctionalExemptions);
         List<Violation> violations = new ArrayList<>();
         violations.addAll(integrationResult.violations());
         violations.addAll(functionalResult.violations());
@@ -75,14 +79,24 @@ public final class TestJiraAnnotationChecker {
             );
         }
 
+        if (!usedFunctionalExemptions.equals(functionalExemptions)) {
+            throw new IllegalArgumentException(
+                "Functional exemptions do not match an explicitly marked scenario: "
+                    + functionalExemptions.stream()
+                        .filter(id -> !usedFunctionalExemptions.contains(id)).sorted().toList()
+            );
+        }
+
         if (violations.isEmpty()) {
             System.out.printf(
                 "Checked %d runnable integration test method(s) and %d runnable functional test case(s). "
                     + "All non-exempt tests have at least one Jira story and exactly one Jira epic. "
-                    + "%d explicitly exempted infrastructure method(s).%n",
+                    + "%d explicitly exempted infrastructure method(s); "
+                    + "%d explicitly exempted functional scenario(s).%n",
                 integrationResult.checkedTests(),
                 functionalResult.checkedTests(),
-                usedExemptions.size()
+                usedExemptions.size(),
+                usedFunctionalExemptions.size()
             );
             return;
         }
@@ -133,6 +147,30 @@ public final class TestJiraAnnotationChecker {
     }
 
     /**
+     * Reads exact feature-path and scenario-name exemptions, independently of the integration manifest.
+     *
+     * @param file reviewed functional exemption manifest
+     * @return distinct scenario identifiers
+     * @throws IOException if the manifest cannot be read
+     */
+    private static Set<String> readFunctionalExemptions(Path file) throws IOException {
+        Set<String> exemptions = new LinkedHashSet<>();
+        for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
+            String identifier = line.strip();
+            if (identifier.isEmpty() || identifier.startsWith("#")) {
+                continue;
+            }
+            String[] parts = identifier.split("#", -1);
+            if (parts.length != 2 || !parts[0].endsWith(".feature") || parts[1].isBlank()
+                || identifier.contains("*") || identifier.contains("?") || identifier.contains("..")
+                || Path.of(parts[0]).isAbsolute() || !exemptions.add(identifier)) {
+                throw new IllegalArgumentException("Invalid or duplicate functional metadata exemption: " + identifier);
+            }
+        }
+        return exemptions;
+    }
+
+    /**
      * Checks Java integration-test methods for Jira annotations.
      *
      * @param sourceRoot integration test source root
@@ -164,10 +202,13 @@ public final class TestJiraAnnotationChecker {
      * Checks Cucumber functional scenarios and scenario-outline examples for Jira tags.
      *
      * @param featureRoot functional feature root
+     * @param exemptions exact scenario identifiers permitted to waive ownership
+     * @param usedExemptions identifiers matched to explicit scenario markers
      * @return count and violations for runnable Cucumber cases
      * @throws IOException if a feature file cannot be read
      */
-    private static CheckResult checkFunctionalTests(Path featureRoot) throws IOException {
+    private static CheckResult checkFunctionalTests(
+        Path featureRoot, Set<String> exemptions, Set<String> usedExemptions) throws IOException {
         if (!Files.isDirectory(featureRoot)) {
             throw new IllegalArgumentException("Functional test feature root does not exist: " + featureRoot);
         }
@@ -176,7 +217,7 @@ public final class TestJiraAnnotationChecker {
         int checkedTests = 0;
 
         for (Path featureFile : files(featureRoot, ".feature")) {
-            FileCheckResult fileResult = checkFeatureFile(featureRoot, featureFile);
+            FileCheckResult fileResult = checkFeatureFile(featureRoot, featureFile, exemptions, usedExemptions);
             checkedTests += fileResult.checkedTests();
             violations.addAll(fileResult.violations());
         }
@@ -286,10 +327,13 @@ public final class TestJiraAnnotationChecker {
      *
      * @param featureRoot root used for relative violation paths
      * @param featureFile feature file to parse
+     * @param exemptions exact scenario identifiers permitted to waive ownership
+     * @param usedExemptions identifiers matched to explicit scenario markers
      * @return count and violations for the file
      * @throws IOException if the feature file cannot be read
      */
-    private static FileCheckResult checkFeatureFile(Path featureRoot, Path featureFile) throws IOException {
+    private static FileCheckResult checkFeatureFile(
+        Path featureRoot, Path featureFile, Set<String> exemptions, Set<String> usedExemptions) throws IOException {
         List<String> lines = Files.readAllLines(featureFile, StandardCharsets.UTF_8);
         List<Violation> violations = new ArrayList<>();
         List<String> pendingTags = new ArrayList<>();
@@ -312,6 +356,13 @@ public final class TestJiraAnnotationChecker {
                 continue;
             }
 
+            boolean marked = pendingTags.stream().anyMatch(tag -> tag.startsWith(FUNCTIONAL_EXEMPTION_TAG));
+            if (marked && !strippedLine.startsWith("Scenario:")) {
+                throw new IllegalArgumentException(
+                    FUNCTIONAL_EXEMPTION_TAG + " is only supported directly on a named Scenario: " + featureFile
+                );
+            }
+
             if (strippedLine.startsWith("Feature:")) {
                 featureName = strippedLine.substring("Feature:".length()).strip();
                 featureTags = List.copyOf(pendingTags);
@@ -332,6 +383,17 @@ public final class TestJiraAnnotationChecker {
                 currentScenarioName = strippedLine.substring("Scenario:".length()).strip();
                 List<String> scenarioTags = combine(featureTags, pendingTags);
                 pendingTags.clear();
+                if (marked) {
+                    String identifier = featureRoot.relativize(featureFile).toString().replace('\\', '/')
+                        + "#" + currentScenarioName;
+                    if (hasIgnoreTag(scenarioTags) || !exemptions.contains(identifier)
+                        || pendingMarkerCount(scenarioTags) != 1 || !usedExemptions.add(identifier)) {
+                        throw new IllegalArgumentException(identifier
+                            + " requires an explicitly approved functional metadata exemption on a runnable scenario");
+                    }
+                    checkedTests++;
+                    continue;
+                }
                 if (!hasIgnoreTag(scenarioTags)) {
                     checkedTests++;
                     violations.addAll(featureViolations(
@@ -367,7 +429,26 @@ public final class TestJiraAnnotationChecker {
             }
         }
 
+        if (pendingTags.stream().anyMatch(tag -> tag.startsWith(FUNCTIONAL_EXEMPTION_TAG))) {
+            throw new IllegalArgumentException(
+                FUNCTIONAL_EXEMPTION_TAG + " is only supported directly on a named Scenario: " + featureFile
+            );
+        }
         return new FileCheckResult(checkedTests, violations);
+    }
+
+    /**
+     * Counts exact, non-disabling metadata markers; variants cannot acquire exemption semantics.
+     *
+     * @param tags scenario tags
+     * @return exact marker count, or zero for malformed marker variants
+     */
+    private static long pendingMarkerCount(List<String> tags) {
+        if (tags.stream().anyMatch(tag -> tag.startsWith(FUNCTIONAL_EXEMPTION_TAG)
+            && !tag.equals(FUNCTIONAL_EXEMPTION_TAG))) {
+            return 0;
+        }
+        return tags.stream().filter(FUNCTIONAL_EXEMPTION_TAG::equals).count();
     }
 
     /**

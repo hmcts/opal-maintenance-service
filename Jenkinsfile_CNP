@@ -70,7 +70,7 @@ def publishSmokeResults(String environmentName) {
       keepAll              : true,
       reportDir            : 'smoke-output/report',
       reportFiles          : 'index.html',
-      reportName           : "Smoke Test Report (${environmentName})"
+      reportName           : "Serenity Smoke Test Report (${environmentName})"
   ]
 }
 

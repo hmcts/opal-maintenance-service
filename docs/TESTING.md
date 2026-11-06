@@ -5,7 +5,7 @@
 - **Unit:** `src/test/java`; run `./gradlew test`. A well-isolated unit test needs no external service.
 - **Integration:** `src/integrationTest/java`; run `./gradlew integration`. These tests use a Spring context and Testcontainers PostgreSQL 17, so Docker is required for container-backed tests.
 - **Functional:** `src/functionalTest/java`; run `./gradlew functional`. External HTTP checks use `TEST_URL`, defaulting to `http://localhost:4551`; they require a suitable running service.
-- **Smoke:** `src/smokeTest/java`; run `./gradlew smoke`. External HTTP checks use the same `TEST_URL` default and require a running service.
+- **Smoke:** `src/functionalTest/resources/features/smoke` and `SmokeTestRunner`; run `./gradlew smoke`. The public health probe uses the same `TEST_URL` default and requires a running service, without User Service or authentication.
 
 ## Jira story and epic metadata
 
@@ -20,7 +20,7 @@ test method. Each functional scenario or scenario-outline examples block must
 inherit at least one `@JIRA-STORY:<key>` tag and exactly one
 `@JIRA-EPIC:<key>` tag from its feature, scenario and examples scopes.
 Functional cases tagged `@Ignore` are excluded from this metadata check.
-Unit tests and JUnit smoke tests are outside this gate, matching Fines.
+Unit tests are outside this gate. Smoke Cucumber scenarios are included.
 
 Use the existing owning story and epic supported by the feature or ticket
 evidence. There is no implicit no-ticket exemption. The 18 existing unticketed
@@ -29,6 +29,15 @@ are explicitly exempt from metadata requirements through `@JiraIgnore`.
 These tests remain enabled in JUnit. An unlisted `@JiraIgnore` or an exemption
 entry without a matching marked method fails the check. New tests need their
 owning story and epic; changes to the exemption list require explicit review.
+
+The existing unticketed health probe has one separately reviewed exemption in
+`config/functional-jira-metadata-exemptions.txt`. Its exact feature-relative path
+and scenario name must match a direct `@JiraMetadataExempt` scenario tag.
+This marker waives only story/epic ownership: it does not disable Cucumber or
+exclude the result from Zephyr eligibility. Feature-wide, outline, examples,
+unregistered, duplicate, disabled and stale exemptions fail. It is distinct
+from `@Ignore` and the Zephyr processor's ignore tags. No other functional
+scenario is exempt; changes require explicit review.
 
 Existing Zephyr test-case keys are not required by this check. Validation does
 not create or upload Jira issues or Zephyr executions. The explicit
@@ -63,8 +72,8 @@ applies to `Jenkinsfile_CNP`.
 ## Functional and smoke test reports
 
 `./gradlew functional` and `./gradlew functionalOpal` aggregate the Cucumber
-scenario outcomes into a Serenity report under `target/site/serenity` and copy
-it to `functional-output/report`. Aggregation reads the functional feature
+scenario outcomes from `target/site/serenity-functional` into a Serenity report
+under `target/site/serenity` and copy it to `functional-output/report`. Aggregation reads the functional feature
 directory so the report includes feature navigation. The functional run clears
 previous Serenity outcomes before starting, so earlier scenarios do not appear
 in a later run. The Cucumber JSON plugin also writes
@@ -76,24 +85,49 @@ JUnit results remain under `build/test-results/functional`, including the
 non-Cucumber helper tests; their basic Gradle HTML report remains under
 `build/reports/tests/functionalOpal`.
 
-Smoke coverage currently uses JUnit health checks. `./gradlew smoke` and
-`./gradlew smokeOpal` package their Gradle HTML report under `smoke-output/report`
-and write JUnit XML under `build/test-results/smoke`. These plain JUnit checks
-do not generate Cucumber JSON. The planned
-`smoke-output/zephyr/cucumber-smoke.json` deliverable remains blocked until the
-unticketed health scenario has an evidenced owning story and epic and its
-Cucumber conversion is implemented and verified. No ownership tags or JSON
-results are fabricated; the original health check remains enabled, and the 18
-integration metadata exemptions remain unchanged. Current JUnit smoke runs
-preserve shared Serenity outcomes so combined `./gradlew functional smoke`
-invocations can aggregate the functional results. Shared Serenity cleanup for
-smoke is deferred with its Cucumber migration and will require safe ordering or
-separate suite outcomes. Smoke preserves packaged functional HTML and JSON.
+Smoke coverage runs exactly one Cucumber health scenario through
+`SmokeTestRunner`, checking HTTP 200 and parsed JSON `status` equal to `UP`.
+`./gradlew smoke` and `./gradlew smokeOpal` retain JUnit XML under
+`build/test-results/smoke`. Serenity writes outcomes to
+`target/site/serenity-smoke`; `prepareSmokeAggregation` stages those outcomes
+into `target/site/serenity` and the dedicated `aggregateSmoke` task aggregates
+them, then copies HTML to `smoke-test-report` and
+`smoke-output/report`. The Cucumber JSON plugin writes
+`target/zephyr-reports/cucumber-smoke.json`, copied to
+`smoke-output/zephyr/cucumber-smoke.json`. HTML and JSON finalizers run even on
+assertion or connection failures. Smoke never selects the functional runner or
+helper unit tests. Its fixed tag filter includes `@Smoke` and excludes `@Opal`
+and `@Ignore`; functional tag overrides do not change the smoke selection.
+
+Functional and smoke cleanup each remove only their own raw outcomes, XML,
+HTML, raw JSON and packaged output. Their independent raw Serenity directories
+preserve both suites for `functional smoke`, `smoke functional` and direct task
+combinations. Serenity 5.4.1 copies from its fixed `target/site/serenity` source
+during aggregation, so each aggregation first replaces that disposable staging
+directory from its own raw outcomes. When both suites are selected, functional
+aggregation and packaging finish before smoke staging. This fixed ordering
+preserves functional evidence without depending on command-line task order;
+staging never deletes either suite's raw or packaged evidence. Successive
+selections start fresh within the selected suite and preserve the other suite's packaged output.
+Staging rejects absent, empty or non-scenario raw outcomes before synchronization,
+so a Cucumber run producing no outcomes fails instead of reusing another suite's
+HTML. An explicitly selected helper-only functional run is identified from actual
+compiled Java `*Test` execution descriptors, no Cucumber descriptors and no raw
+Serenity outcomes. It skips functional Serenity validation/staging/aggregation/copy
+and retains helper JUnit XML and basic Gradle HTML without publishing stale HTML.
+Smoke aggregation temporarily uses the same fixed smoke tag filter as its runner,
+because Serenity also applies the Gradle JVM's functional Cucumber filter while
+rendering HTML. A finalizer restores the caller's report filter after aggregation,
+including an aggregation failure.
+
+A dry run forwards `cucumber.execution.dry-run` for either runner but is discovery
+and report-packaging evidence only. The 18 integration exemptions are unchanged;
+the one smoke exemption supplies no invented ownership or test-case keys.
 
 The shared Jenkins pipeline continues to collect functional and smoke JUnit
 results before the CNP hooks run. The CNP hooks archive `functional-output` and
-`smoke-output` and publish **Serenity Functional Test Report** and **Smoke Test
-Report** after the corresponding DEV or staging stage. Report names include the
+`smoke-output` and publish **Serenity Functional Test Report** and
+**Serenity Smoke Test Report** after the corresponding DEV or staging stage. Report names include the
 environment. Publication runs after failed stages too, and each hook requires
 its expected `index.html`; if a report is missing, the build fails after
 available output has been archived. An `UNSTABLE` result is normalized to
@@ -152,11 +186,11 @@ and each expanded scenario-outline result must have a test-case tag. The check
 verifies mapping completeness and key format locally, not that keys exist or
 belong to actual Maintenance cases in Jira. It preserves failed test statuses
 and never modifies a report. It is separate from `build`, which does not run
-deployed suites or require registered case keys. Smoke currently generates
-JUnit reports only, so its readiness check fails explicitly until the separately
-authorized Cucumber migration delivers its JSON. Its newly approved single
-metadata exemption does not provide a registered Zephyr test-case key; execution
-uploads still require that real mapping.
+deployed suites or require registered case keys. Smoke now generates and
+packages real Cucumber JSON; the previous smoke-producer prerequisite is resolved.
+Its approved single metadata exemption does not provide a registered Zephyr
+test-case key, so the smoke readiness check still rejects an unmapped result.
+Execution uploads require that real mapping.
 
 External processing uses the installed Zephyr processor and the established
 cloud argument names. Before any external operation, provision the authorized
@@ -315,8 +349,9 @@ The failure criterion is integration evidence, not a sixth deployed functional
 example.
 
 Run the functional helper regression tests without a Cucumber tag property.
-Cucumber also discovers its suite during filtered runs, so use dry-run mode to
-disable scenario actions while the JUnit helper tests execute normally:
+Use dry-run mode to disable any discovered Cucumber actions while the JUnit
+helper tests execute normally. A helper-only selection with no Cucumber outcomes
+retains its XML/basic Gradle HTML and skips Serenity packaging:
 
 ```bash
 ./gradlew functionalOpal --tests 'uk.gov.hmcts.opal.*.DraftCasefile*Test' -Dcucumber.execution.dry-run=true
