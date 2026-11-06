@@ -357,7 +357,6 @@ tasks.register('clearSmokeReports', Delete) {
   delete(
     layout.buildDirectory.dir("test-results/smoke"),
     layout.buildDirectory.dir("reports/tests/smokeOpal"),
-    file("${rootDir}/target/site/serenity"),
     file("${rootDir}/smoke-test-report"),
     file("${rootDir}/smoke-output")
   )

@@ -84,9 +84,11 @@ do not generate Cucumber JSON. The planned
 unticketed health scenario has an evidenced owning story and epic and its
 Cucumber conversion is implemented and verified. No ownership tags or JSON
 results are fabricated; the original health check remains enabled, and the 18
-integration metadata exemptions remain unchanged. Smoke clears shared Serenity
-outcomes before running, while preserving the packaged functional output. A
-later smoke run therefore cannot replace the functional HTML or JSON.
+integration metadata exemptions remain unchanged. Current JUnit smoke runs
+preserve shared Serenity outcomes so combined `./gradlew functional smoke`
+invocations can aggregate the functional results. Shared Serenity cleanup for
+smoke is deferred with its Cucumber migration and will require safe ordering or
+separate suite outcomes. Smoke preserves packaged functional HTML and JSON.
 
 The shared Jenkins pipeline continues to collect functional and smoke JUnit
 results before the CNP hooks run. The CNP hooks archive `functional-output` and
