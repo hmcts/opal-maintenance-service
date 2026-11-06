@@ -2,6 +2,7 @@ package uk.gov.hmcts.opal.support.publication;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import tools.jackson.databind.JsonNode;
@@ -28,6 +29,7 @@ import uk.gov.hmcts.opaltest.publication.PublicationQaReservation;
 import uk.gov.hmcts.opaltest.publication.PublicationQaRespondent;
 import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
 import uk.hmcts.zephyr.automation.junit5.annotations.JiraStory;
+import uk.hmcts.zephyr.automation.junit5.extension.ZephyrAutomationExtension;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -42,6 +44,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /** Detached assertion-oracle regressions only: no publication procedure or backend operation is simulated. */
+@ExtendWith(ZephyrAutomationExtension.class)
 class PublicationQaGraphAssertionsTest {
 
     private static final String MARKER = "E2E-0123456789abcdef";

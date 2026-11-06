@@ -256,7 +256,7 @@ tasks.register('functionalOpal', Test) {
   systemProperty "cucumber.filter.tags",
     cucumberFilterTags != null ? cucumberFilterTags : "@Opal and not @Smoke and not @Ignore"
   systemProperty "cucumber.plugin",
-    "net.serenitybdd.cucumber.core.plugin.SerenityReporterParallel,pretty"
+    "net.serenitybdd.cucumber.core.plugin.SerenityReporterParallel,pretty,json:${rootDir}/target/zephyr-reports/cucumber-opal.json"
   if (cucumberFilterTags != null) {
     include '**/OpalTestRunner.class'
   } else {
@@ -271,7 +271,7 @@ tasks.register('functionalOpal', Test) {
     systemProperty "cucumber.execution.dry-run", cucumberDryRun
   }
   systemProperty "test.mode", "opal"
-  finalizedBy 'mergeFunctionalResults', 'copyFunctionalReport'
+  finalizedBy 'mergeFunctionalResults', 'copyFunctionalReport', 'copyFunctionalCucumberJson'
 }
 
 tasks.register('copyFunctionalReport', Copy) {
@@ -281,6 +281,12 @@ tasks.register('copyFunctionalReport', Copy) {
   doLast {
     logger.quiet("Functional Test Report available at - file://${rootDir}/functional-output/report/index.html")
   }
+}
+
+tasks.register('copyFunctionalCucumberJson', Sync) {
+  mustRunAfter tasks.named('functionalOpal')
+  from('target/zephyr-reports/cucumber-opal.json')
+  into('functional-output/zephyr')
 }
 
 tasks.register('copyIntegrationJunit5Report', Sync) {
@@ -308,6 +314,7 @@ tasks.register('clearFunctionalReports', Delete) {
     layout.buildDirectory.dir("test-results/functional"),
     layout.buildDirectory.dir("reports/tests/functionalOpal"),
     file("${rootDir}/target/site/serenity"),
+    file("${rootDir}/target/zephyr-reports/cucumber-opal.json"),
     file("${rootDir}/functional-output")
   )
 }
@@ -350,6 +357,7 @@ tasks.register('clearSmokeReports', Delete) {
   delete(
     layout.buildDirectory.dir("test-results/smoke"),
     layout.buildDirectory.dir("reports/tests/smokeOpal"),
+    file("${rootDir}/target/site/serenity"),
     file("${rootDir}/smoke-test-report"),
     file("${rootDir}/smoke-output")
   )

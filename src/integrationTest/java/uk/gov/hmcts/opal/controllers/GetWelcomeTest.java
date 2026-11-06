@@ -2,6 +2,7 @@ package uk.gov.hmcts.opal.controllers;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.test.context.ActiveProfiles;
@@ -9,11 +10,13 @@ import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import uk.hmcts.zephyr.automation.junit5.annotations.JiraIgnore;
+import uk.hmcts.zephyr.automation.junit5.extension.ZephyrAutomationExtension;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+@ExtendWith(ZephyrAutomationExtension.class)
 @WebMvcTest
 @ContextConfiguration(classes = RootController.class)
 @ActiveProfiles({"integration"})

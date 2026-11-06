@@ -39,7 +39,17 @@ Fines validation rules.
 
 `./gradlew integration` generates JUnit XML under `build/test-results/integration`
 and an HTML report under `build/reports/tests/integration`. Its finalizer copies
-the HTML report to `integration-output/report`.
+the HTML report to `integration-output/report`. The existing Zephyr JUnit 5
+extension is registered on the shared integration base and each standalone
+runnable root. `src/integrationTest/resources/junit-platform.properties` sets
+its raw JSON destination to
+`target/zephyr-reports/Junit5Report-IntegrationTest.json`; the finalizer packages
+it as `integration-output/zephyr/Junit5Report-IntegrationTest.json`, including
+after test failures. Each integration invocation clears its previous XML, HTML
+and JSON first. Parameterized invocations retain their individual results.
+`@JiraIgnore` methods still execute in JUnit and appear in the installed
+extension's JSON with `metadata.jiraIgnore: true`; they remain excluded from
+upload eligibility.
 
 The Jenkins CNP pipeline collects the integration JUnit results, archives
 `integration-output/**/*`, and publishes **Integration Tests Report** from
@@ -57,14 +67,26 @@ scenario outcomes into a Serenity report under `target/site/serenity` and copy
 it to `functional-output/report`. Aggregation reads the functional feature
 directory so the report includes feature navigation. The functional run clears
 previous Serenity outcomes before starting, so earlier scenarios do not appear
-in a later run.
+in a later run. The Cucumber JSON plugin also writes
+`target/zephyr-reports/cucumber-opal.json`. A separate finalizer copies it to
+`functional-output/zephyr/cucumber-opal.json`, including after test failures.
+The functional cleanup removes its own previous raw JSON and packaged output.
+HTML and JSON use separate destination directories so packaging preserves both.
 JUnit results remain under `build/test-results/functional`, including the
 non-Cucumber helper tests; their basic Gradle HTML report remains under
 `build/reports/tests/functionalOpal`.
 
 Smoke coverage currently uses JUnit health checks. `./gradlew smoke` and
 `./gradlew smokeOpal` package their Gradle HTML report under `smoke-output/report`
-and write JUnit XML under `build/test-results/smoke`.
+and write JUnit XML under `build/test-results/smoke`. These plain JUnit checks
+do not generate Cucumber JSON. The planned
+`smoke-output/zephyr/cucumber-smoke.json` deliverable remains blocked until the
+unticketed health scenario has an evidenced owning story and epic and its
+Cucumber conversion is implemented and verified. No ownership tags or JSON
+results are fabricated; the original health check remains enabled, and the 18
+integration metadata exemptions remain unchanged. Smoke clears shared Serenity
+outcomes before running, while preserving the packaged functional output. A
+later smoke run therefore cannot replace the functional HTML or JSON.
 
 The shared Jenkins pipeline continues to collect functional and smoke JUnit
 results before the CNP hooks run. The CNP hooks archive `functional-output` and
