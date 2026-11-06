@@ -118,9 +118,9 @@ List<String> zephyrArgs(String processType, String actionType, String testFolder
     ]
 }
 
-void configureFunctionalZephyrTask(JavaExec task) {
+void configureFunctionalZephyrTask(JavaExec task, String actionType, String description) {
     task.group = 'Zephyr Reporting - Cucumber'
-    task.description = 'Creates a Zephyr execution from existing functional or smoke JSON; requires -PzephyrFunctionalStage'
+    task.description = description
     task.classpath = configurations.zephyrCucumberReportProcessor
     task.mainClass = 'uk.hmcts.zephyr.automation.ZephyrAutomation'
     task.dependsOn {
@@ -131,8 +131,12 @@ void configureFunctionalZephyrTask(JavaExec task) {
     task.doFirst {
         Map<String, String> target = resolveFunctionalZephyrTarget()
         File reportFile = file(target.reportPath)
-        verifyExecutionReport(target.kind, reportFile)
-        task.setArgs(zephyrArgs('CUCUMBER_JSON_REPORT', 'CREATE_EXECUTION',
+        if (actionType == 'CREATE_EXECUTION') {
+            verifyExecutionReport(target.kind, reportFile)
+        } else if (!reportFile.isFile() || reportFile.length() == 0) {
+            throw new GradleException("Missing Zephyr ${target.kind} input: ${reportFile}")
+        }
+        task.setArgs(zephyrArgs('CUCUMBER_JSON_REPORT', actionType,
                 target.testFolder, reportFile.absolutePath))
     }
 }
@@ -219,5 +223,16 @@ tasks.register('checkZephyrExecutionReport') {
 }
 
 tasks.register('createJiraExecutionFromFunctionalReport', JavaExec) { JavaExec task ->
-    configureFunctionalZephyrTask(task)
+    configureFunctionalZephyrTask(task, 'CREATE_EXECUTION',
+            'Creates a Zephyr execution from existing functional or smoke JSON; requires -PzephyrFunctionalStage')
+}
+
+tasks.register('createJiraTicketsFromFunctionalReport', JavaExec) { JavaExec task ->
+    configureFunctionalZephyrTask(task, 'CREATE_TICKETS',
+            'Creates and links Jira tickets from existing functional or smoke JSON; requires -PzephyrFunctionalStage')
+}
+
+tasks.register('updateJiraTicketsFromFunctionalReport', JavaExec) { JavaExec task ->
+    configureFunctionalZephyrTask(task, 'UPDATE_TICKETS',
+            'Updates Jira tickets from existing functional or smoke JSON; requires -PzephyrFunctionalStage')
 }

@@ -157,10 +157,32 @@ and `updateJiraTicketsFromIntegrationReport` commands remain registration tools:
 they consume the integration JSON and do not require existing test-case keys.
 They copy the raw integration JSON into its packaged location before processing;
 run them only with reviewed inputs and authorization for the external changes.
-Record the returned real case keys, review the annotation/tag-only changes,
-then regenerate the reports. Do not create cases automatically in CI. Missing
-registration currently blocks useful execution uploads; no case mappings have
-been fabricated.
+
+For functional and smoke registration, first run the selected suite or place
+an existing generated JSON in its packaged location from the table below.
+All suites already package JSON through finalizers. These manual commands
+consume that packaged input without running tests, cleanup, aggregation or
+copying; a present, nonempty regular file is required. Untagged scenarios are
+accepted so registration can bootstrap real case mappings.
+
+```bash
+./gradlew -PzephyrFunctionalStage=functional createJiraTicketsFromFunctionalReport
+./gradlew -PzephyrFunctionalStage=functional updateJiraTicketsFromFunctionalReport
+./gradlew -PzephyrFunctionalStage=smoke createJiraTicketsFromFunctionalReport
+./gradlew -PzephyrFunctionalStage=smoke updateJiraTicketsFromFunctionalReport
+```
+
+The selector is mandatory for both commands; missing, blank or unknown values
+fail even in dry runs. Both use the installed Zephyr Automation 2.0.2 processor
+with `CUCUMBER_JSON_REPORT` and `CREATE_TICKETS` or `UPDATE_TICKETS`. Both select
+`src/functionalTest/resources` as the source base. Review existing Jira cases
+before creating any to avoid duplicates. The installed tool creates or updates
+real Jira cases and can modify source tags/annotations and reports. Record the
+returned real case keys, review and commit source tag/annotation changes, then
+rerun the suites and local readiness checks before execution uploads. Story
+and epic keys must never substitute for test-case keys. Do not create or update
+cases automatically in CNP or nightly pipelines. Missing registration currently
+blocks useful execution uploads; no case mappings have been fabricated.
 
 Validate a packaged report locally before an upload:
 
