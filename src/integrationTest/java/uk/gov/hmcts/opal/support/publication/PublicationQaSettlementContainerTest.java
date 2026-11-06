@@ -5,8 +5,10 @@ import jakarta.jms.JMSException;
 import jakarta.jms.Message;
 import jakarta.jms.Session;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
 import uk.hmcts.zephyr.automation.junit5.annotations.JiraStory;
+import uk.hmcts.zephyr.automation.junit5.extension.ZephyrAutomationExtension;
 
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -22,6 +24,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /** Mock JMS boundaries verify instrumentation only; these are not actual broker settlement evidence. */
+@ExtendWith(ZephyrAutomationExtension.class)
 class PublicationQaSettlementContainerTest {
     @Test
     @JiraStory("PO-10621")

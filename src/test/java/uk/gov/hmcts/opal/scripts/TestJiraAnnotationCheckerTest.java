@@ -172,12 +172,93 @@ class TestJiraAnnotationCheckerTest {
         assertTrue(result.output().contains("only supported on explicitly listed test methods"), result.output());
     }
 
+    @Test
+    void acceptsOnlyAnExactlyRegisteredFunctionalMetadataExemption() throws Exception {
+        CheckerResult result = runChecker(VALID_INTEGRATION_TEST, """
+            Feature: Example
+              @JiraMetadataExempt
+              Scenario: Existing health probe
+                Given a supported precondition
+            """, "", "example.feature#Existing health probe\n");
+
+        assertEquals(0, result.exitCode(), result.output());
+        assertTrue(result.output().contains("1 explicitly exempted functional scenario(s)"), result.output());
+    }
+
+    @Test
+    void rejectsAnUnregisteredFunctionalMarkerEvenWithOwnership() throws Exception {
+        CheckerResult result = runChecker(VALID_INTEGRATION_TEST,
+            VALID_FEATURE.replace("  Scenario:", "  @JiraMetadataExempt\n  Scenario:"), "", "");
+
+        assertEquals(1, result.exitCode(), result.output());
+        assertTrue(result.output().contains("requires an explicitly approved functional metadata exemption"),
+            result.output());
+    }
+
+    @Test
+    void rejectsFeatureWideAndOutlineMetadataExemptions() throws Exception {
+        for (String feature : new String[] {
+            "@JiraMetadataExempt\n" + VALID_FEATURE,
+            VALID_FEATURE.replace("  Scenario:", "  @JiraMetadataExempt\n  Scenario Outline:")
+        }) {
+            CheckerResult result = runChecker(VALID_INTEGRATION_TEST, feature, "", "");
+            assertEquals(1, result.exitCode(), result.output());
+            assertTrue(result.output().contains("only supported directly on a named Scenario"), result.output());
+        }
+    }
+
+    @Test
+    void rejectsAStaleFunctionalExemptionWithoutItsMarker() throws Exception {
+        CheckerResult result = runChecker(VALID_INTEGRATION_TEST, VALID_FEATURE, "",
+            "example.feature#A supported journey\n");
+
+        assertEquals(1, result.exitCode(), result.output());
+        assertTrue(result.output().contains("Functional exemptions do not match an explicitly marked scenario"),
+            result.output());
+    }
+
+    @Test
+    void rejectsAnExemptionOnADisabledScenario() throws Exception {
+        CheckerResult result = runChecker(VALID_INTEGRATION_TEST, """
+            Feature: Example
+              @Ignore @JiraMetadataExempt
+              Scenario: Existing health probe
+                Given a supported precondition
+            """, "", "example.feature#Existing health probe\n");
+
+        assertEquals(1, result.exitCode(), result.output());
+    }
+
+    @Test
+    void rejectsAnUnattachedFunctionalMetadataMarker() throws Exception {
+        CheckerResult result = runChecker(VALID_INTEGRATION_TEST,
+            VALID_FEATURE + "\n@JiraMetadataExempt\n", "", "");
+
+        assertEquals(1, result.exitCode(), result.output());
+        assertTrue(result.output().contains("only supported directly on a named Scenario"), result.output());
+    }
+
+    @Test
+    void rejectsWildcardFunctionalExemptions() throws Exception {
+        CheckerResult result = runChecker(VALID_INTEGRATION_TEST, VALID_FEATURE, "", "*.feature#*\n");
+
+        assertEquals(1, result.exitCode(), result.output());
+        assertTrue(result.output().contains("Invalid or duplicate functional metadata exemption"), result.output());
+    }
+
     private CheckerResult runChecker(String integrationSource, String featureSource) throws Exception {
         return runChecker(integrationSource, featureSource, null);
     }
 
     private CheckerResult runChecker(
         String integrationSource, String featureSource, String exemptions) throws Exception {
+
+        return runChecker(integrationSource, featureSource, exemptions, null);
+    }
+
+    private CheckerResult runChecker(
+        String integrationSource, String featureSource, String exemptions, String functionalExemptions)
+        throws Exception {
 
         Path integrationRoot = Files.createDirectories(temporaryDirectory.resolve("integration"));
         Path featureRoot = Files.createDirectories(temporaryDirectory.resolve("features"));
@@ -192,6 +273,11 @@ class TestJiraAnnotationCheckerTest {
         if (exemptions != null) {
             Path exemptionFile = temporaryDirectory.resolve("metadata-exemptions.txt");
             Files.writeString(exemptionFile, exemptions);
+            builder.command().add(exemptionFile.toString());
+        }
+        if (functionalExemptions != null) {
+            Path exemptionFile = temporaryDirectory.resolve("functional-exemptions.txt");
+            Files.writeString(exemptionFile, functionalExemptions);
             builder.command().add(exemptionFile.toString());
         }
         Process process = builder.redirectErrorStream(true).start();
