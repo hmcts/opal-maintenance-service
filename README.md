@@ -242,7 +242,9 @@ The [Bruno collection](bruno) contains requests for the service. See the
 
 The opt-in test cleanup API removes eligible caller-owned `SUBMITTED` drafts
 using the ID returned by the real POST journey. Its application default is disabled;
-local Docker and dev/staging overlays enable testing support. Cleanup requires
+local Docker and dev/staging pipeline overlays enable testing support. The base
+Helm chart also enables it for shared staging (`global.environment: staging`),
+with other environments disabled by default, including production. Cleanup requires
 normal bearer authentication, permission 21 in the stored draft's BU and a matching
 submitter. It uses the shared testing-support flag with no per-endpoint identity
 settings. See [Synthetic Draft Casefile test cleanup](docs/DRAFT_CASEFILE_TEST_CLEANUP.md)

@@ -44,11 +44,20 @@ request within the retry budget until 204 confirms absence.
 ## Enablement, identity and scope
 
 `TESTING_SUPPORT_ENDPOINTS_ENABLED` is the existing single switch for diagnostics
-and cleanup. The application and base Helm default is **false**; keep it false in
-production. Standalone Compose and existing dev/staging overlays enable it, while
+and cleanup. The application default is **false**. The base Helm chart enables it
+only when `global.environment` is `staging`; other environments, including
+production or an unset environment, resolve to **false**. Existing dev/staging
+pipeline overlays explicitly enable it. Standalone Compose enables it, while
 the shared stack inherits its `.env.shared` value. Verify the resolved deployment
 values, including frontend-owned Maintenance subcharts: there is no application
 allowlist based on an environment name.
+
+Roll out the updated Maintenance chart through the normal deployment process.
+In shared staging, check the resolved flag and use an authenticated synthetic-data
+cleanup request to verify enablement. Production must continue to resolve the
+flag to **false**. An explicit deployment override takes precedence over the
+chart default. Rolling back the chart restores the previous shared-staging
+default of **false**; no schema or data migration is required.
 
 Enable only for agreed non-live synthetic tests after accepting the
 [published cleanup operating contract](PUBLISHED_DRAFT_CASEFILE_CLEANUP.md#locking-and-accepted-concurrency-risk).
