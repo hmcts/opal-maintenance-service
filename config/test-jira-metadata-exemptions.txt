@@ -1,0 +1,24 @@
+# Approved Jira metadata exemptions for 18 unticketed Maintenance infrastructure methods.
+# These methods remain enabled in JUnit. Each must also declare @JiraIgnore.
+# Authentication/diagnostics: PR #144 explicitly had no Jira ticket.
+# Welcome/OpenAPI: initial service skeleton. Prometheus: unticketed alignment PR #169.
+# Renamed, removed or newly exempt methods require an explicit review of this list.
+
+uk.gov.hmcts.opal.authentication.AuthenticationIntegrationTest#allowsContractedGetEndpointsWithoutAuthentication
+uk.gov.hmcts.opal.authentication.AuthenticationIntegrationTest#rejectsUnauthenticatedSiblingRoutes
+uk.gov.hmcts.opal.authentication.AuthenticationIntegrationTest#rejectsUnauthenticatedOperationalAndStaticSiblings
+uk.gov.hmcts.opal.authentication.AuthenticationIntegrationTest#rejectsWrongMethodOnPublicPath
+uk.gov.hmcts.opal.authentication.AuthenticationIntegrationTest#leavesDisabledTestingSupportEndpointsAbsent
+uk.gov.hmcts.opal.authentication.AuthenticationIntegrationTest#rejectsMalformedTokenWithoutLoggingRemoteAddressAsUserIdentifier
+uk.gov.hmcts.opal.authentication.AuthenticationIntegrationTest#rejectsExpiredToken
+uk.gov.hmcts.opal.authentication.AuthenticationIntegrationTest#rejectsTokenFromWrongIssuer
+uk.gov.hmcts.opal.authentication.AuthenticationIntegrationTest#rejectsTokenWhenUserStateIsNotFoundWithoutLoggingTokenIdentifiers
+uk.gov.hmcts.opal.authentication.AuthenticationIntegrationTest#doesNotLeakDownstreamIdentityWhenUserStateFails
+uk.gov.hmcts.opal.authentication.DisabledDiagnosticsLiveServerIntegrationTest#returnsNotFoundForDisabledTestingSupportEndpoints
+uk.gov.hmcts.opal.authentication.DisabledDiagnosticsLiveServerIntegrationTest#keepsErrorAndUnknownTestingSupportRequestsProtected
+uk.gov.hmcts.opal.controllers.GetWelcomeTest#welcomeRootEndpoint
+uk.gov.hmcts.opal.controllers.TestingSupportControllerIntegrationTest#exposesPingWhenTestingSupportEndpointsAreEnabled
+uk.gov.hmcts.opal.controllers.TestingSupportControllerIntegrationTest#rejectsUnauthenticatedAuthCheckWhenTestingSupportEndpointsAreEnabled
+uk.gov.hmcts.opal.controllers.TestingSupportControllerIntegrationTest#rejectsUnauthenticatedTestingSupportSibling
+uk.gov.hmcts.opal.openapi.OpenAPIPublisherTest#generateDocs
+uk.gov.hmcts.opal.operational.OperationalEndpointsLiveServerIntegrationTest#exposesPrometheusMetricsWithoutAuthentication

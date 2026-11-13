@@ -39,6 +39,8 @@ import uk.gov.hmcts.opal.repository.DraftCasefileRepository;
 import uk.gov.hmcts.opal.repository.MaintenanceApplicationRepository;
 import uk.gov.hmcts.opal.repository.ResultRepository;
 import uk.gov.hmcts.opal.support.DraftCasefileHttpFixture;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraStory;
 
 import java.sql.PreparedStatement;
 import java.time.LocalDateTime;
@@ -111,6 +113,8 @@ class DraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
     @ParameterizedTest
     @EnumSource(value = DraftCasefileStatus.class,
         names = {"SUBMITTED", "REJECTED", "RESUBMITTED", "DELETED", "PUBLISHING_FAILED"})
+    @JiraStory("PO-10626")
+    @JiraEpic("PO-10817")
     void realSubmissionIsDeletedWithEmbeddedDataAndRepeatSucceeds(DraftCasefileStatus lifecycle) throws Exception {
         long id = lifecycleDraft(lifecycle);
         long otherId = submit("E2E-fedcba9876543210");
@@ -128,6 +132,8 @@ class DraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10287")
+    @JiraEpic("PO-6506")
     void minorCreditorEmbeddedSnapshotIsDeleted() throws Exception {
         long id = submit(RUN, true);
         JsonNode minor = objectMapper.readTree(repository.findById(id).orElseThrow().getCasefileSnapshot())
@@ -142,6 +148,8 @@ class DraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
     @ParameterizedTest
     @EnumSource(value = DraftCasefileStatus.class,
         names = {"SUBMITTED", "REJECTED", "RESUBMITTED", "DELETED", "PUBLISHING_FAILED"})
+    @JiraStory("PO-10626")
+    @JiraEpic("PO-10817")
     void postFlushFailureRestoresWholeDraftAndAllowsRetry(DraftCasefileStatus lifecycle) throws Exception {
         long id = lifecycleDraft(lifecycle);
         DraftCasefileEntity before = repository.findById(id).orElseThrow();
@@ -164,6 +172,8 @@ class DraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"0", "-1", "not-a-number", "9223372036854775808"})
+    @JiraStory("PO-10287")
+    @JiraEpic("PO-6506")
     void rejectsInvalidId(String id) throws Exception {
         DraftCasefileEntity before = repository.findById(submit(RUN)).orElseThrow();
         mockMvc.perform(delete("/testing-support/draft-casefiles/" + id)
@@ -178,6 +188,8 @@ class DraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
     @ParameterizedTest
     @ValueSource(strings = {"MISSING", "", "E2E-0123456789ABCDEF", "e2e-0123456789abcdef",
         "E2E-0123456789abcde", "E2E-0123456789abcdef0"})
+    @JiraStory("PO-10287")
+    @JiraEpic("PO-6506")
     void rejectsInvalidHeader(String marker) throws Exception {
         DraftCasefileEntity before = repository.findById(submit(RUN)).orElseThrow();
         var request = delete(CLEANUP, before.getDraftCasefileId())
@@ -194,6 +206,8 @@ class DraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
     @ParameterizedTest
     @EnumSource(value = DraftCasefileStatus.class,
         names = {"SUBMITTED", "REJECTED", "RESUBMITTED", "DELETED", "PUBLISHING_FAILED"})
+    @JiraStory("PO-10626")
+    @JiraEpic("PO-10817")
     void rejectsDifferentRunWithoutChangingDraft(DraftCasefileStatus lifecycle) throws Exception {
         DraftCasefileEntity before = repository.findById(lifecycleDraft(lifecycle)).orElseThrow();
         submit("E2E-fedcba9876543210");
@@ -205,6 +219,8 @@ class DraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"missing-permission", "checker", "wrong-bu", "wrong-user", "wrong-buu"})
+    @JiraStory("PO-10287")
+    @JiraEpic("PO-6506")
     void rejectsUnauthorisedIdentityForExistingDraft(String variant) throws Exception {
         DraftCasefileEntity before = repository.findById(submit(RUN)).orElseThrow();
         Set<Permission> permissions = switch (variant) {
@@ -221,6 +237,8 @@ class DraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10287")
+    @JiraEpic("PO-6506")
     void authenticatedRepeatSucceedsWithoutBusinessUnitPermissions() throws Exception {
         var caller = DraftCasefileHttpFixture.token((short) 1, 124L, "BUU-OTHER", Set.of());
         mockMvc.perform(delete(CLEANUP, Long.MAX_VALUE).with(authentication(caller))
@@ -228,6 +246,8 @@ class DraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10287")
+    @JiraEpic("PO-6506")
     void anotherOwnerCanCleanTheirOwnDraftInAnotherBusinessUnit() throws Exception {
         DraftCasefileEntity original = repository.findById(submit(RUN)).orElseThrow();
         var other = repository.saveAndFlush(original.toBuilder()
@@ -241,6 +261,8 @@ class DraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"bu", "submitter", "missing-marker", "wrong-marker", "numeric-marker", "scalar"})
+    @JiraStory("PO-10287")
+    @JiraEpic("PO-6506")
     void rejectsStoredOwnershipMismatch(String variant) throws Exception {
         DraftCasefileEntity original = repository.findById(submit(RUN)).orElseThrow();
         ObjectNode payload = (ObjectNode) objectMapper.readTree(original.getCasefile());
@@ -264,6 +286,8 @@ class DraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @EnumSource(value = DraftCasefileStatus.class, names = {"PUBLISHING_PENDING", "PUBLISHED"})
+    @JiraStory("PO-10626")
+    @JiraEpic("PO-10817")
     void rejectsPublicationLifecycle(DraftCasefileStatus lifecycle) throws Exception {
         DraftCasefileEntity original = repository.findById(submit(RUN)).orElseThrow();
         DraftCasefileEntity before = repository.saveAndFlush(original.toBuilder().casefileStatus(lifecycle).build());
@@ -276,6 +300,8 @@ class DraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"validated-date", "validated-by", "validated-name"})
+    @JiraStory("PO-10287")
+    @JiraEpic("PO-6506")
     void rejectsValidationOrPublicationMetadata(String variant) throws Exception {
         DraftCasefileEntity original = repository.findById(submit(RUN)).orElseThrow();
         var builder = original.toBuilder();
@@ -298,6 +324,8 @@ class DraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
         names = {"SUBMITTED", "REJECTED", "RESUBMITTED", "DELETED", "PUBLISHING_FAILED"})
     @SqlMergeMode(SqlMergeMode.MergeMode.MERGE)
     @Sql("/draft-casefile/cleanup-account-link-fixture.sql")
+    @JiraStory("PO-10626")
+    @JiraEpic("PO-10817")
     void rejectsPublishedAccountIdAndPreservesLinkedAccount(DraftCasefileStatus lifecycle) throws Exception {
         DraftCasefileEntity original = repository.findById(lifecycleDraft(lifecycle)).orElseThrow();
         DraftCasefileEntity before = repository.saveAndFlush(original.toBuilder().accountId(9000000301L).build());
@@ -312,6 +340,8 @@ class DraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
     @ParameterizedTest
     @EnumSource(value = DraftCasefileStatus.class,
         names = {"SUBMITTED", "REJECTED", "RESUBMITTED", "DELETED", "PUBLISHING_FAILED"})
+    @JiraStory("PO-10626")
+    @JiraEpic("PO-10817")
     void rejectsRowAccountNumber(DraftCasefileStatus lifecycle) throws Exception {
         DraftCasefileEntity original = repository.findById(lifecycleDraft(lifecycle)).orElseThrow();
         DraftCasefileEntity before = repository.saveAndFlush(original.toBuilder().accountNumber("SYNTHETIC-1").build());
@@ -324,6 +354,8 @@ class DraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"REJECTED", "DELETED"})
+    @JiraStory("PO-10626")
+    @JiraEpic("PO-10817")
     void actualCheckerDecisionCanBeCleanedWithoutChangingSibling(String decision) throws Exception {
         long id = submit(RUN);
         final DraftCasefileEntity sibling = repository.findById(submit("E2E-fedcba9876543210")).orElseThrow();
@@ -348,6 +380,8 @@ class DraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @MethodSource("snapshotLinkCases")
+    @JiraStory("PO-10626")
+    @JiraEpic("PO-10817")
     void rejectsEverySnapshotAccountLink(DraftCasefileStatus lifecycle, String path) throws Exception {
         long id = submit(RUN, true);
         setLifecycle(id, lifecycle);
@@ -374,6 +408,8 @@ class DraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"\"synthetic\"", "{}", "{\"minor_creditor_accounts\":{}}"})
+    @JiraStory("PO-10287")
+    @JiraEpic("PO-6506")
     void rejectsMalformedSnapshot(String snapshot) throws Exception {
         DraftCasefileEntity original = repository.findById(submit(RUN)).orElseThrow();
         DraftCasefileEntity before = repository.saveAndFlush(original.toBuilder().casefileSnapshot(snapshot).build());
@@ -385,11 +421,15 @@ class DraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10287")
+    @JiraEpic("PO-6506")
     void missingDraftSucceedsForValidCaller() throws Exception {
         cleanup(Long.MAX_VALUE, RUN).andExpect(status().isNoContent());
     }
 
     @Test
+    @JiraStory("PO-10287")
+    @JiraEpic("PO-6506")
     void anonymousCallerCannotDeleteDraft() throws Exception {
         DraftCasefileEntity before = repository.findById(submit(RUN)).orElseThrow();
         mockMvc.perform(delete(CLEANUP, before.getDraftCasefileId()).header("Test-Run-Reference", RUN))
@@ -398,6 +438,8 @@ class DraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10626")
+    @JiraEpic("PO-10817")
     void authenticatedPublicationEvidenceRoutesAreAbsent() throws Exception {
         for (var request : new MockHttpServletRequestBuilder[]{
             post("/testing-support/draft-casefiles/1/publication-evidence"),
@@ -409,6 +451,8 @@ class DraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10287")
+    @JiraEpic("PO-6506")
     void runtimeDocumentationIncludesConditionalDeleteContract() throws Exception {
         String body = mockMvc.perform(get("/v3/api-docs")).andExpect(status().isOk())
             .andReturn().getResponse().getContentAsString();
@@ -432,6 +476,8 @@ class DraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10287")
+    @JiraEpic("PO-6506")
     void simultaneousRepeatsBothSucceed() throws Exception {
         long id = submit(RUN);
         ExecutorService executor = Executors.newFixedThreadPool(2);
@@ -451,6 +497,8 @@ class DraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @EnumSource(value = DraftCasefileStatus.class, names = {"PUBLISHING_PENDING", "PUBLISHED"})
+    @JiraStory("PO-10626")
+    @JiraEpic("PO-10817")
     void cleanupWaitsForLockedLifecycleUpdateAndRejectsCommittedState(DraftCasefileStatus lifecycle) throws Exception {
         long id = submit(RUN);
         ExecutorService executor = Executors.newFixedThreadPool(2);

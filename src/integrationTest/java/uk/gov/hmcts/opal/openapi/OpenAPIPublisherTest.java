@@ -7,6 +7,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import uk.gov.hmcts.opal.BaseIntegrationTest;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraIgnore;
 
 import java.io.OutputStream;
 import java.nio.file.Files;
@@ -31,6 +32,7 @@ class OpenAPIPublisherTest extends BaseIntegrationTest {
     @DisplayName("Generate swagger documentation")
     @Test
     @SuppressWarnings("PMD.JUnitTestsShouldIncludeAssert")
+    @JiraIgnore
     void generateDocs() throws Exception {
         byte[] specs = mvc.perform(get("/v3/api-docs"))
             .andExpect(status().isOk())

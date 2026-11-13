@@ -5,7 +5,345 @@
 - **Unit:** `src/test/java`; run `./gradlew test`. A well-isolated unit test needs no external service.
 - **Integration:** `src/integrationTest/java`; run `./gradlew integration`. These tests use a Spring context and Testcontainers PostgreSQL 17, so Docker is required for container-backed tests.
 - **Functional:** `src/functionalTest/java`; run `./gradlew functional`. External HTTP checks use `TEST_URL`, defaulting to `http://localhost:4551`; they require a suitable running service.
-- **Smoke:** `src/smokeTest/java`; run `./gradlew smoke`. External HTTP checks use the same `TEST_URL` default and require a running service.
+- **Smoke:** `src/functionalTest/resources/features/smoke` and `SmokeTestRunner`; run `./gradlew smoke`. The public health probe uses the same `TEST_URL` default and requires a running service, without User Service or authentication.
+
+## Jira story and epic metadata
+
+Run `./gradlew checkTestJiraAnnotations` to validate test ownership without
+calling Jira or Zephyr. The check also runs under `check` and `build`, matching
+the Fines service gate.
+
+Each runnable integration test method must declare at least one `@JiraStory`
+and exactly one `@JiraEpic` from
+`uk.hmcts.zephyr.automation.junit5.annotations`. Put these annotations on the
+test method. Each functional scenario or scenario-outline examples block must
+inherit at least one `@JIRA-STORY:<key>` tag and exactly one
+`@JIRA-EPIC:<key>` tag from its feature, scenario and examples scopes.
+Functional cases tagged `@Ignore` are excluded from this metadata check.
+Unit tests are outside this gate. Smoke Cucumber scenarios are included.
+
+Use the existing owning story and epic supported by the feature or ticket
+evidence. There is no implicit no-ticket exemption. The 18 existing unticketed
+infrastructure methods listed in `config/test-jira-metadata-exemptions.txt`
+are explicitly exempt from metadata requirements through `@JiraIgnore`.
+These tests remain enabled in JUnit. An unlisted `@JiraIgnore` or an exemption
+entry without a matching marked method fails the check. New tests need their
+owning story and epic; changes to the exemption list require explicit review.
+
+The existing unticketed health probe has one separately reviewed exemption in
+`config/functional-jira-metadata-exemptions.txt`. Its exact feature-relative path
+and scenario name must match a direct `@JiraMetadataExempt` scenario tag.
+This marker waives only story/epic ownership: it does not disable Cucumber or
+exclude the result from Zephyr eligibility. Feature-wide, outline, examples,
+unregistered, duplicate, disabled and stale exemptions fail. It is distinct
+from `@Ignore` and the Zephyr processor's ignore tags. No other functional
+scenario is exempt; changes require explicit review.
+
+Existing Zephyr test-case keys are not required by this check. Validation does
+not create or upload Jira issues or Zephyr executions. The explicit
+infrastructure exemptions are the agreed Maintenance-specific addition to the
+Fines validation rules.
+
+## Integration test reports
+
+`./gradlew integration` generates JUnit XML under `build/test-results/integration`
+and an HTML report under `build/reports/tests/integration`. Its finalizer copies
+the HTML report to `integration-output/report`. The existing Zephyr JUnit 5
+extension is registered on the shared integration base and each standalone
+runnable root. `src/integrationTest/resources/junit-platform.properties` sets
+its raw JSON destination to
+`target/zephyr-reports/Junit5Report-IntegrationTest.json`; the finalizer packages
+it as `integration-output/zephyr/Junit5Report-IntegrationTest.json`, including
+after test failures. Each integration invocation clears its previous XML, HTML
+and JSON first. Parameterized invocations retain their individual results.
+`@JiraIgnore` methods still execute in JUnit and appear in the installed
+extension's JSON with `metadata.jiraIgnore: true`; they remain excluded from
+upload eligibility.
+
+The Jenkins CNP pipeline collects the integration JUnit results, archives
+`integration-output/**/*`, and publishes **Integration Tests Report** from
+`integration-output/report/index.html` after the test stage, including when the
+stage fails. It requires the report index and fails the build if the report is
+missing; available output is archived before this check. An `UNSTABLE` result
+from JUnit collection is normalized to `FAILURE`. The HTML link retains reports
+for individual builds and links to the latest build. This publication hook
+applies to `Jenkinsfile_CNP`.
+
+## Functional and smoke test reports
+
+`./gradlew functional` and `./gradlew functionalOpal` aggregate the Cucumber
+scenario outcomes from `target/site/serenity-functional` into a Serenity report
+under `target/site/serenity` and copy it to `functional-output/report`. Aggregation reads the functional feature
+directory so the report includes feature navigation. The functional run clears
+previous Serenity outcomes before starting, so earlier scenarios do not appear
+in a later run. The Cucumber JSON plugin also writes
+`target/zephyr-reports/cucumber-opal.json`. A separate finalizer copies it to
+`functional-output/zephyr/cucumber-opal.json`, including after test failures.
+The functional cleanup removes its own previous raw JSON and packaged output.
+HTML and JSON use separate destination directories so packaging preserves both.
+JUnit results remain under `build/test-results/functional`, including the
+non-Cucumber helper tests; their basic Gradle HTML report remains under
+`build/reports/tests/functionalOpal`.
+
+Smoke coverage runs exactly one Cucumber health scenario through
+`SmokeTestRunner`, checking HTTP 200 and parsed JSON `status` equal to `UP`.
+`./gradlew smoke` and `./gradlew smokeOpal` retain JUnit XML under
+`build/test-results/smoke`. Serenity writes outcomes to
+`target/site/serenity-smoke`; `prepareSmokeAggregation` stages those outcomes
+into `target/site/serenity` and the dedicated `aggregateSmoke` task aggregates
+them, then copies HTML to `smoke-test-report` and
+`smoke-output/report`. The Cucumber JSON plugin writes
+`target/zephyr-reports/cucumber-smoke.json`, copied to
+`smoke-output/zephyr/cucumber-smoke.json`. HTML and JSON finalizers run even on
+assertion or connection failures. Smoke never selects the functional runner or
+helper unit tests. Its fixed tag filter includes `@Smoke` and excludes `@Opal`
+and `@Ignore`; functional tag overrides do not change the smoke selection.
+
+Functional and smoke cleanup each remove only their own raw outcomes, XML,
+HTML, raw JSON and packaged output. Their independent raw Serenity directories
+preserve both suites for `functional smoke`, `smoke functional` and direct task
+combinations. Serenity 5.4.1 copies from its fixed `target/site/serenity` source
+during aggregation, so each aggregation first replaces that disposable staging
+directory from its own raw outcomes. When both suites are selected, functional
+aggregation and packaging finish before smoke staging. This fixed ordering
+preserves functional evidence without depending on command-line task order;
+staging never deletes either suite's raw or packaged evidence. Successive
+selections start fresh within the selected suite and preserve the other suite's packaged output.
+Staging rejects absent, empty or non-scenario raw outcomes before synchronization,
+so a Cucumber run producing no outcomes fails instead of reusing another suite's
+HTML. An explicitly selected helper-only functional run is identified from actual
+compiled Java `*Test` execution descriptors, no Cucumber descriptors and no raw
+Serenity outcomes. It skips functional Serenity validation/staging/aggregation/copy
+and retains helper JUnit XML and basic Gradle HTML without publishing stale HTML.
+Smoke aggregation temporarily uses the same fixed smoke tag filter as its runner,
+because Serenity also applies the Gradle JVM's functional Cucumber filter while
+rendering HTML. A finalizer restores the caller's report filter after aggregation,
+including an aggregation failure.
+
+A dry run forwards `cucumber.execution.dry-run` for either runner but is discovery
+and report-packaging evidence only. The 18 integration exemptions are unchanged;
+the one smoke exemption supplies no invented ownership or test-case keys.
+
+The shared Jenkins pipeline continues to collect functional and smoke JUnit
+results before the CNP hooks run. The CNP hooks archive `functional-output` and
+`smoke-output` and publish **Serenity Functional Test Report** and
+**Serenity Smoke Test Report** after the corresponding DEV or staging stage. Report names include the
+environment. Publication runs after failed stages too, and each hook requires
+its expected `index.html`; if a report is missing, the build fails after
+available output has been archived. An `UNSTABLE` result is normalized to
+`FAILURE`. Functional aggregation and copying also run after test failures.
+These hooks do not add nightly execution or Zephyr publication.
+
+For local report-generation checks, use a focused Cucumber dry run. This
+verifies discovery and report packaging; the generated report is not evidence
+that the API scenarios executed. Deployed verification still requires the
+compatible services and data described below.
+
+## Zephyr case registration and execution uploads
+
+Story and epic keys describe ownership. A Zephyr test-case key identifies the
+registered case whose execution result will be updated. Story/epic metadata
+alone is insufficient for an execution upload. Reuse verified Maintenance
+case mappings: integration methods use `@JiraTestKey`, and functional scenarios
+use `@JIRA-TEST-KEY:PO-<number>` tags. Do not copy Fines case keys or substitute a
+story key. The 18 approved `@JiraIgnore` methods remain enabled in JUnit and
+excluded from execution uploads; this upload tooling introduces no exemptions.
+
+Case registration is a separate, explicitly authorized, one-time QA operation.
+QA must first confirm the Maintenance Jira project, component, target account,
+existing cases and proposed case inventory, then reuse existing cases or
+register missing cases. The existing manual `createJiraTicketsFromIntegrationReport`
+and `updateJiraTicketsFromIntegrationReport` commands remain registration tools:
+they consume the integration JSON and do not require existing test-case keys.
+They copy the raw integration JSON into its packaged location before processing;
+run them only with reviewed inputs and authorization for the external changes.
+
+For functional and smoke registration, first run the selected suite or place
+an existing generated JSON in its packaged location from the table below.
+All suites already package JSON through finalizers. These manual commands
+consume that packaged input without running tests, cleanup, aggregation or
+copying; a present, nonempty regular file is required. Untagged scenarios are
+accepted so registration can bootstrap real case mappings.
+
+```bash
+./gradlew -PzephyrFunctionalStage=functional createJiraTicketsFromFunctionalReport
+./gradlew -PzephyrFunctionalStage=functional updateJiraTicketsFromFunctionalReport
+./gradlew -PzephyrFunctionalStage=smoke createJiraTicketsFromFunctionalReport
+./gradlew -PzephyrFunctionalStage=smoke updateJiraTicketsFromFunctionalReport
+```
+
+The selector is mandatory for both commands; missing, blank or unknown values
+fail even in dry runs. Both use the installed Zephyr Automation 2.0.2 processor
+with `CUCUMBER_JSON_REPORT` and `CREATE_TICKETS` or `UPDATE_TICKETS`. Both select
+`src/functionalTest/resources` as the source base. Review existing Jira cases
+before creating any to avoid duplicates. The installed tool creates or updates
+real Jira cases and can modify source tags/annotations and reports. Record the
+returned real case keys, review and commit source tag/annotation changes, then
+rerun the suites and local readiness checks before execution uploads. Story
+and epic keys must never substitute for test-case keys. Do not create or update
+cases automatically in CNP or nightly pipelines. Missing registration currently
+blocks useful execution uploads; no case mappings have been fabricated.
+
+Validate a packaged report locally before an upload:
+
+```bash
+./gradlew checkZephyrExecutionReport -PzephyrReportKind=integration --offline --no-daemon --console=plain
+./gradlew checkZephyrExecutionReport -PzephyrReportKind=functional --offline --no-daemon --console=plain
+./gradlew checkZephyrExecutionReport -PzephyrReportKind=smoke --offline --no-daemon --console=plain
+```
+
+The local task requires no credentials or network and consumes exactly these
+paths:
+
+| Kind | Packaged report |
+| --- | --- |
+| `integration` | `integration-output/zephyr/Junit5Report-IntegrationTest.json` |
+| `functional` | `functional-output/zephyr/cucumber-opal.json` |
+| `smoke` | `smoke-output/zephyr/cucumber-smoke.json` |
+
+A missing or unknown selector fails. Missing, zero-byte, malformed, empty and
+unmapped reports fail with sanitized diagnostics. Integration entries marked
+`jiraIgnore: true` are excluded; Cucumber background elements are excluded,
+and each expanded scenario-outline result must have a test-case tag. The check
+verifies mapping completeness and key format locally, not that keys exist or
+belong to actual Maintenance cases in Jira. It preserves failed test statuses
+and never modifies a report. It is separate from `build`, which does not run
+deployed suites or require registered case keys. Smoke now generates and
+packages real Cucumber JSON; the previous smoke-producer prerequisite is resolved.
+Its approved single metadata exemption does not provide a registered Zephyr
+test-case key, so the smoke readiness check still rejects an unmapped result.
+Execution uploads require that real mapping.
+
+External processing uses the installed Zephyr processor and the established
+cloud argument names. Before any external operation, provision the authorized
+account configuration through the approved secret mechanism. There are no
+implicit Maintenance Jira URL/project defaults; confirm these non-secret inputs
+with the project administrator:
+
+- `JIRA_BASE_URL`: confirmed Jira REST API base URL.
+- `JIRA_PROJECT_ID`: confirmed Maintenance Jira project ID.
+
+Required account/secret environment names are `JIRA_ACCOUNT_ID`,
+`JIRA_ACCOUNT_EMAIL`, `JIRA_AUTH_TOKEN`, `ZEPHYR_ACCESS_KEY`,
+`ZEPHYR_SECRET_KEY` and `ZEPHYR_ACCOUNT_ID`. Registration requires the Jira
+inputs; execution uploads require all eight inputs. Optional execution context
+uses `EXECUTION_ENVIRONMENT`, `EXECUTION_BUILD`, `EXECUTION_CYCLE_DESCRIPTION`,
+`SUCCESS_STATUS_ID` and `FAILED_STATUS_ID`. Set `GIT_COMMIT` to the tested
+revision for the readiness log; it and `EXECUTION_ENVIRONMENT` are non-sensitive
+context, with absent or invalid values shown as `unspecified`. Confirm the
+Vault bindings and environment-specific status IDs before enabling publication.
+The target component is `opal-maintenance-service`, and source links point to
+Maintenance. These inputs affect tooling only, not the application runtime.
+
+With real validated reports and explicit authorization for the target account
+and environment, these commands create external Zephyr executions:
+
+```bash
+./gradlew createJiraExecutionFromIntegrationReport
+./gradlew -PzephyrFunctionalStage=functional createJiraExecutionFromFunctionalReport
+./gradlew -PzephyrFunctionalStage=smoke createJiraExecutionFromFunctionalReport
+```
+
+These tasks run the same readiness validation before checking required
+configuration and starting the processor. Integration uses
+`JUNIT5_JSON_REPORT`; functional and smoke use `CUCUMBER_JSON_REPORT`. All three
+use `CREATE_EXECUTION` and consume existing packaged reports without rerunning
+tests, cleanup, copying or aggregation. Keep the report with its tested commit,
+suite, environment and original failed statuses. An upload cannot make a failed
+test run pass. Do not log JavaExec arguments, use `--info`/`--debug` for these
+commands, or include credentials in command recipes or retained evidence.
+
+For task-graph inspection only, use `--dry-run --offline --no-daemon --console=plain`
+with either explicit functional stage. A dry run proves task selection only;
+it does not validate input, credentials, registration or upload acceptance.
+Live acceptance remains a separately authorized staging Jenkins check after
+real case registration, target confirmation and secret provisioning. No live
+registration or upload was performed by this tooling change.
+
+## Nightly staging QA and upload activation
+
+`Jenkinsfile_nightly` expands the former dependency-check nightly job with
+independent `Integration`, `Functional` and `Smoke` boolean parameters, all
+true by default. The `afterAlways('DependencyCheckNightly')` hook runs selected
+suites using `integration`, `functionalOpal` and `smokeOpal`; their existing
+finalizers package reports even when tests fail. The weekday Jenkins cron stays
+`H 07 * * 1-5`, with its existing Jenkins timezone semantics. Functional and
+smoke HTTP calls target staging only:
+
+- Maintenance: `https://opal-maintenance-service.staging.platform.hmcts.net`.
+- User Service: `https://opal-user-service.staging.platform.hmcts.net`.
+- Logging Service: `https://opal-logging-service.staging.platform.hmcts.net`.
+
+These URLs are configuration, not evidence of current service/data readiness.
+Before running the expanded job, the environment owner must confirm compatible
+services, existing reference data, authorized test actors and the journey-specific
+cleanup prerequisites described below. The job does not provision them or alter
+security/testing-support flags. Integration retains its disposable Testcontainers
+database requirements.
+
+Uploads remain disabled unless the job environment explicitly sets
+`ZEPHYR_UPLOADS_READY=true`. Leave it unset or false until Maintenance QA and the
+CI administrator have verified real case mappings for all upload-eligible cases,
+target/account permissions, status IDs and Vault access. Existing ownership tags
+and the single smoke metadata exemption do not provide case mappings. The local
+readiness commands above must pass on genuine reports before activation.
+
+With readiness confirmed, uploads run on Friday in **Europe/London** or when
+`ZephyrExecution=true` (default false). This explicit UK date differs from Fines's
+host-zone calculation; it does not change the Jenkins cron timezone. Without
+readiness, scheduled runs log the setup state and run/publish selected suites
+without uploads. A manual upload request without readiness also records a setup
+failure, runs/publishes selected suites, and fails the final build without issuing
+an upload. Disabling a suite disables its cleanup, execution, report publication
+and upload; selecting no suites loads no upload secrets.
+
+Set `JIRA_BASE_URL` and `JIRA_PROJECT_ID` explicitly as inherited job environment
+variables. No Jira target defaults are supplied. For each eligible upload, the
+verified Infrastructure 2.13.4 `withTeamSecrets` runtime wrapper binds only these
+six existing secret names from `opal-${env}`, resolving `${env}` through the
+library's non-production environment selection:
+
+| Vault secret name | Environment variable |
+| --- | --- |
+| `jira-auth-token` | `JIRA_AUTH_TOKEN` |
+| `jira-account-id` | `JIRA_ACCOUNT_ID` |
+| `jira-zephyr-account-email` | `JIRA_ACCOUNT_EMAIL` |
+| `zephyr-access-key` | `ZEPHYR_ACCESS_KEY` |
+| `zephyr-secret-key` | `ZEPHYR_SECRET_KEY` |
+| `zephyr-account-id` | `ZEPHYR_ACCOUNT_ID` |
+
+The normal `loadVaultSecrets` DSL method only configures the outer nightly
+wrapper. Using it would make a Vault failure prevent checkout/tests, so upload
+credentials are acquired inside each upload stage after that suite's report
+publication. Test and publication commands run outside this credential scope.
+Missing target configuration or unavailable Vault access fails requested upload
+acceptance while preserving the selected suites' test execution and reports.
+Execution metadata records `GIT_COMMIT`, `staging` and the actual `BUILD_URL`.
+The exact three execution commands above consume already packaged output; the
+job never creates or updates cases, or reruns tests through an upload task.
+
+Each selected suite first deletes only its own raw JSON, raw Serenity outcomes,
+XML, HTML and packaged output. Functional/smoke also clear disposable
+`target/site/serenity` aggregation scratch, preserving the sibling raw and packaged
+reports. A cleanup failure prevents that suite from executing or publishing stale
+workspace output. The direct Gradle invocation collects each suite's JUnit XML
+exactly once, with missing results treated as failure. HTML publication requires
+a nonempty packaged `report/index.html` with `allowMissing=false`; available
+packaged output is archived even after ordinary HTML publication failures.
+Requested ready uploads also require a nonempty suite-specific packaged JSON,
+then the execution task validates completeness and real-key format before its
+processor can run.
+
+Ordinary test, publication, upload, Vault acquisition or secret-scope cleanup
+failures mark the affected stage and final build failed, while other selected
+suites continue. Reports from failed tests remain upload-eligible when complete
+and mapped. `UNSTABLE` is normalized to `FAILURE`; earlier `FAILURE` and `ABORTED`
+results are preserved. Cancellation propagates as `FlowInterruptedException` and
+stops later suites/uploads. Diagnostics use fixed reasons instead of raw processor
+or credential exceptions. Real Jenkins/Vault/staging/upload acceptance remains
+unverified until the separately authorized live checks are completed. Rolling
+back this pipeline change removes the added nightly QA stages; no runtime or
+migration configuration changes are required.
 
 ## Cucumber functional tests
 
@@ -118,8 +456,9 @@ The failure criterion is integration evidence, not a sixth deployed functional
 example.
 
 Run the functional helper regression tests without a Cucumber tag property.
-Cucumber also discovers its suite during filtered runs, so use dry-run mode to
-disable scenario actions while the JUnit helper tests execute normally:
+Use dry-run mode to disable any discovered Cucumber actions while the JUnit
+helper tests execute normally. A helper-only selection with no Cucumber outcomes
+retains its XML/basic Gradle HTML and skips Serenity packaging:
 
 ```bash
 ./gradlew functionalOpal --tests 'uk.gov.hmcts.opal.*.DraftCasefile*Test' -Dcucumber.execution.dry-run=true

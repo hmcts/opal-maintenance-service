@@ -33,6 +33,8 @@ import uk.gov.hmcts.opal.service.messaging.DraftCasefileQueueMessage;
 import uk.gov.hmcts.opal.service.messaging.DraftCasefileQueueMessageValidator;
 import uk.gov.hmcts.opal.service.messaging.DraftCasefileQueuePublisherImpl;
 import uk.gov.hmcts.opal.support.DraftCasefileHttpFixture;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraStory;
 
 import java.net.InetAddress;
 import java.net.ServerSocket;
@@ -94,6 +96,8 @@ class DraftCasefileCheckerQaIntegrationTest extends BaseIntegrationTest {
     @ParameterizedTest
     @CsvSource({"SUBMITTED,PUBLISHING_PENDING,Approved", "SUBMITTED,REJECTED,Rejected", "SUBMITTED,DELETED,Deleted",
         "RESUBMITTED,PUBLISHING_PENDING,Approved", "RESUBMITTED,REJECTED,Rejected", "RESUBMITTED,DELETED,Deleted"})
+    @JiraStory("PO-10617")
+    @JiraEpic("PO-10817")
     void checkerDecisionCommitsAndPreservesOwnedCasefile(String source, String target, String event) throws Exception {
         OwnedDraft draft = submit(owner());
         if (source.equals("RESUBMITTED")) {
@@ -151,6 +155,8 @@ class DraftCasefileCheckerQaIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10617")
+    @JiraEpic("PO-10817")
     void creatorWithCheckerPermissionCannotCheckOwnDraft() throws Exception {
         OpalJwtAuthenticationToken creator = DraftCasefileHttpFixture.token((short) 1, 123L, "BUU-1",
             Set.of(CREATE, CHECK));
@@ -159,6 +165,8 @@ class DraftCasefileCheckerQaIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10617")
+    @JiraEpic("PO-10817")
     void checkerWithOnlyForeignBusinessUnitPermissionCannotCheck() throws Exception {
         OwnedDraft draft = submit(owner());
         OpalJwtAuthenticationToken foreignChecker = DraftCasefileHttpFixture.token((short) 2, 124L, "BUU-FOREIGN",
@@ -167,6 +175,8 @@ class DraftCasefileCheckerQaIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10617")
+    @JiraEpic("PO-10817")
     void originalVersionIsStaleAfterRejectedDraftIsResubmitted() throws Exception {
         OwnedDraft draft = submit(owner());
         resubmit(draft);
@@ -175,6 +185,8 @@ class DraftCasefileCheckerQaIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10617")
+    @JiraEpic("PO-10817")
     void rejectedDraftCannotBeApprovedWithCurrentVersion() throws Exception {
         OwnedDraft draft = submit(owner());
         decision(draft, checker(), draft.createdEtag(), "REJECTED").andExpect(status().isOk());
@@ -185,6 +197,8 @@ class DraftCasefileCheckerQaIntegrationTest extends BaseIntegrationTest {
 
     @Test
     @Timeout(20)
+    @JiraStory("PO-10617")
+    @JiraEpic("PO-10817")
     void actualTransportFailureRollsBackApproval() throws Exception {
         OwnedDraft draft = submit(owner());
         State before = state(draft);

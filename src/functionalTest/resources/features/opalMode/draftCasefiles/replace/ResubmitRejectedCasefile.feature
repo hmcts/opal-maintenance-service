@@ -1,4 +1,4 @@
-@Opal @PO10622 @JIRA-STORY:PO-10622
+@Opal @PO10622 @JIRA-STORY:PO-10622 @JIRA-EPIC:PO-10817
 Feature: Resubmit a complete rejected Draft Casefile
 
   Background:

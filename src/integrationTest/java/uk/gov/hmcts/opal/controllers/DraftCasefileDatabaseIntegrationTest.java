@@ -32,6 +32,8 @@ import uk.gov.hmcts.opal.logging.integration.service.LoggingService;
 import uk.gov.hmcts.opal.mapper.DraftCasefileAddResponseMapper;
 import uk.gov.hmcts.opal.repository.DraftCasefileRepository;
 import uk.gov.hmcts.opal.support.DraftCasefileHttpFixture;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraStory;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -96,6 +98,8 @@ class DraftCasefileDatabaseIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10252")
+    @JiraEpic("PO-6506")
     void createsCommittedDraftWithUnchangedJsonDerivedDataAndAfterCommitLogs() throws Exception {
         AtomicInteger committedReads = new AtomicInteger();
         when(logging.personalDataAccessLogAsync(any())).thenAnswer(invocation -> {
@@ -155,6 +159,8 @@ class DraftCasefileDatabaseIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10252")
+    @JiraEpic("PO-6506")
     void incrementsVersionAndRejectsAStaleUpdate() throws Exception {
         JsonNode response = submit(validBody);
         Long id = response.get("draft_casefile_id").longValue();
@@ -173,6 +179,8 @@ class DraftCasefileDatabaseIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10252")
+    @JiraEpic("PO-6506")
     void acceptsEscapedNullJsonWithoutLoggingSubmittedData(CapturedOutput output) throws Exception {
         String body = validBody.replace("Example", "SYNTHETIC_PRIVATE_MARKER" + "\\" + "u0000");
         String expectedSurname = "SYNTHETIC_PRIVATE_MARKER" + '\0';
@@ -188,6 +196,8 @@ class DraftCasefileDatabaseIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10252")
+    @JiraEpic("PO-6506")
     void deniesMissingBusinessUnitIdentityWithoutRowOrLog() throws Exception {
         mockMvc.perform(post("/draft-casefiles").with(authentication(DraftCasefileHttpFixture.token((short) 2)))
             .contentType(MediaType.APPLICATION_JSON).content(validBody)).andExpect(status().isForbidden());
@@ -195,6 +205,8 @@ class DraftCasefileDatabaseIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10252")
+    @JiraEpic("PO-6506")
     void rejectsBadReferenceWithoutRowOrLog(CapturedOutput output) throws Exception {
         String response = mockMvc.perform(post("/draft-casefiles")
                 .with(authentication(DraftCasefileHttpFixture.token((short) 1)))
@@ -208,6 +220,8 @@ class DraftCasefileDatabaseIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
+    @JiraStory("PO-10252")
+    @JiraEpic("PO-6506")
     void rollsBackSavedRowWhenPersistenceFails(boolean unavailable) throws Exception {
         doAnswer(invocation -> {
             repository.saveAndFlush(invocation.getArgument(0));
@@ -238,6 +252,8 @@ class DraftCasefileDatabaseIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10252")
+    @JiraEpic("PO-6506")
     void commitConstraintFailureRollsBackAndSuppressesAfterCommitLogging() throws Exception {
         String body = validBody.replace("\"business_unit_id\":1", "\"business_unit_id\":2");
         mockMvc.perform(post("/draft-casefiles").with(authentication(DraftCasefileHttpFixture.token((short) 2)))
@@ -248,6 +264,8 @@ class DraftCasefileDatabaseIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
+    @JiraStory("PO-10252")
+    @JiraEpic("PO-6506")
     void loggingFailureStillReturnsCreatedWithCommittedRow(boolean throwsException, CapturedOutput output)
         throws Exception {
         if (throwsException) {

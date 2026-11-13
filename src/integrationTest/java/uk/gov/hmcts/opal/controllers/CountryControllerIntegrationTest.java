@@ -20,6 +20,8 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.jdbc.Sql;
 import org.springframework.test.web.servlet.MockMvc;
 import uk.gov.hmcts.opal.BaseIntegrationTest;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraStory;
 
 @AutoConfigureMockMvc
 @TestPropertySource(properties = {
@@ -46,6 +48,8 @@ class CountryControllerIntegrationTest extends BaseIntegrationTest {
 
     @Test
     @DisplayName("PO-10251 rejects an unauthenticated request with correlated Problem Details")
+    @JiraStory("PO-10251")
+    @JiraEpic("PO-6506")
     void rejectsUnauthenticatedRequest() throws Exception {
         mockMvc.perform(get("/countries"))
             .andExpect(status().isUnauthorized())
@@ -60,6 +64,8 @@ class CountryControllerIntegrationTest extends BaseIntegrationTest {
 
     @Test
     @DisplayName("PO-10251 returns active and inactive countries when active is omitted")
+    @JiraStory("PO-10251")
+    @JiraEpic("PO-6506")
     void returnsAllCountriesWhenFilterIsOmitted() throws Exception {
         mockMvc.perform(get("/countries").with(user("test-user")))
             .andExpect(status().isOk())
@@ -73,6 +79,8 @@ class CountryControllerIntegrationTest extends BaseIntegrationTest {
 
     @Test
     @DisplayName("PO-10251 filters active countries and keeps GBR first")
+    @JiraStory("PO-10251")
+    @JiraEpic("PO-6506")
     void returnsActiveCountries() throws Exception {
         mockMvc.perform(get("/countries").param("active", "true").with(user("test-user")))
             .andExpect(status().isOk())
@@ -85,6 +93,8 @@ class CountryControllerIntegrationTest extends BaseIntegrationTest {
 
     @Test
     @DisplayName("PO-10251 filters inactive countries alphabetically")
+    @JiraStory("PO-10251")
+    @JiraEpic("PO-6506")
     void returnsInactiveCountries() throws Exception {
         mockMvc.perform(get("/countries").param("active", "false").with(user("test-user")))
             .andExpect(status().isOk())
@@ -97,6 +107,8 @@ class CountryControllerIntegrationTest extends BaseIntegrationTest {
 
     @Test
     @DisplayName("PO-10251 orders duplicate non-GBR country names by country ID")
+    @JiraStory("PO-10251")
+    @JiraEpic("PO-6506")
     void ordersDuplicateNonGbrCountryNamesByCountryId() throws Exception {
         jdbcTemplate.update(
             """
@@ -118,6 +130,8 @@ class CountryControllerIntegrationTest extends BaseIntegrationTest {
 
     @Test
     @DisplayName("PO-10251 maps all current OpenAPI fields and nullable values")
+    @JiraStory("PO-10251")
+    @JiraEpic("PO-6506")
     void mapsAllOpenApiFields() throws Exception {
         mockMvc.perform(get("/countries").with(user("test-user")))
             .andExpect(status().isOk())
@@ -138,6 +152,8 @@ class CountryControllerIntegrationTest extends BaseIntegrationTest {
 
     @Test
     @DisplayName("PO-10251 returns count zero and an empty refData array")
+    @JiraStory("PO-10251")
+    @JiraEpic("PO-6506")
     void returnsEmptyResponse() throws Exception {
         jdbcTemplate.update("DELETE FROM public.countries");
 
@@ -149,6 +165,8 @@ class CountryControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10251")
+    @JiraEpic("PO-6506")
     void rejectsMalformedActiveWithoutReflectingItsValue() throws Exception {
         mockMvc.perform(get("/countries").param("active", "not-a-boolean")
                 .with(user("test-user")))

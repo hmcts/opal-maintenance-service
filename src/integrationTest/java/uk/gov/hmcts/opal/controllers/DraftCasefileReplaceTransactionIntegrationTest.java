@@ -40,6 +40,8 @@ import uk.gov.hmcts.opal.logging.integration.dto.PersonalDataProcessingLogDetail
 import uk.gov.hmcts.opal.logging.integration.service.LoggingService;
 import uk.gov.hmcts.opal.repository.DraftCasefileRepository;
 import uk.gov.hmcts.opal.support.DraftCasefileHttpFixture;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraStory;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -103,6 +105,8 @@ class DraftCasefileReplaceTransactionIntegrationTest extends BaseIntegrationTest
     }
 
     @Test
+    @JiraStory("PO-10630")
+    @JiraEpic("PO-10817")
     void onlyOneOfTwoWritersCanCommitTheSameRejectedVersion() throws Exception {
         final long id = rejectedDraft();
         final var body = replacement();
@@ -155,6 +159,8 @@ class DraftCasefileReplaceTransactionIntegrationTest extends BaseIntegrationTest
     }
 
     @Test
+    @JiraStory("PO-10630")
+    @JiraEpic("PO-10817")
     void mapperFailureAfterRealFlushRollsBackEveryColumnAndEmitsNoAudit() throws Exception {
         long id = rejectedDraft();
         final Map<String, Object> before = row(id);
@@ -174,6 +180,8 @@ class DraftCasefileReplaceTransactionIntegrationTest extends BaseIntegrationTest
     }
 
     @Test
+    @JiraStory("PO-10630")
+    @JiraEpic("PO-10817")
     void enclosingRollbackDiscardsTheSuccessfulReplacementAndItsAuditEvent() throws Exception {
         final long id = rejectedDraft();
         final Map<String, Object> before = row(id);
@@ -195,6 +203,8 @@ class DraftCasefileReplaceTransactionIntegrationTest extends BaseIntegrationTest
 
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
+    @JiraStory("PO-10630")
+    @JiraEpic("PO-10817")
     void loggingFailurePreservesHttpSuccessAndSeesCommittedReplacement(boolean throwsException, CapturedOutput output)
         throws Exception {
         final long id = rejectedDraft();
