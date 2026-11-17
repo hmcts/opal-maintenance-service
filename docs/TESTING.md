@@ -345,6 +345,11 @@ unverified until the separately authorized live checks are completed. Rolling
 back this pipeline change removes the added nightly QA stages; no runtime or
 migration configuration changes are required.
 
+The nightly result notification wraps the complete pipeline, including these QA
+stages, so the GitHub dispatch runs after success, failure or cancellation.
+Dispatch errors are logged without replacing the pipeline result. See
+[Build alerts](BUILD_ALERTS.md) for notification configuration and limitations.
+
 ## Cucumber functional tests
 
 Cucumber and Serenity scenarios run through `functionalOpal`. Use a Cucumber

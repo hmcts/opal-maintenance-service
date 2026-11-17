@@ -1,4 +1,5 @@
 #!groovy
+import groovy.json.JsonOutput
 import uk.gov.hmcts.contino.Environment
 import uk.gov.hmcts.contino.GradleBuilder
 import org.jenkinsci.plugins.workflow.steps.FlowInterruptedException
@@ -167,60 +168,86 @@ def runSuite = { Map suite, boolean requireJson ->
   return publishable
 }
 
-withNightlyPipeline(type, product, component) {
-  afterAlways('DependencyCheckNightly') {
-    configureTestEnvironment()
-    boolean ready = env.ZEPHYR_UPLOADS_READY?.trim()?.equalsIgnoreCase('true') ?: false
-    boolean requested = params.ZephyrExecution ||
-      java.time.ZonedDateTime.now(java.time.ZoneId.of('Europe/London')).dayOfWeek == java.time.DayOfWeek.FRIDAY
-    boolean shouldUpload = ready && requested
-    boolean uploadConfigured = shouldUpload
-    stage('Zephyr setup') {
-      if (!ready) {
-        echo 'Zephyr uploads disabled: Maintenance registration and account setup are not confirmed (ZEPHYR_UPLOADS_READY).'
-        if (params.ZephyrExecution) {
-          recordStageFailure('Zephyr setup', 'manual upload requested before setup readiness')
+try {
+  withNightlyPipeline(type, product, component) {
+    afterAlways('DependencyCheckNightly') {
+      configureTestEnvironment()
+      boolean ready = env.ZEPHYR_UPLOADS_READY?.trim()?.equalsIgnoreCase('true') ?: false
+      boolean requested = params.ZephyrExecution ||
+        java.time.ZonedDateTime.now(java.time.ZoneId.of('Europe/London')).dayOfWeek == java.time.DayOfWeek.FRIDAY
+      boolean shouldUpload = ready && requested
+      boolean uploadConfigured = shouldUpload
+      stage('Zephyr setup') {
+        if (!ready) {
+          echo 'Zephyr uploads disabled: Maintenance registration and account setup are not confirmed (ZEPHYR_UPLOADS_READY).'
+          if (params.ZephyrExecution) {
+            recordStageFailure('Zephyr setup', 'manual upload requested before setup readiness')
+          }
         }
-      }
-      if (shouldUpload) {
-        configureZephyrExecution()
-        if (!env.JIRA_BASE_URL?.trim() || !env.JIRA_PROJECT_ID?.trim()) {
-          uploadConfigured = false
-          recordStageFailure('Zephyr setup', 'JIRA_BASE_URL and JIRA_PROJECT_ID must be explicitly configured')
-        }
-      }
-    }
-    for (Map suite : suites) {
-      if (!params[suite.flag]) {
-        continue
-      }
-      boolean publishable = runSuite(suite, shouldUpload)
-      if (uploadConfigured && publishable && currentBuild.result != 'ABORTED') {
-        stage("${suite.name} Zephyr execution") {
-          boolean secretsLoaded = false
-          try {
-            // loadVaultSecrets is configuration-only and would wrap the entire nightly job.
-            // Use its verified runtime loader only around this upload, after publication.
-            withTeamSecrets([vaultSecrets: secrets, vaultEnvironmentOverrides: [:]],
-                            new Environment(env).nonProdName, product) {
-              secretsLoaded = true
-              // The task validates mapping/configuration and consumes reports without rerunning tests.
-              builder.gradle(suite.upload)
-            }
-          } catch (FlowInterruptedException interrupted) {
-            throw interrupted
-          } catch (Exception ignored) {
-            recordStageFailure(suite.name, secretsLoaded ?
-              'Zephyr execution upload or secret cleanup failed' : 'Vault secrets unavailable for Zephyr upload')
+        if (shouldUpload) {
+          configureZephyrExecution()
+          if (!env.JIRA_BASE_URL?.trim() || !env.JIRA_PROJECT_ID?.trim()) {
+            uploadConfigured = false
+            recordStageFailure('Zephyr setup', 'JIRA_BASE_URL and JIRA_PROJECT_ID must be explicitly configured')
           }
         }
       }
+      for (Map suite : suites) {
+        if (!params[suite.flag]) {
+          continue
+        }
+        boolean publishable = runSuite(suite, shouldUpload)
+        if (uploadConfigured && publishable && currentBuild.result != 'ABORTED') {
+          stage("${suite.name} Zephyr execution") {
+            boolean secretsLoaded = false
+            try {
+              // loadVaultSecrets is configuration-only and would wrap the entire nightly job.
+              // Use its verified runtime loader only around this upload, after publication.
+              withTeamSecrets([vaultSecrets: secrets, vaultEnvironmentOverrides: [:]],
+                              new Environment(env).nonProdName, product) {
+                secretsLoaded = true
+                // The task validates mapping/configuration and consumes reports without rerunning tests.
+                builder.gradle(suite.upload)
+              }
+            } catch (FlowInterruptedException interrupted) {
+              throw interrupted
+            } catch (Exception ignored) {
+              recordStageFailure(suite.name, secretsLoaded ?
+                'Zephyr execution upload or secret cleanup failed' : 'Vault secrets unavailable for Zephyr upload')
+            }
+          }
+        }
+      }
+      if (currentBuild.result == 'UNSTABLE') {
+        currentBuild.result = 'FAILURE'
+      }
+      if (!stageFailures.isEmpty()) {
+        error("One or more nightly stages failed:\n - ${stageFailures.join('\n - ')}")
+      }
     }
-    if (currentBuild.result == 'UNSTABLE') {
-      currentBuild.result = 'FAILURE'
+  }
+} finally {
+  // Dispatch the nightly result separately from the regular master status.
+  if (env.GIT_CREDENTIALS_ID) {
+    def result = currentBuild.currentResult
+    try {
+      httpRequest(
+        url: 'https://api.github.com/repos/hmcts/opal-maintenance-service/dispatches',
+        httpMode: 'POST',
+        authentication: env.GIT_CREDENTIALS_ID,
+        contentType: 'APPLICATION_JSON',
+        requestBody: JsonOutput.toJson([
+          event_type: 'opal-nightly-build',
+          client_payload: [result: result, build_url: env.BUILD_URL, sha: env.GIT_COMMIT ?: '']
+        ]),
+        quiet: true,
+        timeout: 15,
+        validResponseCodes: '204'
+      )
+    } catch (err) {
+      echo "Unable to dispatch nightly result to GitHub: ${err.message}"
     }
-    if (!stageFailures.isEmpty()) {
-      error("One or more nightly stages failed:\n - ${stageFailures.join('\n - ')}")
-    }
+  } else {
+    echo 'Nightly result not dispatched: GitHub credentials were not established.'
   }
 }

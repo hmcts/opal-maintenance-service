@@ -2,6 +2,8 @@
 
 Opal Maintenance Service is a Java 21 Spring Boot service responsible for Opal maintenance operations and Flyway database migrations.
 
+Build notification setup and operation are described in [Build alerts](docs/BUILD_ALERTS.md).
+
 ## Getting Started
 
 ### Prerequisites
