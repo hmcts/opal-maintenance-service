@@ -1,8 +1,12 @@
 # Build alerts
 
 GitHub Actions reports completed Jenkins master builds to the Opal Teams Builds
-channel. The Alerts channel receives a first failed result, a new-code build
-that remains failed, and recovery. Set the repository variable
+channel. The Alerts channel receives every failed or aborted master result,
+including rebuilds of unchanged code, and a GREEN recovery. Recovery cards
+show `RECOVERED` in the heading; another failed result shows `NOT FIXED`,
+whether the commit changed or not. Aborted builds keep `ABORTED`. A late
+failed result is labelled as an older
+build if a newer master build has already completed. Set the repository variable
 `OPAL_MASTER_ALERT_REPORT_ALL_BUILDS=true` to send every completed master result
 to Alerts as well; a missing or invalid value behaves as `false`.
 
