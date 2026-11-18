@@ -1,0 +1,127 @@
+// Execute the actual Jenkinsfile with local Pipeline doubles; no Jenkins or credentials required.
+tasks.register('nightlyPipelineTest') {
+  group = 'Verification'
+  description = 'Verifies nightly scheduling and suite continuation with Pipeline doubles'
+  doLast {
+    def loader = new GroovyClassLoader(getClass().classLoader)
+    try {
+      loader.parseClass('''
+        package uk.gov.hmcts.contino
+        class GradleBuilder {
+          def script
+          GradleBuilder(script, String product) { this.script = script }
+          void gradle(String command) { script.testCommands << command }
+        }
+        class Environment {
+          Environment(env) {}
+          String getNonProdName() { 'stg' }
+        }
+      ''')
+      def interruptedType = loader.parseClass('''
+        package org.jenkinsci.plugins.workflow.steps
+        class FlowInterruptedException extends RuntimeException {}
+      ''')
+      String source = file('Jenkinsfile_nightly').text.replaceAll(/(?m)^@Library\([^\n]*\)\s*$/, '')
+      def suiteCommands = ['integration', 'functionalOpal', 'smokeOpal']
+      String weekdayCommand
+      def run = { Map options ->
+        def commands = [], stages = [], messages = [], publications = []
+        int clockCalls = 0
+        def build = [result: null]
+        def params = [Integration: true, Functional: true, Smoke: true, ZephyrExecution: false] +
+          (options.params ?: [:])
+        def env = [ZEPHYR_UPLOADS_READY: options.ready ? 'true' : 'false',
+                   JIRA_BASE_URL: 'https://jira.example.invalid', JIRA_PROJECT_ID: 'TEST']
+        def binding = new Binding([
+          params: params, env: env, currentBuild: build, testCommands: commands,
+          booleanParam: { Map p -> p }, parameters: { p -> p }, cron: { p -> p },
+          pipelineTriggers: { p -> p }, properties: { p -> },
+          withNightlyPipeline: { a, b, c, Closure body -> body() },
+          afterAlways: { name, Closure body -> body() },
+          stage: { name, Closure body -> stages << name.toString(); body() },
+          echo: { message -> messages << message.toString() },
+          error: { message -> throw new IllegalStateException(message.toString()) },
+          catchError: { Map config, Closure body ->
+            try { body() } catch (IllegalStateException ignored) { /* recorded stage failure */ }
+          },
+          publishHTML: { Map config -> publications << config.target.reportName },
+          withTeamSecrets: { a, b, c, Closure body -> body() }
+        ])
+        binding.setVariable('steps', [
+          echo: { message -> messages << message.toString() },
+          sh: { command ->
+            if (command instanceof Map) {
+              assert command.returnStdout
+              weekdayCommand = command.script
+              assert weekdayCommand == 'TZ=Europe/London date +%u'
+              clockCalls++
+              if (options.clockFailure) { throw new IOException('date failed') }
+              if (options.interrupted) { throw interruptedType.getDeclaredConstructor().newInstance() }
+              return options.weekday ?: '5\n'
+            }
+          },
+          junit: { Map config -> assert !config.allowEmptyResults },
+          fileExists: { path -> true }, archiveArtifacts: { Map config -> }
+        ])
+        Throwable failure
+        try {
+          new GroovyShell(loader, binding).evaluate(source, 'Jenkinsfile_nightly')
+        } catch (Exception caught) { failure = caught }
+        [commands: commands, stages: stages, messages: messages, publications: publications,
+         clockCalls: clockCalls, build: build, failure: failure]
+      }
+
+      def scenarios = [
+        [name: 'uploads disabled', ready: false, calls: 0, uploads: false],
+        [name: 'unready manual request', ready: false, params: [ZephyrExecution: true],
+         calls: 0, uploads: false, fails: true],
+        [name: 'ready manual request bypasses clock', ready: true, params: [ZephyrExecution: true],
+         clockFailure: true, calls: 0, uploads: true],
+        [name: 'Friday', ready: true, weekday: '5\n', calls: 1, uploads: true],
+        [name: 'Thursday', ready: true, weekday: '4\n', calls: 1, uploads: false],
+        [name: 'Saturday', ready: true, weekday: '6\n', calls: 1, uploads: false],
+        [name: 'clock command failure', ready: true, clockFailure: true, calls: 1, uploads: false, fails: true],
+        [name: 'invalid weekday', ready: true, weekday: 'invalid\n', calls: 1, uploads: false, fails: true],
+        [name: 'empty weekday', ready: true, weekday: '\n', calls: 1, uploads: false, fails: true]
+      ]
+      scenarios.each { scenario ->
+        def result = run(scenario)
+        assert result.clockCalls == scenario.calls : scenario.name
+        assert result.commands.findAll { it in suiteCommands } == suiteCommands : scenario.name
+        assert result.publications.size() == 3 : scenario.name
+        assert result.commands.count { it.startsWith('createJiraExecution') || it.startsWith('-PzephyrFunctionalStage=') } ==
+          (scenario.uploads ? 3 : 0) : scenario.name
+        assert (result.failure != null) == (scenario.fails == true) : scenario.name
+        assert result.build.result == (scenario.fails ? 'FAILURE' : null) : scenario.name
+        logger.lifecycle("Nightly regression ${scenario.name}: PASS")
+      }
+      def cancelled = run([ready: true, interrupted: true])
+      assert interruptedType.isInstance(cancelled.failure)
+      assert cancelled.commands.empty
+      logger.lifecycle('Nightly regression cancellation propagates: PASS')
+
+      def disabled = run([ready: false, params: [Functional: false]])
+      assert disabled.failure == null
+      assert disabled.commands == ['integration', 'smokeOpal']
+      assert disabled.publications.size() == 2
+      logger.lifecycle('Nightly regression suite selection: PASS')
+
+      // Exercise the same timezone command at fixed instants using each OS date utility's clock input.
+      ['2026-07-02T23:30:00Z': '5', '2026-01-01T23:30:00Z': '4',
+       '2026-07-03T23:30:00Z': '6'].each { instant, expected ->
+        long epoch = java.time.Instant.parse(instant).epochSecond
+        String clockInput = System.getProperty('os.name').startsWith('Mac') ? "-r ${epoch}" : "-d @${epoch}"
+        String command = weekdayCommand.replace('date +%u', "date ${clockInput} +%u")
+        def process = new ProcessBuilder('sh', '-c', command).start()
+        String output = process.inputStream.text.trim()
+        assert process.waitFor() == 0
+        assert output == expected : "${instant}: ${output}"
+      }
+      logger.lifecycle('Nightly regression UK summer/winter and Friday rollover: PASS')
+    } finally {
+      loader.close()
+    }
+  }
+}
+
+tasks.named('check') { dependsOn 'nightlyPipelineTest' }

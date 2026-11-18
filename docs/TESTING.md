@@ -297,6 +297,19 @@ failure, runs/publishes selected suites, and fails the final build without issui
 an upload. Disabling a suite disables its cleanup, execution, report publication
 and upload; selecting no suites loads no upload secrets.
 
+The Friday check uses the agent command `TZ=Europe/London date +%u` through a
+Jenkins `sh` step, avoiding Java date calls that require sandbox script approval.
+It runs only when upload readiness is confirmed and no manual upload is requested.
+A failed command or invalid weekday disables uploads and fails the build after
+the selected suites have run and published their reports. Cancellation still
+stops execution immediately.
+
+Run `./gradlew nightlyPipelineTest` for local scheduling and suite-continuation
+regressions. It also runs under `check` and executes the actual Jenkinsfile with
+Pipeline doubles, plus fixed-instant summer/winter checks using the local `date`
+utility. It needs no credentials or services. These checks do not emulate the
+Jenkins sandbox; a fresh nightly run must confirm live acceptance.
+
 Set `JIRA_BASE_URL` and `JIRA_PROJECT_ID` explicitly as inherited job environment
 variables. No Jira target defaults are supplied. For each eligible upload, the
 verified Infrastructure 2.13.4 `withTeamSecrets` runtime wrapper binds only these
