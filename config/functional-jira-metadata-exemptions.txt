@@ -1,0 +1,4 @@
+# Explicitly approved unticketed functional metadata exemptions.
+# Exact path relative to features root#Scenario name; requires @JiraMetadataExempt on that Scenario.
+# Waives story/epic ownership only; never execution or the real Zephyr test-case mapping requirement.
+smoke/Health.feature#The health endpoint reports that the Maintenance service is up

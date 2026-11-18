@@ -28,6 +28,8 @@ import uk.gov.hmcts.opal.BaseIntegrationTest;
 import uk.gov.hmcts.opal.entity.CountryEntity;
 import uk.gov.hmcts.opal.entity.MajorCreditorEntity;
 import uk.gov.hmcts.opal.repository.MajorCreditorRepository;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraStory;
 
 @AutoConfigureMockMvc
 @TestPropertySource(properties = {
@@ -53,6 +55,8 @@ class MajorCreditorControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10254")
+    @JiraEpic("PO-6506")
     void rejectsUnauthenticatedRequests() throws Exception {
         mockMvc.perform(get("/major-creditors").param("business_unit_id", "77"))
             .andExpect(status().isUnauthorized())
@@ -62,6 +66,8 @@ class MajorCreditorControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10254")
+    @JiraEpic("PO-6506")
     void requiresBusinessUnitId() throws Exception {
         mockMvc.perform(get("/major-creditors").with(user("test-user")))
             .andExpect(status().isBadRequest())
@@ -76,6 +82,8 @@ class MajorCreditorControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10254")
+    @JiraEpic("PO-6506")
     void rejectsBusinessUnitIdBelowItsMinimum() throws Exception {
         mockMvc.perform(get("/major-creditors")
                 .param("business_unit_id", "0")
@@ -92,6 +100,8 @@ class MajorCreditorControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10254")
+    @JiraEpic("PO-6506")
     void rejectsBusinessUnitIdOutsideTheShortRangeWithTypeMismatchProblemDetails() throws Exception {
         mockMvc.perform(get("/major-creditors")
                 .param("business_unit_id", "32768")
@@ -104,6 +114,8 @@ class MajorCreditorControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10254")
+    @JiraEpic("PO-6506")
     void rejectsMalformedBusinessUnitId() throws Exception {
         mockMvc.perform(get("/major-creditors")
                 .param("business_unit_id", "abc")
@@ -117,6 +129,8 @@ class MajorCreditorControllerIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"central_authority", "active"})
+    @JiraStory("PO-10254")
+    @JiraEpic("PO-6506")
     void rejectsMalformedBooleanParameters(String parameterName) throws Exception {
         mockMvc.perform(get("/major-creditors")
                 .param("business_unit_id", "77")
@@ -130,6 +144,8 @@ class MajorCreditorControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10254")
+    @JiraEpic("PO-6506")
     void rejectsUnsupportedAcceptType() throws Exception {
         mockMvc.perform(get("/major-creditors")
                 .param("business_unit_id", "77")
@@ -140,6 +156,8 @@ class MajorCreditorControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10254")
+    @JiraEpic("PO-6506")
     void returnsAllPropertiesAndMapsInactiveCountryWithoutDateFiltering() throws Exception {
         CountryEntity inactiveCountry = CountryEntity.builder()
             .countryId(101L)
@@ -190,6 +208,8 @@ class MajorCreditorControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10254")
+    @JiraEpic("PO-6506")
     void emitsBothCountryPropertiesAsNullWhenNoCountryExists() throws Exception {
         MajorCreditorEntity creditor = MajorCreditorEntity.builder()
             .majorCreditorId(902L)
@@ -212,6 +232,8 @@ class MajorCreditorControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10254")
+    @JiraEpic("PO-6506")
     void returnsZeroCountAndEmptyArray() throws Exception {
         when(repository.findMajorCreditors((short) 77, null, null)).thenReturn(List.of());
 

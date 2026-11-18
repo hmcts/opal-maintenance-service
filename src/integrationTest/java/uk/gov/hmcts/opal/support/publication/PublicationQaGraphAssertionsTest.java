@@ -2,6 +2,7 @@ package uk.gov.hmcts.opal.support.publication;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import tools.jackson.databind.JsonNode;
@@ -26,6 +27,9 @@ import uk.gov.hmcts.opaltest.publication.PublicationQaOrderTerm;
 import uk.gov.hmcts.opaltest.publication.PublicationQaParty;
 import uk.gov.hmcts.opaltest.publication.PublicationQaReservation;
 import uk.gov.hmcts.opaltest.publication.PublicationQaRespondent;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraStory;
+import uk.hmcts.zephyr.automation.junit5.extension.ZephyrAutomationExtension;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -40,6 +44,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /** Detached assertion-oracle regressions only: no publication procedure or backend operation is simulated. */
+@ExtendWith(ZephyrAutomationExtension.class)
 class PublicationQaGraphAssertionsTest {
 
     private static final String MARKER = "E2E-0123456789abcdef";
@@ -62,18 +67,24 @@ class PublicationQaGraphAssertionsTest {
 
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
+    @JiraStory("PO-10621")
+    @JiraEpic("PO-10817")
     void acceptsCompleteDetachedGraphWithSequenceMappedMinors(boolean minors) {
         Fixture fixture = fixture(minors);
         assertions.assertPublished(fixture.rows(), fixture.draft(), fixture.input());
     }
 
     @Test
+    @JiraStory("PO-10621")
+    @JiraEpic("PO-10817")
     void rejectsMissingRespondentParty() {
         rejects(rows -> replace(rows, Map.of(), rows.orderTerms(), rows.reservations(), rows.creditors(),
             rows.aliases()));
     }
 
     @Test
+    @JiraStory("PO-10621")
+    @JiraEpic("PO-10817")
     void rejectsIncorrectAggregateOrderAmount() {
         Fixture fixture = fixture(true);
         var changed = respondent(fixture.rows(), fixture.rows().respondents().get(1000L).toBuilder()
@@ -82,6 +93,8 @@ class PublicationQaGraphAssertionsTest {
     }
 
     @Test
+    @JiraStory("PO-10621")
+    @JiraEpic("PO-10817")
     void rejectsIncorrectAggregateArrears() {
         Fixture fixture = fixture(true);
         var changed = respondent(fixture.rows(), fixture.rows().respondents().get(1000L).toBuilder()
@@ -90,6 +103,8 @@ class PublicationQaGraphAssertionsTest {
     }
 
     @Test
+    @JiraStory("PO-10621")
+    @JiraEpic("PO-10817")
     void rejectsUnspecifiedOrderArrears() {
         rejects(rows -> {
             var terms = new HashMap<>(rows.orderTerms());
@@ -99,6 +114,8 @@ class PublicationQaGraphAssertionsTest {
     }
 
     @Test
+    @JiraStory("PO-10621")
+    @JiraEpic("PO-10817")
     void acceptsInputCheckedArrearsAndTheirTotal() {
         Fixture fixture = fixture(true);
         ((ArrayNode) fixture.input().at("/respondent_account/order_details/order_terms/0/result_responses"))
@@ -114,6 +131,8 @@ class PublicationQaGraphAssertionsTest {
     }
 
     @Test
+    @JiraStory("PO-10621")
+    @JiraEpic("PO-10817")
     void rejectsIncorrectOrderCreditor() {
         rejects(rows -> {
             var terms = new HashMap<>(rows.orderTerms());
@@ -123,17 +142,23 @@ class PublicationQaGraphAssertionsTest {
     }
 
     @Test
+    @JiraStory("PO-10621")
+    @JiraEpic("PO-10817")
     void rejectsMissingReservation() {
         rejects(rows -> replace(rows, rows.parties(), rows.orderTerms(), Map.of(), rows.creditors(), rows.aliases()));
     }
 
     @Test
+    @JiraStory("PO-10621")
+    @JiraEpic("PO-10817")
     void rejectsMissingOptionalAlias() {
         rejects(rows -> replace(rows, rows.parties(), rows.orderTerms(), rows.reservations(), rows.creditors(),
             Map.of()));
     }
 
     @Test
+    @JiraStory("PO-10621")
+    @JiraEpic("PO-10817")
     void rejectsIncorrectOptionalContact() {
         Fixture fixture = fixture(true);
         var contacts = new HashMap<>(fixture.rows().contacts());
@@ -146,6 +171,8 @@ class PublicationQaGraphAssertionsTest {
     }
 
     @Test
+    @JiraStory("PO-10621")
+    @JiraEpic("PO-10817")
     void rejectsIncorrectNoteSubmitter() {
         Fixture fixture = fixture(true);
         var rows = fixture.rows();
@@ -157,6 +184,8 @@ class PublicationQaGraphAssertionsTest {
     }
 
     @Test
+    @JiraStory("PO-10621")
+    @JiraEpic("PO-10817")
     void rejectsMajorCreditorBacsFlag() {
         rejects(rows -> {
             var creditors = new HashMap<>(rows.creditors());
@@ -166,6 +195,8 @@ class PublicationQaGraphAssertionsTest {
     }
 
     @Test
+    @JiraStory("PO-10621")
+    @JiraEpic("PO-10817")
     void rejectsSecondAccountForRepeatedMajor() {
         rejects(rows -> {
             var creditors = new HashMap<>(rows.creditors());
@@ -176,6 +207,8 @@ class PublicationQaGraphAssertionsTest {
 
     @ParameterizedTest
     @ValueSource(ints = {23, 99})
+    @JiraStory("PO-10621")
+    @JiraEpic("PO-10817")
     void rejectsDuplicateOrUnknownSnapshotSequence(int sequence) {
         Fixture fixture = fixture(true);
         ObjectNode snapshot = (ObjectNode) json.readTree(fixture.draft().getCasefileSnapshot());
@@ -185,6 +218,8 @@ class PublicationQaGraphAssertionsTest {
     }
 
     @Test
+    @JiraStory("PO-10621")
+    @JiraEpic("PO-10817")
     void rejectsChangedBaselineSibling() {
         Fixture fixture = fixture(true);
         var before = replace(fixture.rows(), fixture.rows().parties(), fixture.rows().orderTerms(),

@@ -15,6 +15,8 @@ import uk.gov.hmcts.opal.exception.DraftCasefilePublicationException.Attempt;
 import uk.gov.hmcts.opal.logging.integration.service.LoggingService;
 import uk.gov.hmcts.opal.repository.extensions.DraftCasefilePublicationRepository;
 import uk.gov.hmcts.opal.service.DraftCasefilePublicationFailureService;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraStory;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -55,6 +57,8 @@ class DraftCasefilePublicationConcurrencyIntegrationTest extends BaseIntegration
         "2024-01-02T00:00:00Z");
 
     @Test
+    @JiraStory("PO-10629")
+    @JiraEpic("PO-10817")
     void concurrentDeliveriesCreateOneGraph() throws Exception {
         var locked = new CountDownLatch(1);
         var release = new CountDownLatch(1);
@@ -90,12 +94,16 @@ class DraftCasefilePublicationConcurrencyIntegrationTest extends BaseIntegration
     }
 
     @Test
+    @JiraStory("PO-10629")
+    @JiraEpic("PO-10817")
     void consumerWaitsForApprovalCommit() throws Exception {
         approvalRace(false);
         assertThat(status()).isEqualTo("PUBLISHED");
     }
 
     @Test
+    @JiraStory("PO-10629")
+    @JiraEpic("PO-10817")
     void approvalRollbackMakesQueuedMessageNoOp() throws Exception {
         approvalRace(true);
         assertThat(status()).isEqualTo("SUBMITTED");
@@ -103,6 +111,8 @@ class DraftCasefilePublicationConcurrencyIntegrationTest extends BaseIntegration
     }
 
     @Test
+    @JiraStory("PO-10629")
+    @JiraEpic("PO-10817")
     void terminalFailureCannotOverwriteWinningPublication() {
         var attempt = new Attempt(1062901L, 1L, "P55_APPROVE", LocalDateTime.of(2024, 1, 2, 0, 0));
         processing.processPendingDraft(message);

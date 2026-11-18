@@ -1,4 +1,4 @@
-@Opal @PO10617 @JIRA-STORY:PO-10617
+@Opal @PO10617 @JIRA-STORY:PO-10617 @JIRA-EPIC:PO-10817
 Feature: Record independent checker decisions
 
   Scenario Outline: Record an independent checker decision from a reviewable draft

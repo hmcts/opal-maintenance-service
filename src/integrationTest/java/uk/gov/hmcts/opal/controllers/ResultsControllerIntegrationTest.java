@@ -31,6 +31,8 @@ import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandl
 import uk.gov.hmcts.opal.BaseIntegrationTest;
 import uk.gov.hmcts.opal.entity.ResultEntity;
 import uk.gov.hmcts.opal.repository.ResultRepository;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraStory;
 
 @AutoConfigureMockMvc
 @TestPropertySource(properties = {
@@ -69,6 +71,8 @@ class ResultsControllerIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"order_term", "active"})
+    @JiraStory("PO-10256")
+    @JiraEpic("PO-6506")
     void rejectsMalformedFiltersBeforeRepositoryAccess(String parameter) throws Exception {
         mockMvc.perform(get("/results").param(parameter, "not-a-boolean")
                 .with(user("test-user")))
@@ -84,6 +88,8 @@ class ResultsControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10256")
+    @JiraEpic("PO-6506")
     void returnsOnlyListFields() throws Exception {
         when(repository.findResults(true, false)).thenReturn(List.of(ResultEntity.builder()
             .resultId("ABC123").resultTitle("Example Result").orderTerm(true).active(false)
@@ -103,6 +109,8 @@ class ResultsControllerIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @MethodSource("filters")
+    @JiraStory("PO-10256")
+    @JiraEpic("PO-6506")
     void preservesOptionalFiltersAtHttpBoundary(Boolean orderTerm, Boolean active) throws Exception {
         when(repository.findResults(orderTerm, active)).thenReturn(List.of());
         var request = get("/results").with(user("test-user"));
@@ -120,6 +128,8 @@ class ResultsControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10256")
+    @JiraEpic("PO-6506")
     void convertsEmptyBooleanToNull() throws Exception {
         when(repository.findResults(null, null)).thenReturn(List.of());
 
@@ -130,6 +140,8 @@ class ResultsControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10256")
+    @JiraEpic("PO-6506")
     void convertsYesBooleanAliasToTrue() throws Exception {
         when(repository.findResults(null, true)).thenReturn(List.of());
 
@@ -140,6 +152,8 @@ class ResultsControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10256")
+    @JiraEpic("PO-6506")
     void rejectsUnauthenticatedRequests() throws Exception {
         mockMvc.perform(get("/results"))
             .andExpect(status().isUnauthorized())
@@ -149,6 +163,8 @@ class ResultsControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10256")
+    @JiraEpic("PO-6506")
     void preservesNotAcceptableForUnsupportedResponseType() throws Exception {
         mockMvc.perform(get("/results").accept(MediaType.APPLICATION_XML)
                 .with(user("test-user")))
@@ -158,6 +174,8 @@ class ResultsControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10256")
+    @JiraEpic("PO-6506")
     void registersOnlyTheListOperationOnThisController() {
         var operations = handlerMapping.getHandlerMethods().values().stream()
             .filter(handler -> handler.getBeanType().equals(ResultsApiController.class))

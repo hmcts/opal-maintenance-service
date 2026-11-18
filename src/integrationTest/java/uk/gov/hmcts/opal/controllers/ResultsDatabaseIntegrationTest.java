@@ -33,6 +33,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import uk.gov.hmcts.opal.BaseIntegrationTest;
 import uk.gov.hmcts.opal.repository.ResultRepository;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraStory;
 
 @AutoConfigureMockMvc
 @TestPropertySource(properties = {
@@ -129,6 +131,8 @@ class ResultsDatabaseIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest(name = "order_term={0}, active={1}")
     @MethodSource("filterCases")
+    @JiraStory("PO-10256")
+    @JiraEpic("PO-6506")
     void filtersAndProjectsRowsFromPostgresql(
         Boolean orderTerm, Boolean active, List<ExpectedResult> expectedResults
     ) throws Exception {
@@ -150,6 +154,8 @@ class ResultsDatabaseIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10256")
+    @JiraEpic("PO-6506")
     void mapsAssignedStringIdTitleAndBooleanColumns() {
         var result = repository.findById("NOAF02").orElseThrow();
 
@@ -160,6 +166,8 @@ class ResultsDatabaseIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10256")
+    @JiraEpic("PO-6506")
     void returnsEmptyResponseForValidFiltersWithNoMatchingRows() throws Exception {
         jdbcTemplate.update("DELETE FROM public.results WHERE result_id IN ('OTAF01', 'OTAF02')");
 
@@ -167,6 +175,8 @@ class ResultsDatabaseIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10298")
+    @JiraEpic("PO-6506")
     void returnsNoActiveOrderTermsWhileExcludedResultsRemain() throws Exception {
         jdbcTemplate.update("DELETE FROM public.results WHERE result_id IN ('OTAT01', 'OTAT02')");
         assertThat(jdbcTemplate.queryForObject(
@@ -179,6 +189,8 @@ class ResultsDatabaseIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10256")
+    @JiraEpic("PO-6506")
     void returnsEmptyResponseWhenResultsTableIsEmpty() throws Exception {
         jdbcTemplate.update("""
             DELETE FROM public.results

@@ -32,6 +32,8 @@ import uk.gov.hmcts.opal.logging.integration.service.LoggingService;
 import uk.gov.hmcts.opal.repository.DraftCasefileRepository;
 import uk.gov.hmcts.opal.service.messaging.DraftCasefileQueuePublisherImpl;
 import uk.gov.hmcts.opal.support.DraftCasefileHttpFixture;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraStory;
 
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -91,6 +93,8 @@ class DraftCasefileResubmissionQaIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
+    @JiraStory("PO-10622")
+    @JiraEpic("PO-10817")
     void correctedCasefileCommitsForOriginalOrDifferentInputter(boolean handover) throws Exception {
         OwnedDraft draft = rejectedDraft();
         Actor inputter = handover ? HANDOVER : CREATOR;
@@ -99,6 +103,8 @@ class DraftCasefileResubmissionQaIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10622")
+    @JiraEpic("PO-10817")
     void latestInputterWithBothPermissionsCannotRejectAfterHandover() throws Exception {
         OwnedDraft draft = rejectedDraft();
         assertSuccessfulReplacement(draft, HANDOVER);
@@ -112,6 +118,8 @@ class DraftCasefileResubmissionQaIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10622")
+    @JiraEpic("PO-10817")
     void obsoleteVersionConflictsWhileCurrentDraftIsStillEligibleAndRejected() throws Exception {
         OwnedDraft draft = rejectedDraft();
         String obsolete = state(draft).etag();
@@ -127,6 +135,8 @@ class DraftCasefileResubmissionQaIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"SUBMITTED", "RESUBMITTED"})
+    @JiraStory("PO-10622")
+    @JiraEpic("PO-10817")
     void replacementRequiresRejectedLifecycle(String source) throws Exception {
         OwnedDraft draft = submit();
         if (source.equals("RESUBMITTED")) {
@@ -141,6 +151,8 @@ class DraftCasefileResubmissionQaIntegrationTest extends BaseIntegrationTest {
     @ParameterizedTest
     @CsvSource({"application,400,opal-api-error", "none,403,forbidden", "foreign,403,forbidden",
         "supplied-business-unit,409,resource-conflict"})
+    @JiraStory("PO-10622")
+    @JiraEpic("PO-10817")
     void invalidOrUnauthorisedCorrectionPreservesEntireDraft(String failure, int expectedStatus, String type)
         throws Exception {
         OwnedDraft draft = rejectedDraft();

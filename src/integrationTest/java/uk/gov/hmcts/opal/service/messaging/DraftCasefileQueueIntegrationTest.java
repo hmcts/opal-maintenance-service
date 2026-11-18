@@ -33,6 +33,8 @@ import uk.gov.hmcts.opal.common.user.authorisation.model.Permission;
 import uk.gov.hmcts.opal.logging.integration.service.LoggingService;
 import uk.gov.hmcts.opal.repository.DraftCasefileRepository;
 import uk.gov.hmcts.opal.support.DraftCasefileHttpFixture;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraStory;
 
 import java.net.ServerSocket;
 import java.util.Set;
@@ -107,6 +109,8 @@ class DraftCasefileQueueIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10629")
+    @JiraEpic("PO-10817")
     void publishesPersistentApprovalMessageToConfiguredQueue() throws Exception {
         var message = new DraftCasefileQueueMessage(900001L, 123L, "192.0.2.1", "2024-01-02T00:00:00Z");
         publisher.publish(message);
@@ -114,6 +118,8 @@ class DraftCasefileQueueIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10626")
+    @JiraEpic("PO-10817")
     void actualApprovalUsesBasePublisherAndSendsOnceToRealBroker() throws Exception {
         long id = submittedDraft();
         assertThat(selectedPublisher).isInstanceOf(DraftCasefileQueuePublisherImpl.class);
@@ -125,6 +131,8 @@ class DraftCasefileQueueIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10631")
+    @JiraEpic("PO-10817")
     void acceptedMessageSurvivesDatabaseCommitFailureWithoutAudit() throws Exception {
         long id = submittedDraft();
         final var before = drafts.findById(id).orElseThrow();
@@ -148,6 +156,8 @@ class DraftCasefileQueueIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10631")
+    @JiraEpic("PO-10817")
     void unavailableBrokerFailsWithinBoundedConnectionTimeout() throws Exception {
         try (ServerSocket unavailable = new ServerSocket(0)) {
             var factory = new JmsConnectionFactory("amqp://localhost:" + unavailable.getLocalPort()

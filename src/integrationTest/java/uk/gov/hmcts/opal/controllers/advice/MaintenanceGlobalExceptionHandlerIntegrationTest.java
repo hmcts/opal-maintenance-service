@@ -31,6 +31,8 @@ import org.springframework.web.bind.annotation.RestController;
 import uk.gov.hmcts.common.exceptions.standard.UnauthorizedException;
 import uk.gov.hmcts.opal.BaseIntegrationTest;
 import uk.gov.hmcts.opal.exception.ResourceConflictException;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraStory;
 
 @AutoConfigureMockMvc
 @ExtendWith(OutputCaptureExtension.class)
@@ -45,6 +47,8 @@ class MaintenanceGlobalExceptionHandlerIntegrationTest extends BaseIntegrationTe
     private MockMvc mockMvc;
 
     @Test
+    @JiraStory("PO-10252")
+    @JiraEpic("PO-6506")
     void returnsUnauthorizedProblemDetailWithoutDisclosingExceptionDetails() throws Exception {
         mockMvc.perform(get("/test-support/unauthorized").with(user("test-user")))
             .andExpect(status().isUnauthorized())
@@ -58,6 +62,8 @@ class MaintenanceGlobalExceptionHandlerIntegrationTest extends BaseIntegrationTe
     }
 
     @Test
+    @JiraStory("PO-10254")
+    @JiraEpic("PO-6506")
     void returnsBadRequestProblemDetailWhenRequiredParameterIsMissing() throws Exception {
         mockMvc.perform(get("/test-support/request-validation").with(user("test-user")))
             .andExpect(status().isBadRequest())
@@ -73,6 +79,8 @@ class MaintenanceGlobalExceptionHandlerIntegrationTest extends BaseIntegrationTe
     }
 
     @Test
+    @JiraStory("PO-10287")
+    @JiraEpic("PO-6506")
     void returnsSafeBadRequestWhenRequiredHeaderIsMissing() throws Exception {
         mockMvc.perform(get("/test-support/header-validation")
                 .header("Unrelated-Header", "synthetic-header-value")
@@ -89,6 +97,8 @@ class MaintenanceGlobalExceptionHandlerIntegrationTest extends BaseIntegrationTe
     }
 
     @Test
+    @JiraStory("PO-10254")
+    @JiraEpic("PO-6506")
     void returnsBadRequestProblemDetailForControllerParameterConstraintViolation() throws Exception {
         mockMvc.perform(get("/test-support/request-validation")
                 .param("value", "0")
@@ -105,6 +115,8 @@ class MaintenanceGlobalExceptionHandlerIntegrationTest extends BaseIntegrationTe
     }
 
     @Test
+    @JiraStory("PO-10254")
+    @JiraEpic("PO-6506")
     void returnsBadRequestForParameterTypeMismatch() throws Exception {
         mockMvc.perform(get("/test-support/request-validation")
                 .param("value", "not-an-integer")
@@ -121,6 +133,8 @@ class MaintenanceGlobalExceptionHandlerIntegrationTest extends BaseIntegrationTe
     }
 
     @Test
+    @JiraStory("PO-10254")
+    @JiraEpic("PO-6506")
     void returnsSanitisedServerProblemDetailForNonRequestConstraintViolation() throws Exception {
         mockMvc.perform(get("/test-support/internal-constraint").with(user("test-user")))
             .andExpect(status().isInternalServerError())
@@ -136,6 +150,8 @@ class MaintenanceGlobalExceptionHandlerIntegrationTest extends BaseIntegrationTe
     }
 
     @Test
+    @JiraStory("PO-10616")
+    @JiraEpic("PO-10817")
     void returnsSafeCorrelatedServerProblemWithoutLoggingIllegalStateDetails(CapturedOutput output) throws Exception {
         var result = mockMvc.perform(get("/test-support/illegal-state").with(user("test-user")))
             .andExpect(status().isInternalServerError())
@@ -158,6 +174,8 @@ class MaintenanceGlobalExceptionHandlerIntegrationTest extends BaseIntegrationTe
     }
 
     @Test
+    @JiraStory("PO-10616")
+    @JiraEpic("PO-10817")
     void returnsExistingDatabaseUnavailableProblemWithoutLoggingExceptionDetails(CapturedOutput output)
         throws Exception {
         final int outputStart = output.getAll().length();
@@ -182,6 +200,8 @@ class MaintenanceGlobalExceptionHandlerIntegrationTest extends BaseIntegrationTe
     }
 
     @Test
+    @JiraStory("PO-10630")
+    @JiraEpic("PO-10817")
     void returnsSafeCorrelatedConflictForOptimisticLockFailure(CapturedOutput output) throws Exception {
         int start = output.getAll().length();
         var result = mockMvc.perform(get("/test-support/optimistic-lock").with(user("test-user")))
@@ -198,6 +218,8 @@ class MaintenanceGlobalExceptionHandlerIntegrationTest extends BaseIntegrationTe
     }
 
     @Test
+    @JiraStory("PO-10630")
+    @JiraEpic("PO-10817")
     void returnsSafeCorrelatedResourceConflictWithoutLoggingExceptionDetails(CapturedOutput output) throws Exception {
         int start = output.getAll().length();
         var result = mockMvc.perform(get("/test-support/resource-conflict").with(user("test-user")))

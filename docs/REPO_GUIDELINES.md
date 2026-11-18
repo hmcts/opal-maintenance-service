@@ -18,8 +18,10 @@ the same change.
 - Keep schema migrations in `src/main/resources/db/migration/ddl` and
   environment data in `src/main/resources/db/migration/data/{allEnvs,demo,dev,ithc,nle,perfTest,stg}`.
 - Use `src/test/java` for unit tests, `src/integrationTest/java` for
-  Spring/database integration tests, `src/functionalTest/java` for functional
-  HTTP tests, and `src/smokeTest/java` for smoke tests.
+  Spring/database integration tests, and `src/functionalTest/java` for functional
+  HTTP tests and the Cucumber functional/smoke runners and glue. Keep their
+  features under `src/functionalTest/resources/features`. The empty
+  `src/smokeTest/java` source set remains for build compatibility.
 - Place new database-owned pgTAP suites directly under `src/dbUnitTest`, named
   `*_pgtap_tests.sql` for the database object they verify. Each function or
   procedure has one owning suite containing its functional assertions, fixtures

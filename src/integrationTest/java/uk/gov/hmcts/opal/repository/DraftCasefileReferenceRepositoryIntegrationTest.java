@@ -17,6 +17,8 @@ import uk.gov.hmcts.opal.entity.MajorCreditorEntity;
 import uk.gov.hmcts.opal.exception.RequestValidationError;
 import uk.gov.hmcts.opal.generated.model.DraftCasefileAddRequest;
 import uk.gov.hmcts.opal.validator.DraftCasefileValidator;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraStory;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -51,6 +53,8 @@ class DraftCasefileReferenceRepositoryIntegrationTest extends BaseIntegrationTes
     private JdbcTemplate jdbc;
 
     @Test
+    @JiraStory("PO-10252")
+    @JiraEpic("PO-6506")
     void scopesIdenticalCreditorCodesToOwningBusinessUnit() {
         assertThat(creditors.findByBusinessUnitIdAndMajorCreditorCode((short) 31001, "T001"))
             .get().extracting(MajorCreditorEntity::getMajorCreditorId).isEqualTo(5000000001L);
@@ -63,6 +67,8 @@ class DraftCasefileReferenceRepositoryIntegrationTest extends BaseIntegrationTes
     }
 
     @Test
+    @JiraStory("PO-10252")
+    @JiraEpic("PO-6506")
     void resolvesApplicationsByCodeWithoutFilteringAwayInactiveRows() {
         assertThat(applications.findByApplicationCode("APP00001"))
             .get().extracting(MaintenanceApplicationEntity::getApplicationId).isEqualTo((short) 32001);
@@ -73,12 +79,16 @@ class DraftCasefileReferenceRepositoryIntegrationTest extends BaseIntegrationTes
 
     @ParameterizedTest
     @CsvSource({"OTAT01,true", "OTAT02,false"})
+    @JiraStory("PO-10252")
+    @JiraEpic("PO-6506")
     void loadsExistingRequiresCreditorFlagFromPostgres(String resultId, boolean requiresCreditor) {
         assertThat(results.findById(resultId)).get()
             .satisfies(result -> assertThat(result.getRequiresCreditor()).isEqualTo(requiresCreditor));
     }
 
     @Test
+    @JiraStory("PO-10252")
+    @JiraEpic("PO-6506")
     void returnsAllCountryMatchesAndRejectsAmbiguityBeforePublication() {
         country(5000000201L, true, "2999-01-01", null);
         country(5000000202L, false, "1990-01-01", "1991-01-01");
@@ -93,6 +103,8 @@ class DraftCasefileReferenceRepositoryIntegrationTest extends BaseIntegrationTes
 
     @ParameterizedTest
     @CsvSource({"2999-01-01,2999-12-31", "1990-01-01,1991-01-01"})
+    @JiraStory("PO-10252")
+    @JiraEpic("PO-6506")
     void acceptsActiveReferencesWithoutAddingEffectiveDateRules(String from, String to) {
         country(5000000201L, true, from, to);
         // APP00001 is active with a future start date; Result and Country dates are not extra rules.
