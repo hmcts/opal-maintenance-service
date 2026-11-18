@@ -174,7 +174,7 @@ try {
       configureTestEnvironment()
       boolean ready = env.ZEPHYR_UPLOADS_READY?.trim()?.equalsIgnoreCase('true') ?: false
       boolean requested = params.ZephyrExecution ||
-        java.time.ZonedDateTime.now(java.time.ZoneId.of('Europe/London')).dayOfWeek == java.time.DayOfWeek.FRIDAY
+        steps.sh(script: 'TZ=Europe/London date +%u', returnStdout: true).trim() == '5'
       boolean shouldUpload = ready && requested
       boolean uploadConfigured = shouldUpload
       stage('Zephyr setup') {
