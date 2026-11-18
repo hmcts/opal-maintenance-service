@@ -173,31 +173,15 @@ try {
     afterAlways('DependencyCheckNightly') {
       configureTestEnvironment()
       boolean ready = env.ZEPHYR_UPLOADS_READY?.trim()?.equalsIgnoreCase('true') ?: false
-      boolean shouldUpload = false
-      boolean uploadConfigured = false
+      boolean requested = params.ZephyrExecution ||
+        steps.sh(script: 'TZ=Europe/London date +%u', returnStdout: true).trim() == '5'
+      boolean shouldUpload = ready && requested
+      boolean uploadConfigured = shouldUpload
       stage('Zephyr setup') {
         if (!ready) {
           echo 'Zephyr uploads disabled: Maintenance registration and account setup are not confirmed (ZEPHYR_UPLOADS_READY).'
           if (params.ZephyrExecution) {
             recordStageFailure('Zephyr setup', 'manual upload requested before setup readiness')
-          }
-        } else {
-          try {
-            if (params.ZephyrExecution) {
-              shouldUpload = true
-            } else {
-              // Run on the agent through a Pipeline step; java.time overloads require sandbox approval.
-              String weekday = steps.sh(script: 'TZ=Europe/London date +%u', returnStdout: true).trim()
-              if (!(weekday ==~ /[1-7]/)) {
-                throw new IllegalStateException('Invalid weekday')
-              }
-              shouldUpload = weekday == '5'
-            }
-            uploadConfigured = shouldUpload
-          } catch (FlowInterruptedException interrupted) {
-            throw interrupted
-          } catch (Exception ignored) {
-            recordStageFailure('Zephyr setup', 'Friday scheduling check failed; uploads disabled')
           }
         }
         if (shouldUpload) {
