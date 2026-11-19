@@ -45,8 +45,11 @@ request within the retry budget until 204 confirms absence.
 
 `TESTING_SUPPORT_ENDPOINTS_ENABLED` is the existing single switch for diagnostics
 and cleanup. The application default is **false**. The base Helm chart enables it
-only when `global.environment` is `staging`; other environments, including
-production or an unset environment, resolve to **false**. Existing dev/staging
+only when `global.environment` is `stg`; other environments, including
+production or an unset environment, resolve to **false**. The spelling
+`global.environment: staging` also resolves to **false** by default. An agreed
+non-live deployment retaining that spelling must explicitly set the Helm value
+`java.environment.TESTING_SUPPORT_ENDPOINTS_ENABLED` to `true`. Existing dev/staging
 pipeline overlays explicitly enable it. Standalone Compose enables it, while
 the shared stack inherits its `.env.shared` value. Verify the resolved deployment
 values, including frontend-owned Maintenance subcharts: there is no application
