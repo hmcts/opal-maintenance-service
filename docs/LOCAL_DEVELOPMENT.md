@@ -148,6 +148,14 @@ not decorate the publisher, observe sends or change the consumer/transaction bou
 Browser request count, producer invocation, broker acceptance/redelivery and a
 published account are separate observations.
 
+The originating address uses the shared `LogUtil` result (the `X-User-IP` header,
+then authentication details). When neither supplies an address, Maintenance uses
+`HttpServletRequest.getRemoteAddr()` from the current request. Behind a proxy,
+that fallback can identify the immediate peer; client-address forwarding remains
+the proxy's responsibility. The publication validator still rejects missing or
+malformed addresses. No address is invented when there is no current request,
+and an invalid explicit header is not silently replaced.
+
 ## Debug logging
 
 Logging defaults to INFO. To enable DEBUG for a particular logger, use these

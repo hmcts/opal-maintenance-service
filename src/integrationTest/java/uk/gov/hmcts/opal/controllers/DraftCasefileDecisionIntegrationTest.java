@@ -27,6 +27,8 @@ import uk.gov.hmcts.opal.authorisation.MaintenancePermission;
 import uk.gov.hmcts.opal.logging.integration.dto.PersonalDataProcessingCategory;
 import uk.gov.hmcts.opal.logging.integration.dto.PersonalDataProcessingLogDetails;
 import uk.gov.hmcts.opal.logging.integration.service.LoggingService;
+import uk.gov.hmcts.opal.service.messaging.DraftCasefileQueueMessage;
+import uk.gov.hmcts.opal.service.messaging.DraftCasefileQueueMessageValidator;
 import uk.gov.hmcts.opal.service.messaging.DraftCasefileQueuePublisher;
 import uk.gov.hmcts.opal.support.DraftCasefileHttpFixture;
 import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
@@ -45,6 +47,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.clearInvocations;
@@ -338,6 +341,33 @@ class DraftCasefileDecisionIntegrationTest extends BaseIntegrationTest {
         assertThat(text).doesNotContain("SYNTHETIC", "Synthetic", "synthetic-contact@example.com",
             "000000", "11111111", "Old reason", "\"casefile\"", "\"casefile_snapshot\"", "\"timeline_data\"",
             "\"status_message\"", "\"reason_text\"");
+    }
+
+    @Test
+    @JiraStory("PO-10631")
+    @JiraEpic("PO-10817")
+    void approvalWithoutIpHeaderUsesRequestAddress() throws Exception {
+        long id = draft("SUBMITTED");
+        doAnswer(invocation -> {
+            new DraftCasefileQueueMessageValidator().validateAuditContext(invocation.getArgument(0));
+            return null;
+        }).when(publisher).publish(any());
+
+        mockMvc.perform(patch("/draft-casefiles/{id}", id).header("If-Match", "\"4\"")
+            .with(request -> {
+                request.setRemoteAddr(REQUEST_IP);
+                return request;
+            })
+            .contentType(MediaType.APPLICATION_JSON).content(body("PUBLISHING_PENDING"))
+            .with(authentication(DraftCasefileHttpFixture.token((short) 1, CHECK_VALIDATE_DRAFT_CASEFILES))))
+            .andExpect(status().isOk())
+            .andExpect(header().string("ETag", "\"5\""))
+            .andExpect(jsonPath("$.casefile_status").value("PUBLISHING_PENDING"));
+
+        ArgumentCaptor<DraftCasefileQueueMessage> message = ArgumentCaptor.forClass(DraftCasefileQueueMessage.class);
+        verify(publisher).publish(message.capture());
+        assertThat(message.getValue().originatingIpAddress()).isEqualTo(REQUEST_IP);
+        assertThat(row(id).get("casefile_status").toString()).isEqualTo("PUBLISHING_PENDING");
     }
 
     private String privacyRequest(int minorCreditors) throws Exception {
