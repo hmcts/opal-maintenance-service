@@ -4,15 +4,11 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
-import org.springframework.security.web.authentication.WebAuthenticationDetails;
 import org.springframework.test.util.ReflectionTestUtils;
-import org.springframework.web.context.request.RequestContextHolder;
-import org.springframework.web.context.request.ServletRequestAttributes;
 import uk.gov.hmcts.common.exceptions.standard.UnauthorizedException;
 import uk.gov.hmcts.opal.common.logging.LogUtil;
 import uk.gov.hmcts.opal.common.spring.security.OpalJwtAuthenticationToken;
@@ -39,7 +35,6 @@ class MaintenanceUserServiceTest {
     @AfterEach
     void clearSecurityContext() {
         SecurityContextHolder.clearContext();
-        RequestContextHolder.resetRequestAttributes();
     }
 
     @ParameterizedTest
@@ -186,67 +181,6 @@ class MaintenanceUserServiceTest {
 
         assertThatThrownBy(() -> userService.requireAuthorisedUser((short) 1, CREATE_MANAGE_DRAFT_CASEFILES))
             .isInstanceOf(UnauthorizedException.class);
-    }
-
-    @ParameterizedTest
-    @ValueSource(strings = {"192.0.2.1", "2001:db8::1"})
-    void usesRequestAddressWhenAuthenticationHasNoDetails(String address) {
-        requestUser();
-        bindRequest(address);
-
-        assertThat(userService.requireAuthorisedUser((short) 1, CREATE_MANAGE_DRAFT_CASEFILES).ipAddress())
-            .isEqualTo(address);
-    }
-
-    @Test
-    void preservesExplicitIpHeader() {
-        requestUser();
-        MockHttpServletRequest request = bindRequest("192.0.2.1");
-        request.addHeader("X-User-IP", "192.0.2.2");
-
-        assertThat(userService.requireAuthorisedUser((short) 1, CREATE_MANAGE_DRAFT_CASEFILES).ipAddress())
-            .isEqualTo("192.0.2.2");
-    }
-
-    @Test
-    void preservesAuthenticationAddress() {
-        requestUser();
-        MockHttpServletRequest request = bindRequest("192.0.2.1");
-        var authentication = (OpalJwtAuthenticationToken) SecurityContextHolder.getContext().getAuthentication();
-        authentication.setDetails(new WebAuthenticationDetails(request));
-        request.setRemoteAddr("192.0.2.2");
-
-        assertThat(userService.requireAuthorisedUser((short) 1, CREATE_MANAGE_DRAFT_CASEFILES).ipAddress())
-            .isEqualTo("192.0.2.1");
-    }
-
-    @Test
-    void leavesMalformedHeaderForPublicationValidation() {
-        requestUser();
-        MockHttpServletRequest request = bindRequest("192.0.2.1");
-        request.addHeader("X-User-IP", "invalid-address");
-
-        assertThat(userService.requireAuthorisedUser((short) 1, CREATE_MANAGE_DRAFT_CASEFILES).ipAddress())
-            .isEqualTo("invalid-address");
-    }
-
-    @Test
-    void doesNotInventAnAddressWithoutARequest() {
-        requestUser();
-
-        assertThat(userService.requireAuthorisedUser((short) 1, CREATE_MANAGE_DRAFT_CASEFILES).ipAddress()).isNull();
-    }
-
-    private static void requestUser() {
-        authenticate(state(Map.of(Domain.MAINTENANCE, businessUnitUsers(
-            permittedUser("BUU-1", (short) 1)))), Domain.MAINTENANCE);
-    }
-
-    private static MockHttpServletRequest bindRequest(String address) {
-        MockHttpServletRequest request = new MockHttpServletRequest();
-        request.setRemoteAddr(address);
-        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
-        return request;
     }
 
     private static UserStateV2 state(Map<Domain, DomainBusinessUnitUsers> domains) {

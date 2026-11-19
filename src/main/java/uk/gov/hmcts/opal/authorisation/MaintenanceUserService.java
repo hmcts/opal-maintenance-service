@@ -1,6 +1,5 @@
 package uk.gov.hmcts.opal.authorisation;
 
-import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import uk.gov.hmcts.common.exceptions.standard.UnauthorizedException;
@@ -63,15 +62,7 @@ public class MaintenanceUserService {
         }
 
         return new MaintenanceUser(userState.getUserId(), businessUnitUser.getBusinessUnitUserId(),
-            userState.getName(), originatingIpAddress());
-    }
-
-    private String originatingIpAddress() {
-        String address = LogUtil.getIpAddress();
-        if (!isBlank(address)) {
-            return address;
-        }
-        return LogUtil.getCurrentRequest().map(HttpServletRequest::getRemoteAddr).orElse(null);
+            userState.getName(), LogUtil.getIpAddress());
     }
 
     private boolean isBlank(String value) {
