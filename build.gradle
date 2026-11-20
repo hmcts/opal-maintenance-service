@@ -19,14 +19,14 @@ plugins {
   id 'org.sonarqube' version '7.5.0.8588'
   id 'uk.gov.hmcts.java' version '0.12.70'
   id 'org.flywaydb.flyway' version '13.11.1'
-  id 'net.serenity-bdd.serenity-gradle-plugin' version '5.4.1'
+  id 'net.serenity-bdd.serenity-gradle-plugin' version '5.4.2'
   id "org.openapi.generator" version "7.26.0"
 }
 
 ext {
   log4JVersion = "2.26.1"
   cucumberVersion = "8.0.4"
-  serenityVersion = "5.4.1"
+  serenityVersion = "5.4.2"
 }
 
 def ciEnvironmentVariables = ['CI', 'GITHUB_ACTIONS', 'JENKINS_HOME', 'BUILD_ID']
@@ -665,7 +665,7 @@ dependencies {
   testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
   testImplementation 'org.testcontainers:testcontainers-postgresql'
   testImplementation 'com.redis:testcontainers-redis'
-  testImplementation 'io.rest-assured:rest-assured:6.1.0'
+  testImplementation 'io.rest-assured:rest-assured:6.3.0'
   integrationTestImplementation 'com.launchdarkly:launchdarkly-java-server-sdk:7.18.0'
   testImplementation 'junit:junit:4.13.2'
   testImplementation(platform('org.junit:junit-bom:6.1.3'))
