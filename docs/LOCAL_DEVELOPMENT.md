@@ -148,6 +148,28 @@ not decorate the publisher, observe sends or change the consumer/transaction bou
 Browser request count, producer invocation, broker acceptance/redelivery and a
 published account are separate observations.
 
+## Publication audit diagnostics
+
+A failed publication audit check writes a WARN from
+`DraftCasefileQueueMessageValidator` with a fixed `reason` category:
+`MESSAGE_MISSING`, `DRAFT_CASEFILE_ID_INVALID`, `CHECKER_USER_ID_INVALID`,
+`IP_ADDRESS_MISSING`, `IP_ADDRESS_INVALID` or `APPROVAL_TIMESTAMP_INVALID`.
+Only the first failed check is reported. These diagnostics identify the failing
+precondition; they do not repair an approval failure.
+
+IP failures also report three booleans: `ip_header_available` means `X-User-IP`
+is nonblank; `authentication_details_available` means authentication has non-null
+details; `web_authentication_details` means those details have Spring's expected
+web-authentication type. They describe the context at validation time. A queue
+consumer can have no HTTP request or authentication context, so false values
+there are expected. Availability does not prove that an address is valid.
+
+The log contains no field values, addresses, user IDs, headers, tokens, message
+payloads or exception causes. The exception remains `Invalid publication message`
+and existing API error handling and rejection rules remain in place. For a nightly
+failure, use the reason and booleans from the failing approval request to choose
+the next investigation, then verify any eventual fix against shared staging.
+
 ## Debug logging
 
 Logging defaults to INFO. To enable DEBUG for a particular logger, use these
