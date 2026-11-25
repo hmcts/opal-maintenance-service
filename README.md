@@ -2,6 +2,8 @@
 
 Opal Maintenance Service is a Java 21 Spring Boot service responsible for Opal maintenance operations and Flyway database migrations.
 
+Build notification setup and operation are described in [Build alerts](docs/BUILD_ALERTS.md).
+
 ## Getting Started
 
 ### Prerequisites
@@ -242,7 +244,12 @@ The [Bruno collection](bruno) contains requests for the service. See the
 
 The opt-in test cleanup API removes eligible caller-owned `SUBMITTED` drafts
 using the ID returned by the real POST journey. Its application default is disabled;
-local Docker and dev/staging overlays enable testing support. Cleanup requires
+local Docker and dev/staging pipeline overlays enable testing support. The base
+Helm chart also enables it for shared staging (`global.environment: stg`),
+with other environments disabled by default, including production. The spelling
+`global.environment: staging` does not match this selector; an agreed non-live
+deployment using that spelling must explicitly set the Helm value
+`java.environment.TESTING_SUPPORT_ENDPOINTS_ENABLED` to `true`. Cleanup requires
 normal bearer authentication, permission 21 in the stored draft's BU and a matching
 submitter. It uses the shared testing-support flag with no per-endpoint identity
 settings. See [Synthetic Draft Casefile test cleanup](docs/DRAFT_CASEFILE_TEST_CLEANUP.md)

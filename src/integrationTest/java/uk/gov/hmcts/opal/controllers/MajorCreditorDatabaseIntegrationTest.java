@@ -34,6 +34,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import uk.gov.hmcts.opal.BaseIntegrationTest;
 import uk.gov.hmcts.opal.repository.MajorCreditorRepository;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraStory;
 
 @AutoConfigureMockMvc
 @TestPropertySource(properties = {
@@ -88,6 +90,8 @@ class MajorCreditorDatabaseIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest(name = "central_authority={0}, active={1}")
     @MethodSource("filterCases")
+    @JiraStory("PO-10254")
+    @JiraEpic("PO-6506")
     void filtersWithinBusinessUnitAndOrdersByNameThenId(
         Boolean centralAuthority, Boolean active, List<Long> expectedIds
     ) throws Exception {
@@ -106,6 +110,8 @@ class MajorCreditorDatabaseIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10254")
+    @JiraEpic("PO-6506")
     void returnsAllFieldsIncludingInactiveCountryWithoutOpenSessionInView() throws Exception {
         JsonNode item = performRequest(31001, true, true).path("refData").get(0);
 
@@ -132,6 +138,8 @@ class MajorCreditorDatabaseIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10254")
+    @JiraEpic("PO-6506")
     void keepsCreditorWithoutCountryAndEmitsExplicitNullProperties() throws Exception {
         JsonNode item = performRequest(31001, true, true).path("refData").get(1);
 
@@ -144,6 +152,8 @@ class MajorCreditorDatabaseIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10254")
+    @JiraEpic("PO-6506")
     void mapsBigintSmallintAndHundredCharacterNameWithoutTruncation() throws Exception {
         var creditor = repository.findById(5000000005L).orElseThrow();
         assertThat(creditor.getMajorCreditorId()).isEqualTo(5000000005L);
@@ -156,6 +166,8 @@ class MajorCreditorDatabaseIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10254")
+    @JiraEpic("PO-6506")
     void cacheDoesNotLeakRowsBetweenBusinessUnits() throws Exception {
         performRequest(31001, true, true);
         JsonNode response = performRequest(31002, true, true);
@@ -165,21 +177,29 @@ class MajorCreditorDatabaseIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10254")
+    @JiraEpic("PO-6506")
     void returnsEmptyResponseForExistingUnitWithoutCreditors() throws Exception {
         assertEmptyResponse(performRequest(31003, null, null));
     }
 
     @Test
+    @JiraStory("PO-10254")
+    @JiraEpic("PO-6506")
     void returnsEmptyResponseForUnknownUnit() throws Exception {
         assertEmptyResponse(performRequest(31004, null, null));
     }
 
     @Test
+    @JiraStory("PO-10254")
+    @JiraEpic("PO-6506")
     void returnsEmptyResponseForFiltersWithoutMatches() throws Exception {
         assertEmptyResponse(performRequest(31002, false, false));
     }
 
     @Test
+    @JiraStory("PO-10254")
+    @JiraEpic("PO-6506")
     void returnsEmptyResponseWhenCreditorTableIsEmpty() throws Exception {
         jdbcTemplate.update("DELETE FROM public.major_creditors WHERE major_creditor_id BETWEEN ? AND ?",
             5000000001L, 5000000006L);

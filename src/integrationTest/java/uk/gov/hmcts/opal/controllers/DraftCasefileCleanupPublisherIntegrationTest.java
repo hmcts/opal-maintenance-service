@@ -22,6 +22,8 @@ import uk.gov.hmcts.opal.repository.DraftCasefileRepository;
 import uk.gov.hmcts.opal.service.messaging.DraftCasefileQueuePublisher;
 import uk.gov.hmcts.opal.service.messaging.DraftCasefileQueuePublisherImpl;
 import uk.gov.hmcts.opal.support.DraftCasefileHttpFixture;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraStory;
 
 import java.util.Set;
 
@@ -62,6 +64,8 @@ class DraftCasefileCleanupPublisherIntegrationTest extends BaseIntegrationTest {
     private LoggingService logging;
 
     @Test
+    @JiraStory("PO-10626")
+    @JiraEpic("PO-10817")
     void approvalUsesBasePublisherAndInvokesProducerOnce() throws Exception {
         when(logging.personalDataAccessLogAsync(any())).thenReturn(true);
         assertThat(AopUtils.getTargetClass(publisher)).isEqualTo(DraftCasefileQueuePublisherImpl.class);

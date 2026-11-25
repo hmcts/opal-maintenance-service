@@ -13,6 +13,8 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 import uk.gov.hmcts.opal.BaseIntegrationTest;
 import uk.gov.hmcts.opal.service.DraftCasefileTestScope;
 import uk.gov.hmcts.opal.support.DraftCasefileHttpFixture;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraStory;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
@@ -38,6 +40,8 @@ class DisabledDraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
     private ObjectMapper objectMapper;
 
     @Test
+    @JiraStory("PO-10287")
+    @JiraEpic("PO-6506")
     void authenticatedCleanupIsUnavailable() throws Exception {
         assertThat(context.getBeansOfType(DraftCasefileTestScope.class)).isEmpty();
         mockMvc.perform(delete("/testing-support/draft-casefiles/1")
@@ -47,6 +51,8 @@ class DisabledDraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10626")
+    @JiraEpic("PO-10817")
     void publicationEvidenceIsUnavailable() throws Exception {
         for (var request : new MockHttpServletRequestBuilder[]{
             post("/testing-support/draft-casefiles/1/publication-evidence"),
@@ -58,12 +64,16 @@ class DisabledDraftCasefileCleanupIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10287")
+    @JiraEpic("PO-6506")
     void anonymousCleanupStillRequiresAuthentication() throws Exception {
         mockMvc.perform(delete("/testing-support/draft-casefiles/1"))
             .andExpect(status().isUnauthorized());
     }
 
     @Test
+    @JiraStory("PO-10287")
+    @JiraEpic("PO-6506")
     void publicRuntimeDocumentationOmitsCleanup() throws Exception {
         String body = mockMvc.perform(get("/v3/api-docs")).andExpect(status().isOk())
             .andReturn().getResponse().getContentAsString();

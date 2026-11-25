@@ -22,6 +22,8 @@ import uk.gov.hmcts.opal.entity.DraftCasefileStatus;
 import uk.gov.hmcts.opal.logging.integration.service.LoggingService;
 import uk.gov.hmcts.opal.repository.DraftCasefileRepository;
 import uk.gov.hmcts.opal.support.DraftCasefileHttpFixture;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraStory;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -107,6 +109,8 @@ class DraftCasefileListQaIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10619")
+    @JiraEpic("PO-10817")
     void sevenCalendarDaysIncludeBothEdgesAndUnboundedRejectedHasNoAgeLimit() throws Exception {
         DraftCasefileEntity before = save(REJECTED, INPUTTER_A, "2026-09-30T23:59:59.999999");
         DraftCasefileEntity lower = save(REJECTED, INPUTTER_A, "2026-10-01T00:00:00");
@@ -123,6 +127,8 @@ class DraftCasefileListQaIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10619")
+    @JiraEpic("PO-10817")
     void rejectedListIncludesBothInputtersAndExcludesOtherStatusAndBusinessUnit() throws Exception {
         DraftCasefileEntity rejectedA = repository.saveAndFlush(fixture(REJECTED, INPUTTER_A).build());
         DraftCasefileEntity rejectedB = repository.saveAndFlush(fixture(REJECTED, INPUTTER_B).build());
@@ -143,6 +149,8 @@ class DraftCasefileListQaIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @EnumSource(value = DraftCasefileStatus.class, names = {"REJECTED", "PUBLISHING_FAILED"})
+    @JiraStory("PO-10619")
+    @JiraEpic("PO-10817")
     void filteredCountsDoNotCallThePersonalDataLoggingBoundary(DraftCasefileStatus lifecycle) throws Exception {
         repository.saveAndFlush(fixture(lifecycle, INPUTTER_A).build());
         repository.saveAndFlush(fixture(lifecycle, INPUTTER_A)
@@ -162,6 +170,8 @@ class DraftCasefileListQaIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @EnumSource(value = DraftCasefileStatus.class, names = {"PUBLISHED", "PUBLISHING_FAILED"})
+    @JiraStory("PO-10619")
+    @JiraEpic("PO-10817")
     void storedPublicationStatesRetainProjectionAndApprovalHistory(DraftCasefileStatus lifecycle) throws Exception {
         boolean published = lifecycle == PUBLISHED;
         String snapshot = publicationSnapshot(published);

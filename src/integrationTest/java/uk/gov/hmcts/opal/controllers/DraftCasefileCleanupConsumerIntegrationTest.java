@@ -35,6 +35,8 @@ import uk.gov.hmcts.opal.service.messaging.DraftCasefileQueueConsumerService;
 import uk.gov.hmcts.opal.service.messaging.DraftCasefileQueueMessage;
 import uk.gov.hmcts.opal.service.messaging.DraftCasefileQueuePublisherImpl;
 import uk.gov.hmcts.opal.support.DraftCasefileHttpFixture;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraStory;
 
 import java.time.Duration;
 import java.util.Set;
@@ -99,6 +101,8 @@ class DraftCasefileCleanupConsumerIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
+    @JiraStory("PO-10626")
+    @JiraEpic("PO-10817")
     void delayedConsumerAndFailureWaitForCleanupCommitOrRollback(boolean rollback) throws Exception {
         long id = submit();
         var locked = new CountDownLatch(1);
@@ -146,6 +150,8 @@ class DraftCasefileCleanupConsumerIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
+    @JiraStory("PO-10626")
+    @JiraEpic("PO-10817")
     void lateAcceptedDeliveryAfterApprovalFailureCannotPublishOrRecreateCleanedDraft(boolean transportFailure)
         throws Exception {
         long id = submit();
@@ -175,6 +181,8 @@ class DraftCasefileCleanupConsumerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10626")
+    @JiraEpic("PO-10817")
     void processingRollbackReleasesLockAndPendingCleanupPreventsFailureRecreation() throws Exception {
         long id = submit();
         var accepted = new AtomicReference<DraftCasefileQueueMessage>();
@@ -222,6 +230,8 @@ class DraftCasefileCleanupConsumerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10626")
+    @JiraEpic("PO-10817")
     void cleanupWaitsForSeparatelyCommittedFailureThenDeletesOnlyUnlinkedDraft() throws Exception {
         long id = submit();
         approve(id, 200);

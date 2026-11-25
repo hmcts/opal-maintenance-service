@@ -9,6 +9,8 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.jdbc.Sql;
 import uk.gov.hmcts.opal.BaseIntegrationTest;
 import uk.gov.hmcts.opal.exception.DraftCasefilePublicationException.Attempt;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraStory;
 
 import java.time.LocalDateTime;
 
@@ -40,6 +42,8 @@ class DraftCasefilePublicationFailureIntegrationTest extends BaseIntegrationTest
     }
 
     @Test
+    @JiraStory("PO-10629")
+    @JiraEpic("PO-10817")
     void commitsFailureWithoutChangingRetainedData() {
         final var before = jdbc.queryForMap("SELECT * FROM draft_casefiles WHERE draft_casefile_id=1062901");
         assertThat(failures.markFailed(attempt(1L), "Publication failed; contact support")).isTrue();
@@ -55,6 +59,8 @@ class DraftCasefilePublicationFailureIntegrationTest extends BaseIntegrationTest
     }
 
     @Test
+    @JiraStory("PO-10629")
+    @JiraEpic("PO-10817")
     void handlesNullVersionUnderLock() {
         jdbc.update("UPDATE draft_casefiles SET version_number=NULL WHERE draft_casefile_id=1062901");
         assertThat(failures.markFailed(attempt(null), "Publication failed; contact support")).isTrue();
@@ -63,6 +69,8 @@ class DraftCasefilePublicationFailureIntegrationTest extends BaseIntegrationTest
     }
 
     @Test
+    @JiraStory("PO-10629")
+    @JiraEpic("PO-10817")
     void refusesChangedApprovalWithoutMutation() {
         jdbc.update("UPDATE draft_casefiles SET validated_by='OTHER' WHERE draft_casefile_id=1062901");
         assertThatThrownBy(() -> failures.markFailed(attempt(1L), "Publication failed; contact support"))
@@ -73,6 +81,8 @@ class DraftCasefilePublicationFailureIntegrationTest extends BaseIntegrationTest
     }
 
     @Test
+    @JiraStory("PO-10629")
+    @JiraEpic("PO-10817")
     void preservesAlreadyPublishedOutcome() {
         jdbc.update("""
             UPDATE draft_casefiles SET casefile_status='PUBLISHED',account_id=101,account_number='R101',

@@ -1,4 +1,4 @@
-@Opal @PO10621 @JIRA-STORY:PO-10621
+@Opal @PO10621 @JIRA-STORY:PO-10621 @JIRA-EPIC:PO-10817
 Feature: Publish an approved Draft Casefile
 
   Scenario Outline: Publish all generated account identities

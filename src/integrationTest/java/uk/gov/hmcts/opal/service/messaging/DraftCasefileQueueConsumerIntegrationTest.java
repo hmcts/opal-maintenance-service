@@ -28,6 +28,8 @@ import uk.gov.hmcts.opal.exception.DraftCasefilePublicationException;
 import uk.gov.hmcts.opal.exception.DraftCasefilePublicationException.Attempt;
 import uk.gov.hmcts.opal.logging.integration.service.LoggingService;
 import uk.gov.hmcts.opal.service.DraftCasefilePublicationFailureService;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraStory;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -135,6 +137,8 @@ class DraftCasefileQueueConsumerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10626")
+    @JiraEpic("PO-10817")
     void missingDraftDeliveriesSettleThroughGuardWithoutAmbientSpringTransaction() {
         String missing = "{\"draft_casefile_id\":9223372036854775807}";
         send(missing);
@@ -148,6 +152,8 @@ class DraftCasefileQueueConsumerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10629")
+    @JiraEpic("PO-10817")
     void normalCompletionSettlesDelivery() {
         send(PAYLOAD);
         await().atMost(Duration.ofSeconds(45)).untilAsserted(() -> assertThat(status()).isEqualTo("PUBLISHED"));
@@ -155,6 +161,8 @@ class DraftCasefileQueueConsumerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10629")
+    @JiraEpic("PO-10817")
     void transientFailureRedeliversAndPublishes() {
         var attempts = new AtomicInteger();
         doAnswer(invocation -> {
@@ -170,6 +178,8 @@ class DraftCasefileQueueConsumerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10629")
+    @JiraEpic("PO-10817")
     void committedPublicationSurvivesLostAcknowledgement() {
         failAcknowledgement = true;
         send(PAYLOAD);
@@ -181,6 +191,8 @@ class DraftCasefileQueueConsumerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10629")
+    @JiraEpic("PO-10817")
     void failedFailurePersistenceRedeliversThenSettlesTerminalOutcome() {
         jdbc.update("UPDATE draft_casefiles SET validated_by=submitted_by WHERE draft_casefile_id=1062901");
         var attempts = new AtomicInteger();
@@ -197,6 +209,8 @@ class DraftCasefileQueueConsumerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10629")
+    @JiraEpic("PO-10817")
     void invalidLegacyMessageReachesConfiguredDeadLetterLimit() {
         int expectedLimit = Integer.parseInt(System.getenv("TEST_SERVICEBUS_MAX_DELIVERIES"));
         assertThat(expectedLimit).isPositive();

@@ -28,6 +28,8 @@ import uk.gov.hmcts.opal.logging.integration.service.LoggingService;
 import uk.gov.hmcts.opal.repository.DraftCasefileRepository;
 import uk.gov.hmcts.opal.support.DraftCasefileAuthenticationFixture;
 import uk.gov.hmcts.opal.support.DraftCasefileHttpFixture;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraStory;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -95,6 +97,8 @@ class DraftCasefileAuthenticationIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10252")
+    @JiraEpic("PO-6506")
     void signedJwtAndMatchingUserServicePermissionCreateDraft() throws Exception {
         stubUserState(1);
         String response = mockMvc.perform(post("/draft-casefiles")
@@ -111,6 +115,8 @@ class DraftCasefileAuthenticationIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10252")
+    @JiraEpic("PO-6506")
     void signedJwtWithoutCreatorPermissionIsForbidden() throws Exception {
         stubUserState(1, "[]");
         mockMvc.perform(post("/draft-casefiles")
@@ -122,6 +128,8 @@ class DraftCasefileAuthenticationIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10252")
+    @JiraEpic("PO-6506")
     void signedJwtWithOnlyCheckerPermissionIsForbidden() throws Exception {
         stubUserState(1, "[{\"permission_id\":22,\"permission_name\":\"Check and validate draft Casefiles\"}]");
         mockMvc.perform(post("/draft-casefiles")
@@ -133,6 +141,8 @@ class DraftCasefileAuthenticationIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10252")
+    @JiraEpic("PO-6506")
     void signedJwtWithDifferentBusinessUnitIdentityIsForbidden() throws Exception {
         stubUserState(2);
         mockMvc.perform(post("/draft-casefiles")
@@ -145,6 +155,8 @@ class DraftCasefileAuthenticationIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10252")
+    @JiraEpic("PO-6506")
     void expiredJwtIsRejectedBeforeUserLookupOrPersistence() throws Exception {
         mockMvc.perform(post("/draft-casefiles")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + AUTH.signedToken(Instant.now().minusSeconds(120)))
@@ -157,6 +169,8 @@ class DraftCasefileAuthenticationIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(ints = {21, 22})
+    @JiraStory("PO-10616")
+    @JiraEpic("PO-10817")
     void signedJwtWithEitherOwningUnitPermissionRetrievesCommittedDraft(int permission) throws Exception {
         long id = submitDraft();
         stubUserState(1, "[{\"permission_id\":%d,\"permission_name\":\"Synthetic permission\"}]".formatted(permission));
@@ -175,6 +189,8 @@ class DraftCasefileAuthenticationIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"empty", "other-unit", "missing-identity"})
+    @JiraStory("PO-10616")
+    @JiraEpic("PO-10817")
     void signedJwtWithoutOwningUnitPermissionCannotRetrieve(String failure, CapturedOutput output) throws Exception {
         final int outputStart = output.getAll().length();
         long id = submitDraft();
@@ -202,6 +218,8 @@ class DraftCasefileAuthenticationIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
+    @JiraStory("PO-10616")
+    @JiraEpic("PO-10817")
     void invalidOrExpiredJwtCannotRetrieveBeforeUserLookup(boolean expired) throws Exception {
         long id = submitDraft();
         String token = expired ? AUTH.signedToken(Instant.now().minusSeconds(120)) : "not-a-jwt";
@@ -215,6 +233,8 @@ class DraftCasefileAuthenticationIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10616")
+    @JiraEpic("PO-10817")
     void unavailableUserServiceCannotRetrieveOrDiscloseDownstreamValues(CapturedOutput output) throws Exception {
         final int outputStart = output.getAll().length();
         long id = submitDraft();
@@ -259,6 +279,8 @@ class DraftCasefileAuthenticationIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @CsvSource({"21,false", "22,false", "21,true", "22,true"})
+    @JiraStory("PO-10620")
+    @JiraEpic("PO-10817")
     void signedJwtWithEitherPermissionCanListOrCount(int permission, boolean counts) throws Exception {
         long id = submitDraft();
         stubUserState(1, "[{\"permission_id\":%d,\"permission_name\":\"Synthetic permission\"}]".formatted(permission));
@@ -284,6 +306,8 @@ class DraftCasefileAuthenticationIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @CsvSource({"false,false", "false,true", "true,false", "true,true"})
+    @JiraStory("PO-10620")
+    @JiraEpic("PO-10817")
     void invalidOrExpiredJwtCannotListBeforeUserLookup(boolean expired, boolean counts) throws Exception {
         String token = expired ? AUTH.signedToken(Instant.now().minusSeconds(120)) : "not-a-jwt";
         var request = org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/draft-casefiles")
@@ -300,6 +324,8 @@ class DraftCasefileAuthenticationIntegrationTest extends BaseIntegrationTest {
     @ParameterizedTest
     @CsvSource({"empty,false", "other-unit,false", "missing-identity,false",
         "empty,true", "other-unit,true", "missing-identity,true"})
+    @JiraStory("PO-10620")
+    @JiraEpic("PO-10817")
     void signedJwtWithoutRequestedUnitPermissionCannotList(String failure, boolean counts) throws Exception {
         stubUserState(failure.equals("missing-identity") ? 2 : 1, "[]");
         if (failure.equals("other-unit")) {

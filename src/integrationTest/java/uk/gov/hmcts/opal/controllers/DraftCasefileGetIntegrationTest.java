@@ -40,6 +40,8 @@ import uk.gov.hmcts.opal.logging.integration.dto.PersonalDataProcessingLogDetail
 import uk.gov.hmcts.opal.logging.integration.service.LoggingService;
 import uk.gov.hmcts.opal.repository.DraftCasefileRepository;
 import uk.gov.hmcts.opal.support.DraftCasefileHttpFixture;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraStory;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -122,6 +124,8 @@ class DraftCasefileGetIntegrationTest extends BaseIntegrationTest {
     @ParameterizedTest
     @EnumSource(value = MaintenancePermission.class,
         names = {"CREATE_MANAGE_DRAFT_CASEFILES", "CHECK_VALIDATE_DRAFT_CASEFILES"})
+    @JiraStory("PO-10616")
+    @JiraEpic("PO-10817")
     void retrievesTheCommittedDraftWithoutChangingAnyPersistedColumn(MaintenancePermission permission)
         throws Exception {
         long id = submitDraft();
@@ -140,6 +144,8 @@ class DraftCasefileGetIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10616")
+    @JiraEpic("PO-10817")
     void returnsCompletePublishedLinksAndAuditDataWithFourPrivateCategoryLogs(CapturedOutput output) throws Exception {
         final int outputStart = output.getAll().length();
         long id = submitDraft();
@@ -166,6 +172,8 @@ class DraftCasefileGetIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"REJECTED", "RESUBMITTED", "DELETED", "PUBLISHING_FAILED"})
+    @JiraStory("PO-10616")
+    @JiraEpic("PO-10817")
     void preservesStoredLifecycleReasonsAndValidationWithoutAppendingEvents(String lifecycle, CapturedOutput output)
         throws Exception {
         final int outputStart = output.getAll().length();
@@ -183,6 +191,8 @@ class DraftCasefileGetIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
+    @JiraStory("PO-10616")
+    @JiraEpic("PO-10817")
     void publisherFailurePreservesSuccessfulResponseAndAttemptsAllCategories(boolean throwsException,
                                                                             CapturedOutput output)
         throws Exception {
@@ -207,6 +217,8 @@ class DraftCasefileGetIntegrationTest extends BaseIntegrationTest {
     @ParameterizedTest
     @ValueSource(strings = {"missing", "unauthenticated", "empty", "other-unit", "missing-identity",
         "malformed", "zero", "negative", "overflow", "unavailable", "timeline", "snapshot", "null-version", "accept"})
+    @JiraStory("PO-10616")
+    @JiraEpic("PO-10817")
     void unsuccessfulRequestsDiscloseNoPrivateValuesAndProduceNoPdpo(String failure, CapturedOutput output)
         throws Exception {
         final int outputStart = output.getAll().length();
@@ -273,6 +285,8 @@ class DraftCasefileGetIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10616")
+    @JiraEpic("PO-10817")
     void operationalEndpointsRemainPublicInTheSameDatabaseBackedContext() throws Exception {
         mockMvc.perform(get("/")).andExpect(status().isOk());
         mockMvc.perform(get("/health")).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("UP"));

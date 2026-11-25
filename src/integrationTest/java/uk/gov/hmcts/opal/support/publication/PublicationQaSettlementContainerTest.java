@@ -5,6 +5,10 @@ import jakarta.jms.JMSException;
 import jakarta.jms.Message;
 import jakarta.jms.Session;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraStory;
+import uk.hmcts.zephyr.automation.junit5.extension.ZephyrAutomationExtension;
 
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -20,8 +24,11 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /** Mock JMS boundaries verify instrumentation only; these are not actual broker settlement evidence. */
+@ExtendWith(ZephyrAutomationExtension.class)
 class PublicationQaSettlementContainerTest {
     @Test
+    @JiraStory("PO-10621")
+    @JiraEpic("PO-10817")
     void idleCommitDoesNotObserveOrCountOwnedSettlement() throws Exception {
         AtomicInteger observations = new AtomicInteger();
         var container = container(observations::incrementAndGet);
@@ -33,6 +40,8 @@ class PublicationQaSettlementContainerTest {
     }
 
     @Test
+    @JiraStory("PO-10621")
+    @JiraEpic("PO-10817")
     void mismatchedCommitDoesNotObserveOrCountOwnedSettlement() throws Exception {
         AtomicInteger observations = new AtomicInteger();
         var container = container(observations::incrementAndGet);
@@ -45,6 +54,8 @@ class PublicationQaSettlementContainerTest {
     }
 
     @Test
+    @JiraStory("PO-10621")
+    @JiraEpic("PO-10817")
     void observesBeforeActualCommitAndCountsOnlyAfterItReturns() throws Exception {
         AtomicInteger observations = new AtomicInteger();
         var container = container(observations::incrementAndGet);
@@ -61,6 +72,8 @@ class PublicationQaSettlementContainerTest {
     }
 
     @Test
+    @JiraStory("PO-10621")
+    @JiraEpic("PO-10817")
     void commitFailureIsNotCountedAndSurfacesSafely() throws Exception {
         var container = container(() -> { });
         Session session = session();
@@ -71,6 +84,8 @@ class PublicationQaSettlementContainerTest {
     }
 
     @Test
+    @JiraStory("PO-10621")
+    @JiraEpic("PO-10817")
     void oracleFailureCapturesCategoryAndActuallyRollsBack() throws Exception {
         var container = container(() -> {
             throw new AssertionError("Private oracle values");
@@ -97,6 +112,8 @@ class PublicationQaSettlementContainerTest {
     }
 
     @Test
+    @JiraStory("PO-10621")
+    @JiraEpic("PO-10817")
     void callbackFailureDelegatesActualRollbackWithoutCountingSettlement() throws Exception {
         var container = container(() -> { });
         container.setMessageListener((jakarta.jms.MessageListener) message -> {
@@ -113,6 +130,8 @@ class PublicationQaSettlementContainerTest {
     }
 
     @Test
+    @JiraStory("PO-10621")
+    @JiraEpic("PO-10817")
     void callbackReturnAloneIsNotSettlement() throws Exception {
         AtomicInteger callbacks = new AtomicInteger();
         var container = container(() -> {
@@ -129,6 +148,8 @@ class PublicationQaSettlementContainerTest {
     }
 
     @Test
+    @JiraStory("PO-10621")
+    @JiraEpic("PO-10817")
     void nonLocalSessionCannotBecomeSettlementEvidence() throws Exception {
         var container = container(() -> { });
         container.setSessionTransacted(false);

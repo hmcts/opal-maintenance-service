@@ -26,6 +26,8 @@ import uk.gov.hmcts.opal.logging.integration.dto.PersonalDataProcessingLogDetail
 import uk.gov.hmcts.opal.mapper.DraftCasefilePublicationMapper;
 import uk.gov.hmcts.opal.repository.DraftCasefileRepository;
 import uk.gov.hmcts.opal.repository.extensions.DraftCasefilePublicationRepository;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraStory;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -70,6 +72,8 @@ class DraftCasefileQueueProcessingIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10629")
+    @JiraEpic("PO-10817")
     void delayedRolledBackApprovalCannotPublishLaterApproval() {
         // The old delivery survives rollback; a later approval reuses the same row version.
         jdbc.update("UPDATE draft_casefiles SET validated_date=TIMESTAMP '2024-01-03'"
@@ -91,6 +95,8 @@ class DraftCasefileQueueProcessingIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10629")
+    @JiraEpic("PO-10817")
     void publishesRealGraphAndAuditsOnlyAfterCommit() {
         final var before = jdbc.queryForMap("SELECT * FROM draft_casefiles WHERE draft_casefile_id=1062901");
         when(logging.personalDataAccessLogAsync(any())).thenAnswer(invocation -> {
@@ -139,6 +145,8 @@ class DraftCasefileQueueProcessingIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10629")
+    @JiraEpic("PO-10817")
     void rollsBackRealProcedureWhenOutputMappingFails() {
         doThrow(new IllegalStateException("Synthetic mapping failure"))
             .when(mapper).mergePublishedAccounts(any(), any(), any());
@@ -148,6 +156,8 @@ class DraftCasefileQueueProcessingIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10629")
+    @JiraEpic("PO-10817")
     void rollsBackRealProcedureWhenCompletionFlushFails() {
         doThrow(new IllegalStateException("Synthetic flush failure")).when(drafts).flush();
         assertThatThrownBy(() -> processing.processPendingDraft(message))
@@ -156,6 +166,8 @@ class DraftCasefileQueueProcessingIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10629")
+    @JiraEpic("PO-10817")
     void handlesLegacyVersionOnSuccessfulPublication() {
         jdbc.update("UPDATE draft_casefiles SET version_number=NULL WHERE draft_casefile_id=1062901");
         processing.processPendingDraft(message);
@@ -165,6 +177,8 @@ class DraftCasefileQueueProcessingIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10629")
+    @JiraEpic("PO-10817")
     void legacyPendingMessageCannotPublishWithoutAuditContext() {
         assertThatThrownBy(() -> processing.processPendingDraft(
             new DraftCasefileQueueMessage(1062901L, null, null, null)))
@@ -178,6 +192,8 @@ class DraftCasefileQueueProcessingIntegrationTest extends BaseIntegrationTest {
         "{applicant,bank_account_details}|{\"bank_account_type\":\"UK\",\"uk_bank_details\":{}}",
         "{respondent_account,application_code}|\"UNKNOWN\""
     })
+    @JiraStory("PO-10629")
+    @JiraEpic("PO-10817")
     void validatesPersistedNoteBankAndReferenceDataBeforeProcedure(String path, String replacement) {
         jdbc.update("UPDATE draft_casefiles SET casefile=jsonb_set(casefile::jsonb,?::text[],?::jsonb)::json "
             + "WHERE draft_casefile_id=1062901", path, replacement);
@@ -188,6 +204,8 @@ class DraftCasefileQueueProcessingIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10629")
+    @JiraEpic("PO-10817")
     void completionConstraintFailureDoesNotExposeSavedData(CapturedOutput output) {
         jdbc.execute("ALTER TABLE draft_casefiles ADD CONSTRAINT publication_test_failure "
             + "CHECK (casefile_status <> 'PUBLISHED')");

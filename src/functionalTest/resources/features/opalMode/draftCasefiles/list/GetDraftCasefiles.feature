@@ -1,4 +1,4 @@
-@Opal @PO10619 @JIRA-STORY:PO-10619
+@Opal @PO10619 @JIRA-STORY:PO-10619 @JIRA-EPIC:PO-10817
 Feature: List Draft Casefiles owned by an authorised Business Unit
 
   Scenario: Filter summaries by owning unit submitter lifecycle and UTC date

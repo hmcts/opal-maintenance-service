@@ -19,6 +19,8 @@ import org.springframework.test.context.jdbc.Sql;
 import org.springframework.test.web.servlet.MockMvc;
 import uk.gov.hmcts.opal.BaseIntegrationTest;
 import uk.gov.hmcts.opal.repository.CountryRepository;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraStory;
 
 @AutoConfigureMockMvc
 @TestPropertySource(properties = {
@@ -45,6 +47,8 @@ class CountryCacheIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10251")
+    @JiraEpic("PO-6506")
     void repeatedIdenticalRequestsUseOneRepositoryQuery() throws Exception {
         mockMvc.perform(get("/countries").with(user("test-user"))).andExpect(status().isOk());
         mockMvc.perform(get("/countries").with(user("test-user"))).andExpect(status().isOk());
@@ -53,6 +57,8 @@ class CountryCacheIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10251")
+    @JiraEpic("PO-6506")
     void omittedTrueAndFalseRequestsDoNotShareCacheEntries() throws Exception {
         mockMvc.perform(get("/countries").with(user("test-user"))).andExpect(status().isOk());
         mockMvc.perform(get("/countries").param("active", "true").with(user("test-user")))

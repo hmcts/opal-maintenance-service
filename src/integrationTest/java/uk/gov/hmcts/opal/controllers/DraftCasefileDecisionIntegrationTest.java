@@ -32,6 +32,8 @@ import uk.gov.hmcts.opal.service.messaging.DraftCasefileQueuePublisher;
 import uk.gov.hmcts.opal.service.messaging.DraftCasefileQueuePublisherImpl;
 import uk.gov.hmcts.opal.service.messaging.DraftCasefileQueueMessageValidator;
 import uk.gov.hmcts.opal.support.DraftCasefileHttpFixture;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraEpic;
+import uk.hmcts.zephyr.automation.junit5.annotations.JiraStory;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -102,6 +104,8 @@ class DraftCasefileDecisionIntegrationTest extends BaseIntegrationTest {
         "SUBMITTED,PUBLISHING_PENDING,Approved,2", "SUBMITTED,REJECTED,Rejected,2",
         "SUBMITTED,DELETED,Deleted,2", "RESUBMITTED,PUBLISHING_PENDING,Approved,2",
         "RESUBMITTED,REJECTED,Rejected,2", "RESUBMITTED,DELETED,Deleted,2"})
+    @JiraStory("PO-10631")
+    @JiraEpic("PO-10817")
     void recordsDecisionWithNewVersionAndPreservedContent(String source, String target, String history,
                                                          int minorCreditors, CapturedOutput output) throws Exception {
         long id = draft(source, privacyRequest(minorCreditors));
@@ -155,12 +159,16 @@ class DraftCasefileDecisionIntegrationTest extends BaseIntegrationTest {
         "{\"business_unit_id\":1,\"casefile_status\":\"PUBLISHING_PENDING\",\"casefile\":{}}",
         "{\"business_unit_id\":null,\"casefile_status\":\"REJECTED\"}",
         "{\"business_unit_id\":1,\"casefile_status\":\"PUBLISHED\"}"})
+    @JiraStory("PO-10631")
+    @JiraEpic("PO-10817")
     void invalidBodiesAreRejectedBeforeSideEffects(String body, CapturedOutput output) throws Exception {
         long id = draft("SUBMITTED");
         assertRefusedDecision(id, request(id, body), 400, output);
     }
 
     @Test
+    @JiraStory("PO-10631")
+    @JiraEpic("PO-10817")
     void acceptsMultilineReasonWithNonblankText() throws Exception {
         long id = draft("SUBMITTED");
         String reason = "  Synthetic reason\nSecond line  ";
@@ -172,6 +180,8 @@ class DraftCasefileDecisionIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(ints = {250, 251})
+    @JiraStory("PO-10631")
+    @JiraEpic("PO-10817")
     void reasonLengthBoundary(int length, CapturedOutput output) throws Exception {
         long id = draft("SUBMITTED");
         String body = body("REJECTED").replace(PRIVATE, "a".repeat(length));
@@ -185,6 +195,8 @@ class DraftCasefileDecisionIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"", "4", "W/\"4\"", "\"-1\"", "\"9223372036854775808\"", "\"4\",\"5\""})
+    @JiraStory("PO-10631")
+    @JiraEpic("PO-10817")
     void invalidVersionHeader(String value, CapturedOutput output) throws Exception {
         long id = draft("SUBMITTED");
         var request = request(id, body("PUBLISHING_PENDING"));
@@ -197,6 +209,8 @@ class DraftCasefileDecisionIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"PUBLISHING_PENDING", "REJECTED", "DELETED"})
+    @JiraStory("PO-10631")
+    @JiraEpic("PO-10817")
     void staleVersionAndOwnerMismatchAreConflicts(String target, CapturedOutput output) throws Exception {
         long id = draft("SUBMITTED");
         var stale = request(id, body(target));
@@ -208,6 +222,8 @@ class DraftCasefileDecisionIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"PUBLISHING_PENDING", "REJECTED", "DELETED"})
+    @JiraStory("PO-10631")
+    @JiraEpic("PO-10817")
     void authenticationPermissionSelfCheckAndMissingRecord(String target, CapturedOutput output) throws Exception {
         long id = draft("SUBMITTED");
         assertRefusedDecision(id, patch("/draft-casefiles/{id}", id).contentType(MediaType.APPLICATION_JSON)
@@ -225,6 +241,8 @@ class DraftCasefileDecisionIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"REJECTED", "DELETED", "PUBLISHING_PENDING", "PUBLISHED", "PUBLISHING_FAILED"})
+    @JiraStory("PO-10631")
+    @JiraEpic("PO-10817")
     void unsupportedCurrentStatesRemainUnchanged(String source, CapturedOutput output) throws Exception {
         long id = draft(source);
         for (String target : List.of("PUBLISHING_PENDING", "REJECTED", "DELETED")) {
@@ -233,6 +251,8 @@ class DraftCasefileDecisionIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10631")
+    @JiraEpic("PO-10817")
     void unsupportedMediaAndOversizedRequest() throws Exception {
         mockMvc.perform(request(99999L, body("REJECTED")).contentType(MediaType.TEXT_PLAIN))
             .andExpect(status().isUnsupportedMediaType());
@@ -278,6 +298,8 @@ class DraftCasefileDecisionIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10631")
+    @JiraEpic("PO-10817")
     void failedSendRollsBackAndReturnsSafe503(CapturedOutput output) throws Exception {
         long id = draft("SUBMITTED");
         Map<String, Object> before = row(id);
@@ -295,6 +317,8 @@ class DraftCasefileDecisionIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
+    @JiraStory("PO-10631")
+    @JiraEpic("PO-10817")
     void loggingFailureDoesNotChangeCommittedDecision(CapturedOutput output) throws Exception {
         long id = draft("SUBMITTED");
         when(logging.personalDataAccessLogAsync(any())).thenThrow(new IllegalStateException(PRIVATE));

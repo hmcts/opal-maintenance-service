@@ -1,28 +1,144 @@
 import groovy.transform.Field
 
 @Field
-List<String> zephyrBaseArgs = [
-        "jira-base-url=https://tools.hmcts.net/jira/rest/api/latest",
-        "jira-project-id=28500",
-        "jira-default-user=OPAL.Zephyr.automation",
-        "jira-auth-token=${System.getenv('JIRA_AUTH_TOKEN')}",
-        "jira-epic-link-custom-field-id=customfield_10008",
-        "jira-default-components=opal-maintenance-service",
-        "execution-environment=${System.getenv('EXECUTION_ENVIRONMENT') ?: ''}",
-        "execution-build=${System.getenv('EXECUTION_BUILD') ?: ''}",
-        "execution-test-cycle-description=${System.getenv('EXECUTION_CYCLE_DESCRIPTION') ?: ''}",
-        "success-status-id=${System.getenv('SUCCESS_STATUS_ID') ?: ''}",
-        "failed-status-id=${System.getenv('FAILED_STATUS_ID') ?: ''}"
+Map<String, Map<String, String>> functionalZephyrTargets = [
+        functional: [reportPath: 'functional-output/zephyr/cucumber-opal.json',
+                     testFolder: 'functionalTest/resources'],
+        smoke: [reportPath: 'smoke-output/zephyr/cucumber-smoke.json',
+                testFolder: 'functionalTest/resources']
 ]
 
+Map<String, String> resolveFunctionalZephyrTarget() {
+    String stage = project.findProperty('zephyrFunctionalStage')?.toString()
+    if (!functionalZephyrTargets.containsKey(stage)) {
+        throw new GradleException('Set -PzephyrFunctionalStage to functional or smoke')
+    }
+    [kind: stage] + functionalZephyrTargets[stage]
+}
+
+File resolveExecutionReport(String kind) {
+    if (kind == 'integration') {
+        return file('integration-output/zephyr/Junit5Report-IntegrationTest.json')
+    }
+    if (functionalZephyrTargets.containsKey(kind)) {
+        return file(functionalZephyrTargets[kind].reportPath)
+    }
+    throw new GradleException('Set -PzephyrReportKind to integration, functional or smoke')
+}
+
+void verifyExecutionReport(String kind, File reportFile) {
+    if (!reportFile.isFile() || reportFile.length() == 0) {
+        throw new GradleException("Missing Zephyr ${kind} input: ${reportFile}")
+    }
+    def report
+    try {
+        report = new groovy.json.JsonSlurper().parse(reportFile)
+    } catch (IOException | IllegalArgumentException | groovy.json.JsonException ignored) {
+        // Parser diagnostics can contain report content. Never attach the original exception.
+        throw new GradleException("Invalid Zephyr ${kind} JSON input: ${reportFile}")
+    }
+    String invalidShape = "Invalid Zephyr ${kind} report structure: ${reportFile}"
+    List tests
+    if (kind == 'integration') {
+        if (!(report instanceof Map) || !(report.tests instanceof List)
+                || report.tests.any { !(it instanceof Map)
+                    || (it.metadata != null && !(it.metadata instanceof Map))
+                    || (it.metadata?.jiraIgnore != null && !(it.metadata.jiraIgnore instanceof Boolean)) }) {
+            throw new GradleException(invalidShape)
+        }
+        tests = report.tests.findAll { it.metadata?.jiraIgnore != true }
+        if (tests.any { test ->
+            def keys = test.metadata?.jiraKey
+            !(keys instanceof List) || keys.isEmpty()
+                    || keys.any { !(it instanceof String) || !(it ==~ /PO-[0-9]+/) }
+        }) {
+            throw new GradleException('Register the unmapped Maintenance integration cases before uploading')
+        }
+    } else {
+        if (!(report instanceof List) || report.any { feature ->
+            !(feature instanceof Map) || (feature.elements != null && !(feature.elements instanceof List))
+                    || (feature.elements ?: []).any { !(it instanceof Map)
+                        || !(it.type in ['background', 'scenario']) }
+        }) {
+            throw new GradleException(invalidShape)
+        }
+        tests = report.collectMany { it.elements ?: [] }.findAll { it.type == 'scenario' }
+        if (tests.any { scenario ->
+            scenario.tags != null && (!(scenario.tags instanceof List)
+                    || scenario.tags.any { !(it instanceof Map) || !(it.name instanceof String) })
+        }) {
+            throw new GradleException(invalidShape)
+        }
+        if (tests.any { scenario ->
+            !(scenario.tags ?: []).any { it.name ==~ /@JIRA-TEST-KEY:PO-[0-9]+/ }
+        }) {
+            throw new GradleException('Register the unmapped Maintenance Cucumber cases before uploading')
+        }
+    }
+    if (tests.isEmpty()) {
+        throw new GradleException("No uploadable Maintenance cases in ${reportFile}")
+    }
+    String commit = System.getenv('GIT_COMMIT') ?: ''
+    String environment = System.getenv('EXECUTION_ENVIRONMENT') ?: ''
+    logger.lifecycle('Zephyr input ready: suite={}, cases={}, commit={}, environment={}', kind, tests.size(),
+            commit ==~ /[a-fA-F0-9]{7,40}/ ? commit : 'unspecified',
+            environment ==~ /[A-Za-z0-9_.-]+/ ? environment : 'unspecified')
+}
+
 List<String> zephyrArgs(String processType, String actionType, String testFolder, String reportPath) {
-    List<String> args = new ArrayList<>(zephyrBaseArgs)
-    args.add("process-type=${processType}")
-    args.add("action-type=${actionType}")
-    args.add("base-path=${file("src/${testFolder}").absolutePath}")
-    args.add("report-path=${reportPath}")
-    args.add("github-repo-base-src-dir=https://github.com/hmcts/opal-maintenance-service/tree/master/src/${testFolder}")
-    args
+    List<String> required = ['JIRA_BASE_URL', 'JIRA_PROJECT_ID', 'JIRA_ACCOUNT_ID',
+                             'JIRA_ACCOUNT_EMAIL', 'JIRA_AUTH_TOKEN']
+    if (actionType == 'CREATE_EXECUTION') {
+        required.addAll(['ZEPHYR_ACCESS_KEY', 'ZEPHYR_SECRET_KEY', 'ZEPHYR_ACCOUNT_ID'])
+    }
+    List<String> missing = required.findAll { !System.getenv(it)?.trim() }
+    if (!missing.isEmpty()) {
+        throw new GradleException("Missing Zephyr configuration environment variables: ${missing.join(', ')}")
+    }
+    [
+            "jira-base-url=${System.getenv('JIRA_BASE_URL')}",
+            "jira-project-id=${System.getenv('JIRA_PROJECT_ID')}",
+            "jira-default-user-id=${System.getenv('JIRA_ACCOUNT_ID')}",
+            "jira-auth-username=${System.getenv('JIRA_ACCOUNT_EMAIL')}",
+            "jira-auth-token=${System.getenv('JIRA_AUTH_TOKEN')}",
+            'jira-default-components=opal-maintenance-service',
+            "execution-environment=${System.getenv('EXECUTION_ENVIRONMENT') ?: ''}",
+            "execution-build=${System.getenv('EXECUTION_BUILD') ?: ''}",
+            "execution-test-cycle-description=${System.getenv('EXECUTION_CYCLE_DESCRIPTION') ?: ''}",
+            "success-status-id=${System.getenv('SUCCESS_STATUS_ID') ?: ''}",
+            "failed-status-id=${System.getenv('FAILED_STATUS_ID') ?: ''}",
+            "zephyr-access-key=${System.getenv('ZEPHYR_ACCESS_KEY') ?: ''}",
+            "zephyr-secret-key=${System.getenv('ZEPHYR_SECRET_KEY') ?: ''}",
+            "zephyr-account-id=${System.getenv('ZEPHYR_ACCOUNT_ID') ?: ''}",
+            "process-type=${processType}",
+            "action-type=${actionType}",
+            "base-path=${file("src/${testFolder}").absolutePath}",
+            "report-path=${reportPath}",
+            "github-repo-base-src-dir=https://github.com/hmcts/opal-maintenance-service/tree/master/src/${testFolder}"
+    ]
+}
+
+void configureFunctionalZephyrTask(JavaExec task, String actionType, String description) {
+    task.group = 'Zephyr Reporting - Cucumber'
+    task.description = description
+    task.classpath = configurations.zephyrCucumberReportProcessor
+    task.mainClass = 'uk.hmcts.zephyr.automation.ZephyrAutomation'
+    task.dependsOn {
+        // Validate the selector for dry runs too, without scheduling any report producers.
+        resolveFunctionalZephyrTarget()
+        []
+    }
+    task.doFirst {
+        Map<String, String> target = resolveFunctionalZephyrTarget()
+        File reportFile = file(target.reportPath)
+        if (actionType == 'CREATE_EXECUTION') {
+            verifyExecutionReport(target.kind, reportFile)
+        } else if (!reportFile.isFile() || reportFile.length() == 0) {
+            throw new GradleException("Missing Zephyr ${target.kind} input: ${reportFile}")
+        }
+        task.setArgs(zephyrArgs('CUCUMBER_JSON_REPORT', actionType,
+                target.testFolder, reportFile.absolutePath))
+    }
 }
 
 void configureIntegrationZephyrTask(JavaExec task, String actionType, String description) {
@@ -30,12 +146,16 @@ void configureIntegrationZephyrTask(JavaExec task, String actionType, String des
     task.description = description
     task.classpath = configurations.zephyrCucumberReportProcessor
     task.mainClass = "uk.hmcts.zephyr.automation.ZephyrAutomation"
-    task.dependsOn('copyIntegrationJunit5Report')
+    if (actionType != 'CREATE_EXECUTION') {
+        task.dependsOn('copyIntegrationJunit5Report')
+    }
 
     File integrationReport = file("integration-output/zephyr/Junit5Report-IntegrationTest.json")
 
     task.doFirst {
-        if (!integrationReport.exists()) {
+        if (actionType == 'CREATE_EXECUTION') {
+            verifyExecutionReport('integration', integrationReport)
+        } else if (!integrationReport.exists()) {
             throw new GradleException(
                     "Integration Zephyr report was not found at ${integrationReport}"
             )
@@ -91,4 +211,28 @@ tasks.register('updateJiraTicketsFromIntegrationReport', JavaExec) { JavaExec ta
 tasks.register('createJiraExecutionFromIntegrationReport', JavaExec) { JavaExec task ->
     configureIntegrationZephyrTask(task, "CREATE_EXECUTION",
             "Creates a Zephyr execution from the integration JUnit5 Zephyr report")
+}
+
+tasks.register('checkZephyrExecutionReport') {
+    group = 'Verification'
+    description = 'Validates existing Zephyr JSON locally; requires -PzephyrReportKind=integration|functional|smoke'
+    doLast {
+        String kind = project.findProperty('zephyrReportKind')?.toString()
+        verifyExecutionReport(kind, resolveExecutionReport(kind))
+    }
+}
+
+tasks.register('createJiraExecutionFromFunctionalReport', JavaExec) { JavaExec task ->
+    configureFunctionalZephyrTask(task, 'CREATE_EXECUTION',
+            'Creates a Zephyr execution from existing functional or smoke JSON; requires -PzephyrFunctionalStage')
+}
+
+tasks.register('createJiraTicketsFromFunctionalReport', JavaExec) { JavaExec task ->
+    configureFunctionalZephyrTask(task, 'CREATE_TICKETS',
+            'Creates and links Jira tickets from existing functional or smoke JSON; requires -PzephyrFunctionalStage')
+}
+
+tasks.register('updateJiraTicketsFromFunctionalReport', JavaExec) { JavaExec task ->
+    configureFunctionalZephyrTask(task, 'UPDATE_TICKETS',
+            'Updates Jira tickets from existing functional or smoke JSON; requires -PzephyrFunctionalStage')
 }
