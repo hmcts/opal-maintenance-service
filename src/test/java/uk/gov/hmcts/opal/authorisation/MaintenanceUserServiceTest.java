@@ -4,6 +4,11 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.NullSource;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -35,6 +40,7 @@ class MaintenanceUserServiceTest {
     @AfterEach
     void clearSecurityContext() {
         SecurityContextHolder.clearContext();
+        RequestContextHolder.resetRequestAttributes();
     }
 
     @ParameterizedTest
@@ -92,6 +98,43 @@ class MaintenanceUserServiceTest {
         assertThat(unitOne.displayName()).isEqualTo("Test User");
         assertThat(unitOne.ipAddress()).isEqualTo(LogUtil.getIpAddress());
         assertThat(unitTwo.businessUnitUserId()).isEqualTo("BUU-2");
+    }
+
+    @ParameterizedTest
+    @CsvSource(value = {
+        "192.0.2.1,192.0.2.1", "192.0.2.1:54321,192.0.2.1",
+        "[2001:db8::1]:443,2001:db8::1", "' 192.0.2.1 ',192.0.2.1",
+        "2001:db8::1,2001:db8::1", ",", "'',", "example.invalid,"
+    })
+    void resolvesBestEffortIpForPersonalDataLogging(String supplied, String expected) {
+        authenticate(state(Map.of(Domain.MAINTENANCE, businessUnitUsers(
+            permittedUser("BUU-1", (short) 1)))), Domain.MAINTENANCE);
+        var request = new MockHttpServletRequest();
+        request.setRemoteAddr(null);
+        if (supplied != null) {
+            request.addHeader("X-User-IP", supplied);
+        }
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+
+        assertThat(userService.requireAuthorisedUser((short) 1, CREATE_MANAGE_DRAFT_CASEFILES).ipAddress())
+            .isEqualTo(expected);
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = {"", "not-an-ip"})
+    void fallsBackToConnectionIpWhenForwardedIpIsUnavailable(String supplied) {
+        authenticate(state(Map.of(Domain.MAINTENANCE, businessUnitUsers(
+            permittedUser("BUU-1", (short) 1)))), Domain.MAINTENANCE);
+        var request = new MockHttpServletRequest();
+        request.setRemoteAddr("192.0.2.2");
+        if (supplied != null) {
+            request.addHeader("X-User-IP", supplied);
+        }
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+
+        assertThat(userService.requireAuthorisedUser((short) 1, CREATE_MANAGE_DRAFT_CASEFILES).ipAddress())
+            .isEqualTo("192.0.2.2");
     }
 
     @Test

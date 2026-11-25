@@ -1,6 +1,6 @@
 package uk.gov.hmcts.opal.service.messaging;
 
-import com.google.common.net.InetAddresses;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.StreamReadFeature;
@@ -11,6 +11,7 @@ import tools.jackson.databind.json.JsonMapper;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 
+@Slf4j
 @Component
 public class DraftCasefileQueueMessageValidator {
     private static final JsonMapper JSON = JsonMapper.builder()
@@ -31,10 +32,10 @@ public class DraftCasefileQueueMessageValidator {
             String ip = null;
             if (body.has("originating_ip_address")) {
                 JsonNode address = body.get("originating_ip_address");
-                if (!address.isString() || !InetAddresses.isInetAddress(address.asString())) {
+                if (!address.isNull() && !address.isString()) {
                     throw invalid();
                 }
-                ip = address.asString();
+                ip = address.isNull() ? null : address.asString();
             }
             String approvedAt = null;
             if (body.has("approval_timestamp")) {
@@ -67,9 +68,11 @@ public class DraftCasefileQueueMessageValidator {
 
     public void validateAuditContext(DraftCasefileQueueMessage message) {
         if (message == null || message.draftCasefileId() == null || message.draftCasefileId() <= 0
-            || message.checkerUserId() == null || message.checkerUserId() <= 0
-            || message.originatingIpAddress() == null
-            || !InetAddresses.isInetAddress(message.originatingIpAddress())) {
+            || message.checkerUserId() == null || message.checkerUserId() <= 0) {
+            throw invalid();
+        }
+        if (message.originatingIpAddress() == null) {
+            log.warn("Draft casefile publication rejected because no usable audit IP address is available");
             throw invalid();
         }
         validateTimestamp(message.approvalTimestamp());

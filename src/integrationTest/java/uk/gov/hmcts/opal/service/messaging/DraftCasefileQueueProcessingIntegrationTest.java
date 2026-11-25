@@ -1,6 +1,7 @@
 package uk.gov.hmcts.opal.service.messaging;
 
 import org.junit.jupiter.api.BeforeEach;
+import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.boot.test.system.CapturedOutput;
@@ -21,6 +22,7 @@ import tools.jackson.databind.json.JsonMapper;
 import uk.gov.hmcts.opal.BaseIntegrationTest;
 import uk.gov.hmcts.opal.exception.DraftCasefilePublicationException;
 import uk.gov.hmcts.opal.logging.integration.service.LoggingService;
+import uk.gov.hmcts.opal.logging.integration.dto.PersonalDataProcessingLogDetails;
 import uk.gov.hmcts.opal.mapper.DraftCasefilePublicationMapper;
 import uk.gov.hmcts.opal.repository.DraftCasefileRepository;
 import uk.gov.hmcts.opal.repository.extensions.DraftCasefilePublicationRepository;
@@ -124,6 +126,30 @@ class DraftCasefileQueueProcessingIntegrationTest extends BaseIntegrationTest {
         assertThat(processing.processPendingDraft(message))
             .isEqualTo(DraftCasefileQueueProcessingService.Outcome.NO_OP);
         verify(logging, times(3)).personalDataAccessLogAsync(any());
+    }
+
+    @ParameterizedTest
+    @CsvSource(value = {"192.0.2.1:54321,192.0.2.1", "[2001:db8::1]:443,2001:db8::1", ",", "invalid,"})
+    @JiraStory("PO-11863")
+    @JiraEpic("PO-10817")
+    void requiresUsableAuditIpForPublication(String supplied, String expected) {
+        String ipField = supplied == null ? "null" : "\"" + supplied + "\"";
+        String payload = "{\"draft_casefile_id\":1062901,\"checker_user_id\":123,"
+            + "\"originating_ip_address\":" + ipField + ",\"approval_timestamp\":\"2024-01-02T00:00:00Z\"}";
+        if (expected == null) {
+            assertThatThrownBy(() -> consumer.consume(payload)).isInstanceOf(IllegalArgumentException.class);
+            assertThat(status()).isEqualTo("PUBLISHING_PENDING");
+            verifyNoInteractions(publication, logging);
+            return;
+        }
+        consumer.consume(payload);
+        assertThat(status()).isEqualTo("PUBLISHED");
+        var payloads = ArgumentCaptor.forClass(PersonalDataProcessingLogDetails.class);
+        verify(logging, times(3)).personalDataAccessLogAsync(payloads.capture());
+        assertThat(payloads.getAllValues()).allSatisfy(details -> {
+            assertThat(details.getIpAddress()).isEqualTo(expected);
+            assertThat(details.getCreatedBy().getIdentifier()).isEqualTo("123");
+        });
     }
 
     @Test

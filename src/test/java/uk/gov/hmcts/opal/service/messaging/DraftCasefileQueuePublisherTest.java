@@ -1,6 +1,10 @@
 package uk.gov.hmcts.opal.service.messaging;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.jms.UncategorizedJmsException;
 import org.springframework.jms.core.JmsTemplate;
@@ -33,9 +37,38 @@ class DraftCasefileQueuePublisherTest {
         assertThat(body.get("originating_ip_address").asString()).isEqualTo("192.0.2.1");
     }
 
+    @ParameterizedTest
+    @CsvSource(value = {
+        "192.0.2.1:54321,192.0.2.1", "[2001:db8::1]:443,2001:db8::1",
+        "' 192.0.2.1 ',192.0.2.1", "2001:db8::443,2001:db8::443",
+        "[2001:db8::1],2001:db8::1",
+        "[2001:db8::1]:0,2001:db8::1", "192.0.2.1:65535,192.0.2.1"
+    })
+    void publishesWithNormalisedIpAddress(String supplied, String expected) {
+        publisher.publish(new DraftCasefileQueueMessage(42L, 123L, supplied, "2024-01-02T00:00:00Z"));
+        var payload = ArgumentCaptor.forClass(String.class);
+        verify(template).convertAndSend(eq("test-publish-queue"), payload.capture());
+        var body = JsonMapper.builder().build().readTree(payload.getValue());
+        assertThat(body.get("originating_ip_address").asString()).isEqualTo(expected);
+        var parsed = new DraftCasefileQueueMessageValidator().parse(payload.getValue());
+        new DraftCasefileQueueMessageValidator().validateAuditContext(parsed);
+        assertThat(parsed.originatingIpAddress()).isEqualTo(expected);
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = {"", "localhost", "192.0.2.999", "192.0.2.1:65536",
+        "192.0.2.1,192.0.2.2", "192.0.2.1:abc", "192.0.2.1:-1", "192.0.2.1:"})
+    void rejectsMissingOrUnusableAuditIpBeforeSend(String ip) {
+        assertThatThrownBy(() -> publisher.publish(new DraftCasefileQueueMessage(42L, 123L, ip,
+            "2024-01-02T00:00:00Z")))
+            .isInstanceOf(IllegalArgumentException.class).hasNoCause();
+        verifyNoInteractions(template);
+    }
+
     @Test
     void rejectsInvalidProducerContextBeforeSend() {
-        assertThatThrownBy(() -> publisher.publish(new DraftCasefileQueueMessage(42L, 123L, null,
+        assertThatThrownBy(() -> publisher.publish(new DraftCasefileQueueMessage(42L, null, "192.0.2.1",
             "2024-01-02T00:00:00Z")))
             .isInstanceOf(IllegalArgumentException.class).hasNoCause();
         verifyNoInteractions(template);
