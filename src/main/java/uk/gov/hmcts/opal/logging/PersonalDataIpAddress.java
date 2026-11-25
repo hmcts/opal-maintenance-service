@@ -23,7 +23,7 @@ public final class PersonalDataIpAddress {
                 return address.getHost();
             }
         } catch (IllegalArgumentException invalidAddress) {
-            // Unusable audit metadata must not prevent the business operation.
+            return null;
         }
         return null;
     }
