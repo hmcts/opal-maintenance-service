@@ -770,19 +770,6 @@ additional decision validation. The publication message remains exactly
 consumer here. Request/helper call counts prove harness behavior; dedicated
 broker tests own broker acceptance and delivery evidence.
 
-PO-11863 regressions cover best-effort IP handling in `MaintenanceUserServiceTest`,
-`DraftCasefileQueuePublisherTest` and `DraftCasefileQueueMessageValidatorTest`.
-They cover IPv4/IPv6, recognised port suffixes, unavailable addresses, and
-producer/consumer JSON round trips while preserving required approval context.
-`DraftCasefileDecisionIntegrationTest.approvalCommitsWithBestEffortIp` exercises
-HTTP approval through the real publisher and validator with only the JMS send
-mocked; it verifies committed approval and PDPL arguments.
-`DraftCasefileQueueProcessingIntegrationTest.publishesAndAttemptsAuditWithBestEffortIp`
-exercises the consumer, real publication procedure and after-commit PDPL attempt.
-These checks do not establish broker acceptance, deployed gateway behaviour or
-Logging Service persistence of unknown IPs. See the best-effort metadata
-contract and rollout limitations in [Local Development](LOCAL_DEVELOPMENT.md#best-effort-publication-ip-metadata-po-11863).
-
 Durable broker proof remains the existing opt-in dedicated-queue suite described
 below. It requires an otherwise unused `test-` queue, `RUN_SERVICE_BUS_TESTS=true`,
 `TEST_SERVICEBUS_QUEUE`, and normal Service Bus connection environment settings.

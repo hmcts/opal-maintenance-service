@@ -148,36 +148,6 @@ not decorate the publisher, observe sends or change the consumer/transaction bou
 Browser request count, producer invocation, broker acceptance/redelivery and a
 published account are separate observations.
 
-### Best-effort publication IP metadata (PO-11863)
-
-The originating IP is PDPL audit metadata, not an approval permission or
-publication prerequisite. Maintenance trims literal IPv4/IPv6 addresses and
-extracts the address from IPv4-with-port and bracketed IPv6-with-port values.
-Bare IPv6 addresses retain every segment. Hostnames are never resolved, and
-forwarding lists are not interpreted as a single originating address.
-
-Missing, blank or unusable addresses become `null`. The four-field publication
-message retains `originating_ip_address`, with a nullable value; the consumer
-also accepts an omitted address from compatible producers. Checker identity,
-draft identity, approval timestamp and saved-approval correlation remain
-mandatory. The same normalised value is used for the approval and publication
-PDPL attempts. No raw address is added to application diagnostics.
-
-This lets approval and publication proceed when an originating address cannot
-be established. It does not guarantee persistence of a PDPL entry with a null
-IP: the separately owned Logging Service currently requires a non-null database
-IP. Supporting unknown addresses end to end needs an agreed Logging Service
-contract and implementation; Maintenance does not substitute a fabricated IP.
-Verify the deployed Logging Service's contract and the staging gateway header
-shape during rollout. The reported staging request's exact IP shape has not
-been confirmed.
-
-Deploy the updated consumer before producers can send null IPs (or deploy a
-single instance with processing paused during replacement). Older Maintenance
-consumers reject null IPs, so mixed-version rollout or rollback can leave these
-messages retrying or dead-lettered. Reconcile affected deliveries before
-rolling back; a gateway change is not required for recognised port formats.
-
 ## Debug logging
 
 Logging defaults to INFO. To enable DEBUG for a particular logger, use these
