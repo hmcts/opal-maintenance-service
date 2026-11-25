@@ -264,7 +264,8 @@ class DraftCasefileDecisionIntegrationTest extends BaseIntegrationTest {
     }
 
     @ParameterizedTest
-    @CsvSource(value = {"192.0.2.1:54321,192.0.2.1", "[2001:db8::1]:443,2001:db8::1", ",", "invalid,"})
+    @CsvSource(value = {"192.0.2.1:54321,192.0.2.1", "[2001:db8::1]:443,2001:db8::1",
+        ",192.0.2.2", "invalid,192.0.2.2"})
     @JiraStory("PO-11863")
     @JiraEpic("PO-10817")
     void approvalCommitsWithBestEffortIp(String supplied, String expected) throws Exception {
@@ -280,6 +281,7 @@ class DraftCasefileDecisionIntegrationTest extends BaseIntegrationTest {
         var approval = request(id, body("PUBLISHING_PENDING"));
         approval.with(request -> {
             request.removeHeader("X-User-IP");
+            request.setRemoteAddr("192.0.2.2");
             if (supplied != null) {
                 request.addHeader("X-User-IP", supplied);
             }
@@ -297,6 +299,31 @@ class DraftCasefileDecisionIntegrationTest extends BaseIntegrationTest {
         var logs = ArgumentCaptor.forClass(PersonalDataProcessingLogDetails.class);
         verify(logging, times(2)).personalDataAccessLogAsync(logs.capture());
         assertThat(logs.getAllValues()).allSatisfy(details -> assertThat(details.getIpAddress()).isEqualTo(expected));
+    }
+
+    @Test
+    @JiraStory("PO-11863")
+    @JiraEpic("PO-10817")
+    void approvalWithoutAnyUsableIpRollsBackBeforeSend() throws Exception {
+        long id = draft("SUBMITTED");
+        Map<String, Object> before = row(id);
+        var template = mock(JmsTemplate.class);
+        var realPublisher = new DraftCasefileQueuePublisherImpl(template, JSON, "test-publish-queue",
+            new DraftCasefileQueueMessageValidator());
+        doAnswer(invocation -> {
+            realPublisher.publish(invocation.getArgument(0));
+            return null;
+        }).when(publisher).publish(any());
+        var approval = request(id, body("PUBLISHING_PENDING")).with(request -> {
+            request.removeHeader("X-User-IP");
+            request.setRemoteAddr(null);
+            return request;
+        });
+
+        mockMvc.perform(approval).andExpect(status().isBadRequest());
+
+        assertThat(row(id)).isEqualTo(before);
+        verifyNoInteractions(template, logging);
     }
 
     @Test

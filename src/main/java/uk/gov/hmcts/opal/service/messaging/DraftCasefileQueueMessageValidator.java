@@ -66,7 +66,8 @@ public class DraftCasefileQueueMessageValidator {
 
     public void validateAuditContext(DraftCasefileQueueMessage message) {
         if (message == null || message.draftCasefileId() == null || message.draftCasefileId() <= 0
-            || message.checkerUserId() == null || message.checkerUserId() <= 0) {
+            || message.checkerUserId() == null || message.checkerUserId() <= 0
+            || message.originatingIpAddress() == null) {
             throw invalid();
         }
         validateTimestamp(message.approvalTimestamp());

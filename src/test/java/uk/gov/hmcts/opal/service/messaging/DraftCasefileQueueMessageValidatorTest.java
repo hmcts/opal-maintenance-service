@@ -71,18 +71,20 @@ class DraftCasefileQueueMessageValidatorTest {
     @ParameterizedTest
     @NullSource
     @ValueSource(strings = {"localhost", "example.invalid", "", "192.0.2.999", "192.0.2.1,192.0.2.2"})
-    void unavailableIpDoesNotInvalidateApprovalContext(String ip) {
+    void unavailableIpCannotPublish(String ip) {
         var message = new DraftCasefileQueueMessage(42L, 123L, ip, "2024-01-02T00:00:00Z");
-        validator.validateAuditContext(message);
+        assertThatThrownBy(() -> validator.validateAuditContext(message))
+            .isInstanceOf(IllegalArgumentException.class).hasMessage("Invalid publication message");
         assertThat(message.originatingIpAddress()).isNull();
     }
 
     @ParameterizedTest
     @ValueSource(strings = {"", ",\"originating_ip_address\":null", ",\"originating_ip_address\":\"localhost\""})
-    void consumesMessageWithoutUsableIp(String ipField) {
+    void rejectsPublicationWithoutUsableIp(String ipField) {
         var message = validator.parse("{\"draft_casefile_id\":42,\"checker_user_id\":123,"
             + "\"approval_timestamp\":\"2024-01-02T00:00:00Z\"" + ipField + "}");
-        validator.validateAuditContext(message);
+        assertThatThrownBy(() -> validator.validateAuditContext(message))
+            .isInstanceOf(IllegalArgumentException.class).hasMessage("Invalid publication message");
         assertThat(message.originatingIpAddress()).isNull();
     }
 }

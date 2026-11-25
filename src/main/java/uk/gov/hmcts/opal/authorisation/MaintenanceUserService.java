@@ -2,6 +2,8 @@ package uk.gov.hmcts.opal.authorisation;
 
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 import uk.gov.hmcts.common.exceptions.standard.UnauthorizedException;
 import uk.gov.hmcts.opal.common.logging.LogUtil;
 import uk.gov.hmcts.opal.common.spring.security.OpalJwtAuthenticationToken;
@@ -63,7 +65,16 @@ public class MaintenanceUserService {
         }
 
         return new MaintenanceUser(userState.getUserId(), businessUnitUser.getBusinessUnitUserId(),
-            userState.getName(), PersonalDataIpAddress.normalize(LogUtil.getIpAddress()));
+            userState.getName(), requestIpAddress());
+    }
+
+    private String requestIpAddress() {
+        String address = PersonalDataIpAddress.normalize(LogUtil.getIpAddress());
+        if (address == null
+            && RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attributes) {
+            return PersonalDataIpAddress.normalize(attributes.getRequest().getRemoteAddr());
+        }
+        return address;
     }
 
     private boolean isBlank(String value) {
