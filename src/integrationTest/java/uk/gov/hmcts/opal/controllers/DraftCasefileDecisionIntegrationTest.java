@@ -14,6 +14,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jms.UncategorizedJmsException;
+import org.springframework.jms.core.JmsTemplate;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -28,6 +29,8 @@ import uk.gov.hmcts.opal.logging.integration.dto.PersonalDataProcessingCategory;
 import uk.gov.hmcts.opal.logging.integration.dto.PersonalDataProcessingLogDetails;
 import uk.gov.hmcts.opal.logging.integration.service.LoggingService;
 import uk.gov.hmcts.opal.service.messaging.DraftCasefileQueuePublisher;
+import uk.gov.hmcts.opal.service.messaging.DraftCasefileQueuePublisherImpl;
+import uk.gov.hmcts.opal.service.messaging.DraftCasefileQueueMessageValidator;
 import uk.gov.hmcts.opal.support.DraftCasefileHttpFixture;
 
 import java.time.Clock;
@@ -42,6 +45,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -235,6 +241,40 @@ class DraftCasefileDecisionIntegrationTest extends BaseIntegrationTest {
         mockMvc.perform(request(99999L, body("REJECTED").replace(PRIVATE, "a".repeat(5000))))
             .andExpect(status().isContentTooLarge());
         verifyNoInteractions(publisher, logging);
+    }
+
+    @ParameterizedTest
+    @CsvSource(value = {"192.0.2.1:54321,192.0.2.1", "[2001:db8::1]:443,2001:db8::1", ",", "invalid,"})
+    void approvalCommitsWithBestEffortIp(String supplied, String expected) throws Exception {
+        long id = draft("SUBMITTED");
+        var template = mock(JmsTemplate.class);
+        var realPublisher = new DraftCasefileQueuePublisherImpl(
+            template, JSON, "test-publish-queue",
+            new DraftCasefileQueueMessageValidator());
+        doAnswer(invocation -> {
+            realPublisher.publish(invocation.getArgument(0));
+            return null;
+        }).when(publisher).publish(any());
+        var approval = request(id, body("PUBLISHING_PENDING"));
+        approval.with(request -> {
+            request.removeHeader("X-User-IP");
+            if (supplied != null) {
+                request.addHeader("X-User-IP", supplied);
+            }
+            return request;
+        });
+
+        mockMvc.perform(approval).andExpect(status().isOk());
+
+        assertThat(row(id).get("casefile_status")).hasToString("PUBLISHING_PENDING");
+        var payload = ArgumentCaptor.forClass(String.class);
+        verify(template).convertAndSend(eq("test-publish-queue"), payload.capture());
+        var queued = new DraftCasefileQueueMessageValidator()
+            .parse(payload.getValue());
+        assertThat(queued.originatingIpAddress()).isEqualTo(expected);
+        var logs = ArgumentCaptor.forClass(PersonalDataProcessingLogDetails.class);
+        verify(logging, times(2)).personalDataAccessLogAsync(logs.capture());
+        assertThat(logs.getAllValues()).allSatisfy(details -> assertThat(details.getIpAddress()).isEqualTo(expected));
     }
 
     @Test
