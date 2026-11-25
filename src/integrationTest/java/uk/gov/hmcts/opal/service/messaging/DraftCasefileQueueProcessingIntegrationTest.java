@@ -130,6 +130,8 @@ class DraftCasefileQueueProcessingIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @CsvSource(value = {"192.0.2.1:54321,192.0.2.1", "[2001:db8::1]:443,2001:db8::1", ",", "invalid,"})
+    @JiraStory("PO-11863")
+    @JiraEpic("PO-10817")
     void publishesAndAttemptsAuditWithBestEffortIp(String supplied, String expected) {
         String ipField = supplied == null ? "null" : "\"" + supplied + "\"";
         consumer.consume("{\"draft_casefile_id\":1062901,\"checker_user_id\":123,"

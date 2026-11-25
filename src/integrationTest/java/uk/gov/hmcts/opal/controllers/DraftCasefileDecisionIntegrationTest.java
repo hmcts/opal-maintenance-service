@@ -265,6 +265,8 @@ class DraftCasefileDecisionIntegrationTest extends BaseIntegrationTest {
 
     @ParameterizedTest
     @CsvSource(value = {"192.0.2.1:54321,192.0.2.1", "[2001:db8::1]:443,2001:db8::1", ",", "invalid,"})
+    @JiraStory("PO-11863")
+    @JiraEpic("PO-10817")
     void approvalCommitsWithBestEffortIp(String supplied, String expected) throws Exception {
         long id = draft("SUBMITTED");
         var template = mock(JmsTemplate.class);
