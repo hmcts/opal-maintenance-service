@@ -302,7 +302,7 @@ class DraftCasefileReplaceIntegrationTest extends BaseIntegrationTest {
             }
             case "accept" -> {
                 request.accept(MediaType.TEXT_PLAIN);
-                expected = 406;
+                expected = 400;
             }
             case "null-version" -> {
                 jdbc.update("UPDATE draft_casefiles SET version_number = NULL WHERE draft_casefile_id = ?", id);

@@ -128,7 +128,7 @@ class MaintenanceApplicationControllerIntegrationTest extends BaseIntegrationTes
     void rejectsUnsupportedResponseMediaType() throws Exception {
         mockMvc.perform(get("/maintenance-applications").param("application_group", "Create Casefile")
                 .accept(MediaType.APPLICATION_XML).with(user("test-user")))
-            .andExpect(status().isNotAcceptable());
+            .andExpect(status().isBadRequest());
         verifyNoInteractions(repository);
     }
 

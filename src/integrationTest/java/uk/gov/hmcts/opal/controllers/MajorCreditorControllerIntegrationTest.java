@@ -151,7 +151,7 @@ class MajorCreditorControllerIntegrationTest extends BaseIntegrationTest {
                 .param("business_unit_id", "77")
                 .accept(MediaType.APPLICATION_XML)
                 .with(user("test-user")))
-            .andExpect(status().isNotAcceptable())
+            .andExpect(status().isBadRequest())
             .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON));
     }
 

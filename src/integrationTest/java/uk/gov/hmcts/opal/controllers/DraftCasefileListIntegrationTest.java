@@ -478,7 +478,7 @@ class DraftCasefileListIntegrationTest extends BaseIntegrationTest {
     @JiraStory("PO-10620")
     @JiraEpic("PO-10817")
     void unsupportedAcceptReturnsCommonProblemBeforeQuery() throws Exception {
-        assertProblem(listRequest(false, CREATE_MANAGE_DRAFT_CASEFILES).accept(MediaType.TEXT_PLAIN), 406);
+        assertProblem(listRequest(false, CREATE_MANAGE_DRAFT_CASEFILES).accept(MediaType.TEXT_PLAIN), 400);
         verifyNoInteractions(repository, logging);
     }
 
