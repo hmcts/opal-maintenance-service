@@ -66,7 +66,7 @@ paths:
                 empty: {value: {count: 0, summaries: []}}
                 counts: {value: {count: 3}}
         '400':
-          description: Invalid query parameters or date range
+          description: Invalid query parameters, invalid date range, or unsupported response media type
           content:
             application/problem+json:
               schema: {$ref: './common.yaml#/components/schemas/ProblemDetail'}
@@ -77,11 +77,6 @@ paths:
               schema: {$ref: './common.yaml#/components/schemas/ProblemDetail'}
         '403':
           description: No requested-BU identity or accepted permission
-          content:
-            application/problem+json:
-              schema: {$ref: './common.yaml#/components/schemas/ProblemDetail'}
-        '406':
-          description: Requested response media type is not supported
           content:
             application/problem+json:
               schema: {$ref: './common.yaml#/components/schemas/ProblemDetail'}
@@ -296,7 +291,7 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/GetResponse'}
         '400':
-          description: Invalid request or If-Match header
+          description: Invalid request, invalid If-Match header, or unsupported response media type
           content:
             application/problem+json:
               schema: {$ref: './common.yaml#/components/schemas/ProblemDetail'}
@@ -312,11 +307,6 @@ paths:
               schema: {$ref: './common.yaml#/components/schemas/ProblemDetail'}
         '404':
           description: Draft Casefile not found
-          content:
-            application/problem+json:
-              schema: {$ref: './common.yaml#/components/schemas/ProblemDetail'}
-        '406':
-          description: Requested response media type is not supported
           content:
             application/problem+json:
               schema: {$ref: './common.yaml#/components/schemas/ProblemDetail'}
@@ -386,7 +376,7 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/GetResponse'}
         '400':
-          description: Invalid request or If-Match header
+          description: Invalid request, invalid If-Match header, or unsupported response media type
           content:
             application/problem+json:
               schema: {$ref: './common.yaml#/components/schemas/ProblemDetail'}
@@ -402,11 +392,6 @@ paths:
               schema: {$ref: './common.yaml#/components/schemas/ProblemDetail'}
         '404':
           description: Draft Casefile not found
-          content:
-            application/problem+json:
-              schema: {$ref: './common.yaml#/components/schemas/ProblemDetail'}
-        '406':
-          description: Requested response media type is not supported
           content:
             application/problem+json:
               schema: {$ref: './common.yaml#/components/schemas/ProblemDetail'}
@@ -465,7 +450,7 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/GetResponse'}
         '400':
-          description: Invalid Draft Casefile identifier
+          description: Invalid Draft Casefile identifier or unsupported response media type
           content:
             application/problem+json:
               schema: {$ref: './common.yaml#/components/schemas/ProblemDetail'}
@@ -481,11 +466,6 @@ paths:
               schema: {$ref: './common.yaml#/components/schemas/ProblemDetail'}
         '404':
           description: Draft Casefile not found
-          content:
-            application/problem+json:
-              schema: {$ref: './common.yaml#/components/schemas/ProblemDetail'}
-        '406':
-          description: Requested response media type is not supported
           content:
             application/problem+json:
               schema: {$ref: './common.yaml#/components/schemas/ProblemDetail'}

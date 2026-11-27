@@ -165,11 +165,12 @@ class ResultsControllerIntegrationTest extends BaseIntegrationTest {
     @Test
     @JiraStory("PO-10256")
     @JiraEpic("PO-6506")
-    void preservesNotAcceptableForUnsupportedResponseType() throws Exception {
+    void rejectsUnsupportedResponseMediaType() throws Exception {
         mockMvc.perform(get("/results").accept(MediaType.APPLICATION_XML)
                 .with(user("test-user")))
-            .andExpect(status().isNotAcceptable())
-            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON));
+            .andExpect(status().isBadRequest())
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+            .andExpect(jsonPath("$.type").value("https://hmcts.gov.uk/problems/not-acceptable"));
         verifyNoInteractions(repository);
     }
 

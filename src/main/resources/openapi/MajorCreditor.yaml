@@ -45,7 +45,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/ReferenceDataResponse'
         '400':
-          description: Invalid parameter type or constraint, or a required parameter is missing
+          description: >-
+            Invalid parameter type or constraint, missing required parameter,
+            or unsupported response media type
           content:
             application/problem+json:
               schema:
@@ -58,12 +60,6 @@ paths:
                 $ref: './common.yaml#/components/schemas/ProblemDetail'
         '403':
           description: Forbidden
-          content:
-            application/problem+json:
-              schema:
-                $ref: './common.yaml#/components/schemas/ProblemDetail'
-        '406':
-          description: Unsupported response representation
           content:
             application/problem+json:
               schema:

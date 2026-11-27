@@ -242,7 +242,7 @@ class DraftCasefileControllerIntegrationTest extends BaseIntegrationTest {
         mockMvc.perform(get("/draft-casefiles/123")
                 .with(authentication(DraftCasefileHttpFixture.token((short) 1)))
                 .accept(MediaType.TEXT_PLAIN))
-            .andExpect(status().isNotAcceptable())
+            .andExpect(status().isBadRequest())
             .andExpect(header().doesNotExist("ETag"));
         verifyNoInteractions(service);
         assertThat(output).doesNotContain("Consultation");

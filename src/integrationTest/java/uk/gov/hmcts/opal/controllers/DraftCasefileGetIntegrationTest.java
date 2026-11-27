@@ -254,7 +254,7 @@ class DraftCasefileGetIntegrationTest extends BaseIntegrationTest {
             }
             case "accept" -> {
                 request.accept(MediaType.TEXT_PLAIN);
-                expectedStatus = 406;
+                expectedStatus = 400;
             }
             case "unavailable" -> {
                 doThrow(new DataAccessResourceFailureException(PRIVATE)).when(repository).findById(id);

@@ -257,7 +257,8 @@ class DraftCasefileDecisionIntegrationTest extends BaseIntegrationTest {
         mockMvc.perform(request(99999L, body("REJECTED")).contentType(MediaType.TEXT_PLAIN))
             .andExpect(status().isUnsupportedMediaType());
         mockMvc.perform(request(99999L, body("REJECTED")).accept(MediaType.APPLICATION_XML))
-            .andExpect(status().isNotAcceptable());
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.type").value("https://hmcts.gov.uk/problems/not-acceptable"));
         mockMvc.perform(request(99999L, body("REJECTED").replace(PRIVATE, "a".repeat(5000))))
             .andExpect(status().isContentTooLarge());
         verifyNoInteractions(publisher, logging);

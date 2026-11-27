@@ -42,7 +42,7 @@ paths:
                   - result_id: ABC123
                     result_title: Example Result
         '400':
-          description: Bad request, including malformed Boolean parameters
+          description: Bad request, including malformed Boolean parameters or unsupported response media type
           content:
             application/problem+json:
               schema:
@@ -55,12 +55,6 @@ paths:
                 $ref: './common.yaml#/components/schemas/ProblemDetail'
         '403':
           description: Forbidden
-          content:
-            application/problem+json:
-              schema:
-                $ref: './common.yaml#/components/schemas/ProblemDetail'
-        '406':
-          description: Unsupported response media type
           content:
             application/problem+json:
               schema:
@@ -101,7 +95,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailResponse'
         '400':
-          description: Bad request
+          description: Bad request, including unsupported response media type
           content:
             application/problem+json:
               schema:
@@ -120,12 +114,6 @@ paths:
                 $ref: './common.yaml#/components/schemas/ProblemDetail'
         '404':
           description: No Result exists for the supplied identifier
-          content:
-            application/problem+json:
-              schema:
-                $ref: './common.yaml#/components/schemas/ProblemDetail'
-        '406':
-          description: Unsupported response media type
           content:
             application/problem+json:
               schema:

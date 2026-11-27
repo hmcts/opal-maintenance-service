@@ -122,7 +122,7 @@ class ResultControllerIntegrationTest extends BaseIntegrationTest {
     @JiraEpic("PO-6506")
     void rejectsUnsupportedResponseMediaType() throws Exception {
         mockMvc.perform(get("/results/ABC123").with(user("test-user")).accept(MediaType.APPLICATION_XML))
-            .andExpect(status().isNotAcceptable());
+            .andExpect(status().isBadRequest());
         verifyNoInteractions(repository);
     }
 
